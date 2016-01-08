@@ -22,6 +22,7 @@
 
 #include <asm/cacheflush.h>
 #include <asm/traps.h>
+#include <asm/uaccess.h>
 
 static unsigned long bx_emul_counter;
 static unsigned long bx_patch_counter;
@@ -41,9 +42,24 @@ static int bx_proc_open(struct inode *inode, struct file *file)
 	return single_open(file, bx_proc_show, PDE_DATA(inode));
 }
 
+static ssize_t bx_proc_write(struct file *file, const char __user *buf,
+			     size_t count, loff_t *ppos)
+{
+	char c;
+
+	if (!get_user(c, buf)) {
+		if (c == 'P')
+			bx_patch_mode = 1;
+		if (c == 'E')
+			bx_patch_mode = 0;
+	}
+	return count;
+}
+
 static const struct proc_ops bx_proc_ops = {
 	.proc_open	= bx_proc_open,
 	.proc_read	= seq_read,
+	.proc_write	= bx_proc_write,
 	.proc_lseek	= seq_lseek,
 	.proc_release	= single_release,
 };

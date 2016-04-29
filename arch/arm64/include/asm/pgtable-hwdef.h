@@ -222,6 +222,8 @@
 #define TCR_TxSZ_WIDTH		6
 #define TCR_T0SZ_MASK		(((UL(1) << TCR_TxSZ_WIDTH) - 1) << TCR_T0SZ_OFFSET)
 
+#define TCR_EPD0		(UL(1) << 7)
+
 #define TCR_IRGN0_SHIFT		8
 #define TCR_IRGN0_MASK		(UL(3) << TCR_IRGN0_SHIFT)
 #define TCR_IRGN0_NC		(UL(0) << TCR_IRGN0_SHIFT)
@@ -278,6 +280,9 @@
 #define TCR_TG0_64K		(UL(1) << TCR_TG0_SHIFT)
 #define TCR_TG0_16K		(UL(2) << TCR_TG0_SHIFT)
 
+#define TCR_A1			(UL(1) << 22)
+#define TCR_EPD1		(UL(1) << 23)
+
 #define TCR_TG1_SHIFT		30
 #define TCR_TG1_MASK		(UL(3) << TCR_TG1_SHIFT)
 #define TCR_TG1_16K		(UL(1) << TCR_TG1_SHIFT)
@@ -286,14 +291,12 @@
 
 #define TCR_IPS_SHIFT		32
 #define TCR_IPS_MASK		(UL(7) << TCR_IPS_SHIFT)
-#define TCR_A1			(UL(1) << 22)
+
 #define TCR_ASID16		(UL(1) << 36)
 #define TCR_TBI0		(UL(1) << 37)
 #define TCR_HA			(UL(1) << 39)
 #define TCR_HD			(UL(1) << 40)
 #define TCR_NFD1		(UL(1) << 54)
-
-#define TCR_EPD1		(UL(1) << 23)
 
 /*
  * TTBR.

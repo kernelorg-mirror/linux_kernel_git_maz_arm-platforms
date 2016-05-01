@@ -440,7 +440,12 @@ static bool access_vm_reg(struct kvm_vcpu *vcpu,
 	u64 val;
 	int reg = r->reg;
 
-	BUG_ON(!p->is_write);
+	BUG_ON(!vcpu_mode_el2(vcpu) && !p->is_write);
+
+	if (!p->is_write) {
+		p->regval = vcpu_read_sys_reg(vcpu, reg);
+		return true;
+	}
 
 	/* See the 32bit mapping in kvm_host.h */
 	if (p->is_aarch32)

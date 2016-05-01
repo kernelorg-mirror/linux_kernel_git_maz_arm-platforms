@@ -429,6 +429,42 @@ static inline bool kvm_cpu_has_cnp(void)
 void kvm_init_s2_mmu(struct kvm_s2_mmu *mmu) {}
 void kvm_init_nested(struct kvm *kvm) {}
 
+struct kvm_s2_trans {};
+static inline phys_addr_t kvm_s2_trans_output(struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline unsigned long kvm_s2_trans_size(struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline u32 kvm_s2_trans_esr(struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t ipa,
+				     struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu,
+					   phys_addr_t ipa,
+					   struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline void kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u32 esr)
+{
+	BUG();
+}
+
+bool kvm_is_shadow_s2_fault(struct kvm_vcpu *vcpu) { return false; }
+
 static __always_inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)
 {
 	struct kvm_vmid *vmid = &mmu->vmid;

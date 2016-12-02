@@ -433,7 +433,7 @@ out:
 
 static void save_lrs(struct kvm_vcpu *vcpu, void __iomem *base)
 {
-	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
+	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
 	u64 used_lrs = vcpu->arch.vgic_cpu.used_lrs;
 	u64 elrsr;
 	int i;
@@ -468,7 +468,7 @@ void vgic_v2_save_state(struct kvm_vcpu *vcpu)
 
 void vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
+	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
 	void __iomem *base = kvm_vgic_global_state.vctrl_base;
 	u64 used_lrs = vcpu->arch.vgic_cpu.used_lrs;
 	int i;
@@ -487,7 +487,7 @@ void vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 
 void vgic_v2_load(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
+	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
 
 	writel_relaxed(cpu_if->vgic_vmcr,
 		       kvm_vgic_global_state.vctrl_base + GICH_VMCR);
@@ -497,7 +497,7 @@ void vgic_v2_load(struct kvm_vcpu *vcpu)
 
 void vgic_v2_put(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
+	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
 
 	cpu_if->vgic_vmcr = readl_relaxed(kvm_vgic_global_state.vctrl_base + GICH_VMCR);
 	cpu_if->vgic_apr = readl_relaxed(kvm_vgic_global_state.vctrl_base + GICH_APR);

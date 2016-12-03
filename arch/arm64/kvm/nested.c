@@ -539,3 +539,13 @@ void kvm_arch_flush_shadow_all(struct kvm *kvm)
 	kvm->arch.nested_mmus_size = 0;
 	kvm_free_stage2_pgd(&kvm->arch.mmu);
 }
+
+bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
+{
+	bool imo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO;
+	bool fmo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_FMO;
+
+	WARN(imo != fmo, "Separate virtual IRQ/FIQ settings not supported\n");
+
+	return nested_virt_in_use(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
+}

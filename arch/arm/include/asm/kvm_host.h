@@ -45,9 +45,11 @@
 #define KVM_MAX_VCPUS VGIC_V2_MAX_CPUS
 #endif
 
+/* KVM_REQ_GUEST_HYP_IRQ_PENDING is actually unused */
 #define KVM_REQ_SLEEP \
 	KVM_ARCH_REQ_FLAGS(0, KVM_REQUEST_WAIT | KVM_REQUEST_NO_WAKEUP)
-#define KVM_REQ_IRQ_PENDING	KVM_ARCH_REQ(1)
+#define KVM_REQ_IRQ_PENDING		KVM_ARCH_REQ(1)
+#define KVM_REQ_GUEST_HYP_IRQ_PENDING	KVM_ARCH_REQ(2)
 
 DECLARE_STATIC_KEY_FALSE(userspace_irqchip_in_use);
 
@@ -370,13 +372,13 @@ static inline int kvm_arm_setup_stage2(struct kvm *kvm, unsigned long type)
 	return 0;
 }
 
+static inline void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu) {}
+static inline void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu) {}
+int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu) { return 0; }
+
 static inline bool nested_virt_in_use(struct kvm_vcpu *vcpu)
 {
 	return false;
 }
-
-static inline void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu) {}
-static inline void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu) {}
-int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu) { return 0; }
 
 #endif /* __ARM_KVM_HOST_H__ */

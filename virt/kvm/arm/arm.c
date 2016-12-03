@@ -634,6 +634,9 @@ static void check_vcpu_requests(struct kvm_vcpu *vcpu)
 		 * that a VCPU sees new virtual interrupts.
 		 */
 		kvm_check_request(KVM_REQ_IRQ_PENDING, vcpu);
+
+		if (kvm_check_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu))
+			kvm_inject_nested_irq(vcpu);
 	}
 }
 
@@ -680,9 +683,9 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 */
 		cond_resched();
 
-		update_vmid(&vcpu->arch.hw_mmu->vmid);
-
 		check_vcpu_requests(vcpu);
+
+		update_vmid(&vcpu->arch.hw_mmu->vmid);
 
 		/*
 		 * Preparing the interrupts to be injected also

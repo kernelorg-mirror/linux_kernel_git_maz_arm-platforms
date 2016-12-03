@@ -341,6 +341,11 @@ static inline bool vcpu_mode_priv(const struct kvm_vcpu *vcpu)
 	return mode != PSR_MODE_EL0t;
 }
 
+static inline bool vcpu_el2_imo_is_set(const struct kvm_vcpu *vcpu)
+{
+	return (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO);
+}
+
 /*
  * When the NV and NV1 bits are set, the EL2 page table format is used for the
  * EL1 translation regime.

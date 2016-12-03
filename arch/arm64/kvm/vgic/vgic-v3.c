@@ -735,6 +735,12 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
 
+	/* If the vgic is nested, perform the full state loading */
+	if (vgic_state_is_nested(vcpu)) {
+		vgic_v3_load_nested(vcpu);
+		return;
+	}
+
 	vcpu->arch.vgic_cpu.current_cpu_if = cpu_if;
 
 	kvm_call_hyp(__vgic_v3_restore_vmcr_aprs, cpu_if);
@@ -748,6 +754,11 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 void vgic_v3_put(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
+
+	if (vgic_state_is_nested(vcpu)) {
+		vgic_v3_put_nested(vcpu);
+		return;
+	}
 
 	kvm_call_hyp(__vgic_v3_save_vmcr_aprs, cpu_if);
 	WARN_ON(vgic_v4_put(vcpu));

@@ -158,7 +158,8 @@ enum iodev_type {
 	IODEV_CPUIF,
 	IODEV_DIST,
 	IODEV_REDIST,
-	IODEV_ITS
+	IODEV_ITS,
+	IODEV_GICH,
 };
 
 struct vgic_io_device {
@@ -248,6 +249,8 @@ struct vgic_dist {
 	struct vgic_irq		*spis;
 
 	struct vgic_io_device	dist_iodev;
+
+	struct vgic_io_device	hyp_iodev;
 
 	bool			has_its;
 

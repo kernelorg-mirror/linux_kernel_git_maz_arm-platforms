@@ -14,17 +14,12 @@
 #include <asm/kvm_emulate.h>
 #include <asm/esr.h>
 
+#include "trace.h"
+
 #define CURRENT_EL_SP_EL0_VECTOR	0x0
 #define CURRENT_EL_SP_ELx_VECTOR	0x200
 #define LOWER_EL_AArch64_VECTOR		0x400
 #define LOWER_EL_AArch32_VECTOR		0x600
-
-enum exception_type {
-	except_type_sync	= 0,
-	except_type_irq		= 0x80,
-	except_type_fiq		= 0x100,
-	except_type_serror	= 0x180,
-};
 
 /*
  * This performs the exception entry at a given EL (@target_mode), stashing PC
@@ -65,6 +60,11 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 		vbar = vcpu_read_sys_reg(vcpu, VBAR_EL1);
 		sctlr = vcpu_read_sys_reg(vcpu, SCTLR_EL1);
 		vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL1);
+		break;
+	case PSR_MODE_EL2h:
+		vbar = vcpu_read_sys_reg(vcpu, VBAR_EL2);
+		sctlr = vcpu_read_sys_reg(vcpu, SCTLR_EL2);
+		vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
 		break;
 	default:
 		/* Don't do that */
@@ -235,4 +235,13 @@ void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 esr)
 void kvm_inject_vabt(struct kvm_vcpu *vcpu)
 {
 	kvm_set_sei_esr(vcpu, ESR_ELx_ISV);
+}
+
+void kvm_inject_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
+			      enum exception_type type)
+{
+	trace_kvm_inject_nested_exception(vcpu, esr_el2, type);
+
+	vcpu_write_sys_reg(vcpu, esr_el2, ESR_EL2);
+	enter_exception64(vcpu, PSR_MODE_EL2h, type);
 }

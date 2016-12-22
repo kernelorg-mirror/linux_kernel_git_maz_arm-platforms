@@ -467,6 +467,7 @@ struct kvm_vcpu_arch {
 #define KVM_ARM64_EXCEPT_AA64_ELx_SERR	(3 << 9)
 #define KVM_ARM64_EXCEPT_AA64_EL1	(0 << 11)
 #define KVM_ARM64_EXCEPT_AA64_EL2	(1 << 11)
+#define KVM_ARM64_EXCEPT_AA64_EL_MASK	(1 << 11)
 
 #define KVM_ARM64_DEBUG_STATE_SAVE_SPE	(1 << 12) /* Save SPE context if active  */
 #define KVM_ARM64_DEBUG_STATE_SAVE_TRBE	(1 << 13) /* Save TRBE context if active  */

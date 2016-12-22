@@ -87,6 +87,13 @@ static inline void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr)
 	kvm_inject_pabt32(vcpu, addr);
 }
 
+static inline int kvm_inject_nested_sync(struct kvm_vcpu *vcpu, u64 esr_el2)
+{
+	kvm_err("Unexpected call to %s for the non-nesting configuration\n",
+		 __func__);
+	return -EINVAL;
+}
+
 static inline bool kvm_condition_valid(const struct kvm_vcpu *vcpu)
 {
 	return kvm_condition_valid32(vcpu);

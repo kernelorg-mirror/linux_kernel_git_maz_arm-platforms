@@ -55,6 +55,12 @@ void kvm_inject_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
 int kvm_inject_nested_sync(struct kvm_vcpu *vcpu, u64 esr_el2);
 int kvm_inject_nested_irq(struct kvm_vcpu *vcpu);
 
+u64 translate_tcr(u64 tcr);
+u64 translate_cptr(u64 tcr);
+u64 translate_sctlr(u64 tcr);
+u64 translate_ttbr0(u64 tcr);
+u64 translate_cnthctl(u64 tcr);
+
 static __always_inline bool vcpu_el1_is_32bit(struct kvm_vcpu *vcpu)
 {
 	return !(vcpu->arch.hcr_el2 & HCR_RW);

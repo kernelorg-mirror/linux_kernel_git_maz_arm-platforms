@@ -217,6 +217,11 @@ enum vcpu_sysreg {
 	NR_SYS_REGS	/* Nothing after this line! */
 };
 
+static inline bool sysreg_is_el2(int reg)
+{
+	return reg >= FIRST_EL2_SYSREG && reg < NR_SYS_REGS;
+}
+
 /* 32bit mapping */
 #define c0_MPIDR	(MPIDR_EL1 * 2)	/* MultiProcessor ID Register */
 #define c0_CSSELR	(CSSELR_EL1 * 2)/* Cache Size Selection Register */

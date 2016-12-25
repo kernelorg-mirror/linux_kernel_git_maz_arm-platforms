@@ -76,10 +76,141 @@ static bool write_to_read_only(struct kvm_vcpu *vcpu,
 	return false;
 }
 
+static u64 tcr_el2_ips_to_tcr_el1_ps(u64 tcr_el2)
+{
+	return ((tcr_el2 & TCR_EL2_PS_MASK) >> TCR_EL2_PS_SHIFT)
+		<< TCR_IPS_SHIFT;
+}
+
+u64 translate_tcr(u64 tcr)
+{
+	return TCR_EPD1_MASK |				/* disable TTBR1_EL1 */
+	       ((tcr & TCR_EL2_TBI) ? TCR_TBI0 : 0) |
+	       tcr_el2_ips_to_tcr_el1_ps(tcr) |
+	       (tcr & TCR_EL2_TG0_MASK) |
+	       (tcr & TCR_EL2_ORGN0_MASK) |
+	       (tcr & TCR_EL2_IRGN0_MASK) |
+	       (tcr & TCR_EL2_T0SZ_MASK);
+}
+
+u64 translate_cptr(u64 cptr_el2)
+{
+	u64 cpacr_el1 = 0;
+
+	if (!(cptr_el2 & CPTR_EL2_TFP))
+		cpacr_el1 |= CPACR_EL1_FPEN;
+	if (cptr_el2 & CPTR_EL2_TTA)
+		cpacr_el1 |= CPACR_EL1_TTA;
+	if (!(cptr_el2 & CPTR_EL2_TZ))
+		cpacr_el1 |= CPACR_EL1_ZEN;
+
+	return cpacr_el1;
+}
+
+u64 translate_sctlr(u64 sctlr)
+{
+	/* Bit 20 is RES1 in SCTLR_EL1, but RES0 in SCTLR_EL2 */
+	return sctlr | BIT(20);
+}
+
+u64 translate_ttbr0(u64 ttbr0)
+{
+	/* Force ASID to 0 (ASID 0 or RES0) */
+	return ttbr0 & ~GENMASK_ULL(63, 48);
+}
+
+u64 translate_cnthctl(u64 cnthctl)
+{
+	return ((cnthctl & 0x3) << 10) | (cnthctl & 0xfc);
+}
+
+#define EL2_SYSREG(el2, el1, translate)	\
+	[el2 - FIRST_EL2_SYSREG] = { el2, el1, translate }
+#define PURE_EL2_SYSREG(el2) \
+	[el2 - FIRST_EL2_SYSREG] = { el2,__INVALID_SYSREG__, NULL }
+/*
+ * Associate vEL2 registers to their EL1 counterparts on the CPU.
+ * The translate function can be NULL, when the register layout is identical.
+ */
+struct el2_sysreg_map {
+	int sysreg;	/* EL2 register index into the array above */
+	int mapping;	/* associated EL1 register */
+	u64 (*translate)(u64 value);
+} nested_sysreg_map[NR_SYS_REGS - FIRST_EL2_SYSREG] = {
+	PURE_EL2_SYSREG( VPIDR_EL2 ),
+	PURE_EL2_SYSREG( VMPIDR_EL2 ),
+	PURE_EL2_SYSREG( ACTLR_EL2 ),
+	PURE_EL2_SYSREG( HCR_EL2 ),
+	PURE_EL2_SYSREG( MDCR_EL2 ),
+	PURE_EL2_SYSREG( HSTR_EL2 ),
+	PURE_EL2_SYSREG( HACR_EL2 ),
+	PURE_EL2_SYSREG( VTTBR_EL2 ),
+	PURE_EL2_SYSREG( VTCR_EL2 ),
+	PURE_EL2_SYSREG( RVBAR_EL2 ),
+	PURE_EL2_SYSREG( RMR_EL2 ),
+	PURE_EL2_SYSREG( TPIDR_EL2 ),
+	PURE_EL2_SYSREG( CNTVOFF_EL2 ),
+	PURE_EL2_SYSREG( CNTHCTL_EL2 ),
+	PURE_EL2_SYSREG( HPFAR_EL2 ),
+	EL2_SYSREG(      SCTLR_EL2,  SCTLR_EL1,      translate_sctlr ),
+	EL2_SYSREG(      CPTR_EL2,   CPACR_EL1,      translate_cptr  ),
+	EL2_SYSREG(      TTBR0_EL2,  TTBR0_EL1,      translate_ttbr0 ),
+	EL2_SYSREG(      TTBR1_EL2,  TTBR1_EL1,      NULL            ),
+	EL2_SYSREG(      TCR_EL2,    TCR_EL1,        translate_tcr   ),
+	EL2_SYSREG(      VBAR_EL2,   VBAR_EL1,       NULL            ),
+	EL2_SYSREG(      AFSR0_EL2,  AFSR0_EL1,      NULL            ),
+	EL2_SYSREG(      AFSR1_EL2,  AFSR1_EL1,      NULL            ),
+	EL2_SYSREG(      ESR_EL2,    ESR_EL1,        NULL            ),
+	EL2_SYSREG(      FAR_EL2,    FAR_EL1,        NULL            ),
+	EL2_SYSREG(      MAIR_EL2,   MAIR_EL1,       NULL            ),
+	EL2_SYSREG(      AMAIR_EL2,  AMAIR_EL1,      NULL            ),
+};
+
+static
+const struct el2_sysreg_map *find_el2_sysreg(const struct el2_sysreg_map *map,
+					     int reg)
+{
+	const struct el2_sysreg_map *entry;
+
+	if (!sysreg_is_el2(reg))
+		return NULL;
+
+	entry = &nested_sysreg_map[reg - FIRST_EL2_SYSREG];
+	if (entry->sysreg == __INVALID_SYSREG__)
+		return NULL;
+
+	return entry;
+}
+
 u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
+
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto immediate_read;
+
+	if (unlikely(sysreg_is_el2(reg))) {
+		const struct el2_sysreg_map *el2_reg;
+
+		if (!is_hyp_ctxt(vcpu))
+			goto immediate_read;
+
+		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
+		if (el2_reg) {
+			/*
+			 * If this register does not have an EL1 counterpart,
+			 * then read the stored EL2 version.
+			 */
+			if (el2_reg->mapping == __INVALID_SYSREG__)
+				goto immediate_read;
+
+			/* Get the current version of the EL1 counterpart. */
+			reg = el2_reg->mapping;
+		}
+	} else {
+		/* EL1 register can't be on the CPU if the guest is in vEL2. */
+		if (unlikely(is_hyp_ctxt(vcpu)))
+			goto immediate_read;
+	}
 
 	/*
 	 * System registers listed in the switch are not saved on every
@@ -114,6 +245,8 @@ u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 	case DACR32_EL2:	return read_sysreg_s(SYS_DACR32_EL2);
 	case IFSR32_EL2:	return read_sysreg_s(SYS_IFSR32_EL2);
 	case DBGVCR32_EL2:	return read_sysreg_s(SYS_DBGVCR32_EL2);
+	case SP_EL2:		return read_sysreg(sp_el1);
+	case ELR_EL2:		return read_sysreg_el1(elr);
 	}
 
 immediate_read:
@@ -124,6 +257,34 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 {
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto immediate_write;
+
+	if (unlikely(sysreg_is_el2(reg))) {
+		const struct el2_sysreg_map *el2_reg;
+
+		if (!is_hyp_ctxt(vcpu))
+			goto immediate_write;
+
+		/* Store the EL2 version in the sysregs array. */
+		__vcpu_sys_reg(vcpu, reg) = val;
+
+		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
+		if (el2_reg) {
+			/* Does this register have an EL1 counterpart? */
+			if (el2_reg->mapping == __INVALID_SYSREG__)
+				return;
+
+			if (!vcpu_el2_e2h_is_set(vcpu) &&
+			    el2_reg->translate)
+				val = el2_reg->translate(val);
+
+			/* Redirect this to the EL1 version of the register. */
+			reg = el2_reg->mapping;
+		}
+	} else {
+		/* EL1 register can't be on the CPU if the guest is in vEL2. */
+		if (unlikely(is_hyp_ctxt(vcpu)))
+			goto immediate_write;
+	}
 
 	/*
 	 * System registers listed in the switch are not restored on every
@@ -157,6 +318,8 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 	case DACR32_EL2:	write_sysreg_s(val, SYS_DACR32_EL2);	return;
 	case IFSR32_EL2:	write_sysreg_s(val, SYS_IFSR32_EL2);	return;
 	case DBGVCR32_EL2:	write_sysreg_s(val, SYS_DBGVCR32_EL2);	return;
+	case SP_EL2:		write_sysreg(val, sp_el1);		return;
+	case ELR_EL2:		write_sysreg_el1(val, elr);		return;
 	}
 
 immediate_write:

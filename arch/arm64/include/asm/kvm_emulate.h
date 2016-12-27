@@ -29,6 +29,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmio.h>
+#include <asm/kvm_nested.h>
 #include <asm/ptrace.h>
 #include <asm/cputype.h>
 #include <asm/virt.h>
@@ -355,6 +356,12 @@ static inline bool vcpu_mode_priv(const struct kvm_vcpu *vcpu)
 	mode = *vcpu_cpsr(vcpu) & PSR_MODE_MASK;
 
 	return mode != PSR_MODE_EL0t;
+}
+
+static inline bool guest_hyp_fpsimd_traps_enabled(const struct kvm_vcpu *vcpu)
+{
+	return nested_virt_in_use(vcpu) &&
+		(vcpu_read_sys_reg(vcpu, CPTR_EL2) & CPTR_EL2_TFP);
 }
 
 static inline u32 kvm_vcpu_get_hsr(const struct kvm_vcpu *vcpu)

@@ -388,9 +388,12 @@ static bool __hyp_text fixup_guest_exit(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * If FP/SIMD is not implemented, handle the trap and inject an
 	 * undefined instruction exception to the guest.
 	 */
-	if (system_supports_fpsimd() &&
-	    kvm_vcpu_trap_get_class(vcpu) == ESR_ELx_EC_FP_ASIMD)
-		return __hyp_switch_fpsimd(vcpu);
+	if (kvm_vcpu_trap_get_class(vcpu) == ESR_ELx_EC_FP_ASIMD) {
+		if (guest_hyp_fpsimd_traps_enabled(vcpu))
+			return false;
+		if (system_supports_fpsimd())
+			return __hyp_switch_fpsimd(vcpu);
+	}
 
 	if (!__populate_fault_info(vcpu))
 		return true;

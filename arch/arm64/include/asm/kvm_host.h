@@ -556,6 +556,7 @@ void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu);
 int __init kvmarm_nested_cfg(char *buf);
 int init_nested_virt(void);
 bool nested_virt_in_use(struct kvm_vcpu *vcpu);
+int handle_wfx_nested(struct kvm_vcpu *vcpu, bool is_wfe);
 
 #define __KVM_HAVE_ARCH_VM_ALLOC
 struct kvm *kvm_arch_alloc_vm(void);

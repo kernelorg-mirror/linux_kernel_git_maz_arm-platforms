@@ -6,6 +6,9 @@
 #include <linux/kvm_host.h>
 #include <asm/kvm_emulate.h>
 
+/* Work around circular dependencies */
+static inline bool vcpu_has_feature(const struct kvm_vcpu *, int);
+
 static inline bool vcpu_has_nv(const struct kvm_vcpu *vcpu)
 {
 	return (!__is_defined(__KVM_NVHE_HYPERVISOR__) &&

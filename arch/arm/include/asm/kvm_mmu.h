@@ -353,6 +353,22 @@ static inline int hyp_map_aux_data(void)
 	return 0;
 }
 
+struct kvm_s2_trans {
+	phys_addr_t output;
+	phys_addr_t block_size;
+	bool writable;
+	bool readable;
+	int level;
+	u32 esr;
+	u64 upper_attr;
+};
+
+static inline int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
+				     struct kvm_s2_trans *result)
+{
+	return 0;
+}
+
 #define kvm_phys_to_vttbr(addr)		(addr)
 
 static inline void kvm_nested_s2_unmap(struct kvm_vcpu *vcpu) { }

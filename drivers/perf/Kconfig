@@ -50,6 +50,14 @@ config ARM_PMU_ACPI
 	depends on ARM_PMU && ACPI
 	def_bool y
 
+config ARM_PMUV3
+	depends on HW_PERF_EVENTS && ARM64
+	bool "ARM PMUv3 support" if !ARM64
+	default y
+	help
+	  Say y if you want to use CPU performance monitors on ARMv8
+	  systems that implement the PMUv3 architecture.
+
 config ARM_DSU_PMU
 	tristate "ARM DynamIQ Shared Unit (DSU) PMU"
 	depends on ARM64

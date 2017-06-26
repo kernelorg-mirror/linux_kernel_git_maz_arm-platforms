@@ -508,6 +508,7 @@ static inline int kvm_arm_have_ssbd(void)
 
 void kvm_vcpu_load_sysregs(struct kvm_vcpu *vcpu);
 void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu);
+int __init kvmarm_nested_cfg(char *buf);
 
 #define __KVM_HAVE_ARCH_VM_ALLOC
 struct kvm *kvm_arch_alloc_vm(void);

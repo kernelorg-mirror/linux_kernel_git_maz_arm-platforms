@@ -293,6 +293,8 @@
 #define TCR_HD			(UL(1) << 40)
 #define TCR_NFD1		(UL(1) << 54)
 
+#define TCR_EPD1		(UL(1) << 23)
+
 /*
  * TTBR.
  */

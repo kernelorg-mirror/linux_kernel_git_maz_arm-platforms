@@ -94,6 +94,13 @@ static inline int kvm_inject_nested_sync(struct kvm_vcpu *vcpu, u64 esr_el2)
 	return -EINVAL;
 }
 
+static inline int kvm_inject_nested_irq(struct kvm_vcpu *vcpu)
+{
+	kvm_err("Unexpected call to %s for the non-nesting configuration\n",
+		 __func__);
+	return -EINVAL;
+}
+
 static inline bool kvm_condition_valid(const struct kvm_vcpu *vcpu)
 {
 	return kvm_condition_valid32(vcpu);

@@ -1916,6 +1916,14 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(contextidr_EL12), access_vm_reg, reset_val, CONTEXTIDR_EL1, 0 },
 	{ SYS_DESC(cntkctl_EL12), access_rw, reset_val, CNTKCTL_EL1, 0 },
 
+	{ SYS_DESC(cntp_tval_EL02), access_arch_timer },
+	{ SYS_DESC(cntp_ctl_EL02), access_arch_timer },
+	{ SYS_DESC(cntp_cval_EL02), access_arch_timer },
+
+	{ SYS_DESC(cntv_tval_EL02), access_arch_timer },
+	{ SYS_DESC(cntv_ctl_EL02), access_arch_timer },
+	{ SYS_DESC(cntv_cval_EL02), access_arch_timer },
+
 	{ SYS_DESC(SYS_SP_EL2), NULL, reset_unknown, SP_EL2 },
 };
 

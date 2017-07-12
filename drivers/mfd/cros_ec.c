@@ -51,6 +51,10 @@ static const struct mfd_cell ec_pd_cell = {
 	.pdata_size = sizeof(pd_p),
 };
 
+static const struct mfd_cell ec_rtc_cell = {
+	.name = "cros-ec-rtc",
+};
+
 static irqreturn_t ec_irq_thread(int irq, void *data)
 {
 	struct cros_ec_device *ec_dev = data;
@@ -89,6 +93,16 @@ static int cros_ec_sleep_event(struct cros_ec_device *ec_dev, u8 sleep_event)
 	buf.msg.outsize = sizeof(buf.req);
 
 	return cros_ec_cmd_xfer(ec_dev, &buf.msg);
+}
+
+static void cros_ec_rtc_register(struct cros_ec_device *ec_dev)
+{
+	int ret;
+
+	ret = mfd_add_devices(ec_dev->dev, PLATFORM_DEVID_AUTO, &ec_rtc_cell,
+			      1, NULL, 0, NULL);
+	if (ret)
+		dev_err(ec_dev->dev, "failed to add EC RTC\n");
 }
 
 int cros_ec_register(struct cros_ec_device *ec_dev)
@@ -133,6 +147,10 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 			err);
 		goto fail_mfd;
 	}
+
+	/* Check whether this EC has RTC support */
+	if (cros_ec_check_features(ec_dev, EC_FEATURE_RTC))
+		cros_ec_rtc_register(ec_dev);
 
 	if (ec_dev->max_passthru) {
 		/*

@@ -72,6 +72,12 @@ static int handle_smc(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	int ret;
 
 	/*
+	 * Forward this trapped smc instruction to the virtual EL2.
+	 */
+	if (forward_nv_traps(vcpu) && (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_TSC))
+		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+
+	/*
 	 * "If an SMC instruction executed at Non-secure EL1 is
 	 * trapped to EL2 because HCR_EL2.TSC is 1, the exception is a
 	 * Trap exception, not a Secure Monitor Call exception [...]"
@@ -224,6 +230,13 @@ static int kvm_handle_eret(struct kvm_vcpu *vcpu, struct kvm_run *run)
 	unsigned long elr = vcpu_read_sys_reg(vcpu, ELR_EL2);
 
 	trace_kvm_nested_eret(vcpu, elr, spsr);
+
+	/*
+	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
+	 * bit is set.
+	 */
+	if (forward_nv_traps(vcpu))
+		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
 	/*
 	 * Note that the current exception level is always the virtual EL2,

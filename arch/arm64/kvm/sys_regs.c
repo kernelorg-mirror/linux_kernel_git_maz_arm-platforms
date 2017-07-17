@@ -1367,6 +1367,14 @@ static bool access_sp_el1(struct kvm_vcpu *vcpu,
 	return true;
 }
 
+/* This function is to support the recursive nested virtualization */
+bool forward_nv_traps(struct kvm_vcpu *vcpu)
+{
+	if (!vcpu_mode_el2(vcpu) && (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_NV))
+		return true;
+	return false;
+}
+
 static bool access_elr(struct kvm_vcpu *vcpu,
 		       struct sys_reg_params *p,
 		       const struct sys_reg_desc *r)
@@ -2447,6 +2455,13 @@ static int emulate_sys_instr(struct kvm_vcpu *vcpu,
 			     struct sys_reg_params *params)
 {
 	int ret = 0;
+
+	/*
+	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
+	 * bit is set.
+	 */
+	if (forward_nv_traps(vcpu))
+		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
 	/* TLB maintenance instructions*/
 	if (params->CRn == 0b1000)

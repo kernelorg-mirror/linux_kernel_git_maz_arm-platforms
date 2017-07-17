@@ -473,8 +473,10 @@ static bool access_vm_reg(struct kvm_vcpu *vcpu,
 	if (el12_reg(p) && forward_nv_traps(vcpu))
 		return false;
 
-	if (!el12_reg(p) && forward_vm_traps(vcpu, p))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (!el12_reg(p) && forward_vm_traps(vcpu, p)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	BUG_ON(!vcpu_mode_el2(vcpu) && !p->is_write);
 
@@ -1643,11 +1645,21 @@ static bool access_sp_el1(struct kvm_vcpu *vcpu,
 	return true;
 }
 
+
+/* This function is to support the recursive nested virtualization */
+static bool forward_nv1_traps(struct kvm_vcpu *vcpu, struct sys_reg_params *p)
+{
+	return forward_traps(vcpu, HCR_NV1);
+}
+
 static bool access_elr(struct kvm_vcpu *vcpu,
 		       struct sys_reg_params *p,
 		       const struct sys_reg_desc *r)
 {
 	if (el12_reg(p) && forward_nv_traps(vcpu))
+		return false;
+
+	if (!el12_reg(p) && forward_nv1_traps(vcpu, p))
 		return false;
 
 	if (p->is_write)
@@ -1663,6 +1675,9 @@ static bool access_spsr(struct kvm_vcpu *vcpu,
 			const struct sys_reg_desc *r)
 {
 	if (el12_reg(p) && forward_nv_traps(vcpu))
+		return false;
+
+	if (!el12_reg(p) && forward_nv1_traps(vcpu, p))
 		return false;
 
 	if (p->is_write)

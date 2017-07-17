@@ -131,12 +131,15 @@ static void __hyp_text __activate_traps(struct kvm_vcpu *vcpu)
 	u64 hcr = vcpu->arch.hcr_el2;
 
 	if (is_hyp_ctxt(vcpu)) {
+
+		hcr |= HCR_NV;
+
 		if (!vcpu_el2_e2h_is_set(&vcpu->arch.ctxt)) {
 			/*
 			 * For a guest hypervisor on v8.0, trap and emulate
 			 * the EL1 virtual memory control register accesses.
 			 */
-			hcr |= HCR_TVM | HCR_TRVM;
+			hcr |= HCR_TVM | HCR_TRVM | HCR_NV1;
 		} else {
 			/*
 			 * For a guest hypervisor on v8.1 (VHE), allow to

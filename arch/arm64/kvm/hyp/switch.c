@@ -152,7 +152,7 @@ static void __hyp_text __activate_traps(struct kvm_vcpu *vcpu)
 			 * the EL1 virtual memory control register accesses
 			 * as well as the AT S1 operations.
 			 */
-			hcr |= HCR_TVM | HCR_TRVM | HCR_AT | HCR_NV1;
+			hcr |= HCR_TVM | HCR_TRVM | HCR_AT | HCR_TTLB | HCR_NV1;
 		} else {
 			/*
 			 * For a guest hypervisor on v8.1 (VHE), allow to
@@ -182,7 +182,7 @@ static void __hyp_text __activate_traps(struct kvm_vcpu *vcpu)
 			 * trapped too.
 			 */
 			if (!vcpu_el2_tge_is_set(vcpu))
-				hcr |= HCR_AT;
+				hcr |= HCR_AT | HCR_TTLB;
 		}
 	}
 

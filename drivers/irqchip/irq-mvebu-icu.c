@@ -298,7 +298,6 @@ static const struct of_device_id mvebu_icu_subset_of_match[] = {
 static int mvebu_icu_subset_probe(struct platform_device *pdev)
 {
 	struct mvebu_icu_msi_data *msi_data;
-	struct device_node *msi_parent_dn;
 	struct device *dev = &pdev->dev;
 	struct irq_domain *irq_domain;
 
@@ -313,15 +312,6 @@ static int mvebu_icu_subset_probe(struct platform_device *pdev)
 		msi_data->icu = dev_get_drvdata(dev->parent);
 		msi_data->subset_data = of_device_get_match_data(dev);
 	}
-
-	dev->msi_domain = of_msi_get_domain(dev, dev->of_node,
-					    DOMAIN_BUS_PLATFORM_MSI);
-	if (!dev->msi_domain)
-		return -EPROBE_DEFER;
-
-	msi_parent_dn = irq_domain_get_of_node(dev->msi_domain);
-	if (!msi_parent_dn)
-		return -ENODEV;
 
 	irq_domain = platform_msi_create_device_tree_domain(dev, ICU_MAX_IRQS,
 							    mvebu_icu_write_msg,

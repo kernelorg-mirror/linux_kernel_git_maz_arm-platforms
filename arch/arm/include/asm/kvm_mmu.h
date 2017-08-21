@@ -463,6 +463,10 @@ static inline void kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u32 esr)
 	BUG();
 }
 
+static inline void kvm_nested_s2_flush(struct kvm *kvm) {}
+static inline void kvm_nested_s2_wp(struct kvm *kvm) {}
+static inline void kvm_nested_s2_clear(struct kvm *kvm) {}
+
 bool kvm_is_shadow_s2_fault(struct kvm_vcpu *vcpu) { return false; }
 
 static __always_inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)

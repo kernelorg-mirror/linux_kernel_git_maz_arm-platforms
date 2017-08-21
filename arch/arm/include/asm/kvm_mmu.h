@@ -355,6 +355,12 @@ static inline int hyp_map_aux_data(void)
 
 #define kvm_phys_to_vttbr(addr)		(addr)
 
+static inline void kvm_nested_s2_unmap(struct kvm_vcpu *vcpu) { }
+static inline void kvm_nested_s2_free(struct kvm *kvm) { }
+static inline void kvm_nested_s2_wp(struct kvm *kvm) { }
+static inline void kvm_nested_s2_clear(struct kvm *kvm) { }
+static inline void kvm_nested_s2_flush(struct kvm *kvm) { }
+
 static inline u64 kvm_get_vttbr(struct kvm_s2_vmid *vmid,
 				struct kvm_s2_mmu *mmu)
 {

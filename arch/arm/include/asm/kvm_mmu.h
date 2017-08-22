@@ -371,6 +371,13 @@ static inline int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 #define kvm_phys_to_vttbr(addr)		(addr)
 
+static inline int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu,
+					   phys_addr_t fault_ipa,
+					   struct kvm_s2_trans *trans)
+{
+	return 0;
+}
+
 static inline void kvm_nested_s2_unmap(struct kvm_vcpu *vcpu) { }
 static inline void kvm_nested_s2_free(struct kvm *kvm) { }
 static inline void kvm_nested_s2_wp(struct kvm *kvm) { }

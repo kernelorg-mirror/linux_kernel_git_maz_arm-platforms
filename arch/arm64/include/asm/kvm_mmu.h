@@ -99,6 +99,7 @@ alternative_cb_end
 #include <asm/cacheflush.h>
 #include <asm/mmu_context.h>
 #include <asm/pgtable.h>
+#include <asm/kvm_emulate.h>
 
 void kvm_update_va_mask(struct alt_instr *alt,
 			__le32 *origptr, __le32 *updptr, int nr_inst);
@@ -526,6 +527,10 @@ static inline int hyp_map_aux_data(void)
 
 #define kvm_phys_to_vttbr(addr)		phys_to_ttbr(addr)
 
+struct kvm_nested_s2_mmu *get_nested_mmu(struct kvm_vcpu *vcpu, u64 vttbr);
+struct kvm_s2_mmu *vcpu_get_active_s2_mmu(struct kvm_vcpu *vcpu);
+void update_nested_s2_mmu(struct kvm_vcpu *vcpu);
+
 static inline u64 kvm_get_vttbr(struct kvm_s2_vmid *vmid,
 				struct kvm_s2_mmu *mmu)
 {
@@ -535,6 +540,22 @@ static inline u64 kvm_get_vttbr(struct kvm_s2_vmid *vmid,
 	vmid_field = ((u64)vmid->vmid << VTTBR_VMID_SHIFT) &
 		VTTBR_VMID_MASK(get_kvm_vmid_bits());
 	return kvm_phys_to_vttbr(baddr) | vmid_field;
+}
+
+static inline u64 get_vmid(u64 vttbr)
+{
+	return (vttbr & VTTBR_VMID_MASK(get_kvm_vmid_bits())) >>
+	       VTTBR_VMID_SHIFT;
+}
+
+static inline struct kvm_s2_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
+{
+	struct kvm_s2_mmu *mmu = vcpu_get_active_s2_mmu(vcpu);
+
+	if (unlikely(is_hyp_ctxt(vcpu)))
+		return &mmu->el2_vmid;
+	else
+		return &mmu->vmid;
 }
 
 #endif /* __ASSEMBLY__ */

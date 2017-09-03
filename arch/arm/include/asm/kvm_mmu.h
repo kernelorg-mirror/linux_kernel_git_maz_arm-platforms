@@ -355,6 +355,17 @@ static inline int hyp_map_aux_data(void)
 
 #define kvm_phys_to_vttbr(addr)		(addr)
 
+static inline u64 kvm_get_vttbr(struct kvm_s2_vmid *vmid,
+				struct kvm_s2_mmu *mmu)
+{
+	u64 vmid_field, baddr;
+
+	baddr = virt_to_phys(mmu->pgd);
+	vmid_field = ((u64)vmid->vmid << VTTBR_VMID_SHIFT) &
+		VTTBR_VMID_MASK(get_kvm_vmid_bits());
+	return kvm_phys_to_vttbr(baddr) | vmid_field;
+}
+
 #endif	/* !__ASSEMBLY__ */
 
 #endif /* __ARM_KVM_MMU_H__ */

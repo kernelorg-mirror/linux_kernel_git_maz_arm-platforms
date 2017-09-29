@@ -36,6 +36,7 @@
 #include <asm/kvm_host.h>
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
+#include <asm/kvm_nested.h>
 #include <asm/perf_event.h>
 #include <asm/sysreg.h>
 
@@ -2333,6 +2334,14 @@ static void perform_access(struct kvm_vcpu *vcpu,
 	 * as a gross bug that should be fixed right away.
 	 */
 	BUG_ON(!r->access);
+
+	/*
+	 * Forward this trap to the virtual EL2 if the guest hypervisor has
+	 * configured to trap the current instruction.
+	 */
+	if (nested_virt_in_use(vcpu) && r->forward_trap
+	    && unlikely(r->forward_trap(vcpu)))
+		return;
 
 	/* Skip instruction if instructed so */
 	if (likely(r->access(vcpu, params, r)))

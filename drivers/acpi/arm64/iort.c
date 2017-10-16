@@ -154,7 +154,7 @@ typedef acpi_status (*iort_find_node_callback)
 static struct acpi_table_header *iort_table;
 
 static LIST_HEAD(iort_msi_chip_list);
-static DEFINE_SPINLOCK(iort_msi_chip_lock);
+static DEFINE_MUTEX(iort_msi_chip_lock);
 
 static struct iort_its_msi_chip *__get_msi_chip(int trans_id)
 {
@@ -192,9 +192,9 @@ int iort_register_domain_token(int trans_id, phys_addr_t base,
 	its_msi_chip->translation_id = trans_id;
 	its_msi_chip->base_addr = base;
 
-	spin_lock(&iort_msi_chip_lock);
+	mutex_lock(&iort_msi_chip_lock);
 	list_add(&its_msi_chip->list, &iort_msi_chip_list);
-	spin_unlock(&iort_msi_chip_lock);
+	mutex_unlock(&iort_msi_chip_lock);
 
 	return 0;
 }
@@ -207,9 +207,9 @@ int iort_register_domain_token(int trans_id, phys_addr_t base,
  */
 void iort_deregister_domain_token(int trans_id)
 {
-	spin_lock(&iort_msi_chip_lock);
+	mutex_lock(&iort_msi_chip_lock);
 	kfree(__get_msi_chip(trans_id));
-	spin_unlock(&iort_msi_chip_lock);
+	mutex_unlock(&iort_msi_chip_lock);
 }
 
 /**
@@ -223,11 +223,11 @@ struct fwnode_handle *iort_find_domain_token(int trans_id)
 	struct fwnode_handle *fw_node = NULL;
 	struct iort_its_msi_chip *its_msi_chip;
 
-	spin_lock(&iort_msi_chip_lock);
+	mutex_lock(&iort_msi_chip_lock);
 	its_msi_chip = __get_msi_chip(trans_id);
 	if (its_msi_chip)
 		fw_node = its_msi_chip->fw_node;
-	spin_unlock(&iort_msi_chip_lock);
+	mutex_unlock(&iort_msi_chip_lock);
 
 	return fw_node;
 }

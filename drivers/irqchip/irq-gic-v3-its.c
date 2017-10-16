@@ -3851,19 +3851,12 @@ static int __init gic_acpi_parse_madt_its(struct acpi_subtable_header *header,
 	res.end = its_entry->base_address + ACPI_GICV3_ITS_MEM_SIZE - 1;
 	res.flags = IORESOURCE_MEM;
 
-	dom_handle = irq_domain_alloc_fwnode((void *)its_entry->base_address);
+	dom_handle = iort_get_domain_token(its_entry->translation_id,
+					   res.start);
 	if (!dom_handle) {
-		pr_err("ITS@%pa: Unable to allocate GICv3 ITS domain token\n",
+		pr_err("ITS@%pa: Unable to get GICv3 ITS domain token\n",
 		       &res.start);
 		return -ENOMEM;
-	}
-
-	err = iort_register_domain_token(its_entry->translation_id, res.start,
-					 dom_handle);
-	if (err) {
-		pr_err("ITS@%pa: Unable to register GICv3 ITS domain token (ITS ID %d) to IORT\n",
-		       &res.start, its_entry->translation_id);
-		goto dom_err;
 	}
 
 	err = its_probe_one(&res, dom_handle,
@@ -3872,7 +3865,6 @@ static int __init gic_acpi_parse_madt_its(struct acpi_subtable_header *header,
 		return 0;
 
 	iort_deregister_domain_token(its_entry->translation_id);
-dom_err:
 	irq_domain_free_fwnode(dom_handle);
 	return err;
 }

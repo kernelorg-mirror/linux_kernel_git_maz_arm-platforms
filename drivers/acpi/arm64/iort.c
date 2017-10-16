@@ -171,32 +171,45 @@ static struct iort_its_msi_chip *__get_msi_chip(int trans_id)
 }
 
 /**
- * iort_register_domain_token() - register domain token along with related
- * ITS ID and base address to the list from where we can get it back later on.
+ * iort_get_domain_token() - return a domain token for a given ITS ID,
+ * adding it to the list so it can be retrieved later on.
  * @trans_id: ITS ID.
  * @base: ITS base address.
- * @fw_node: Domain token.
  *
  * Returns: 0 on success, -ENOMEM if no memory when allocating list element
  */
-int iort_register_domain_token(int trans_id, phys_addr_t base,
-			       struct fwnode_handle *fw_node)
+struct fwnode_handle *iort_get_domain_token(int trans_id, phys_addr_t base)
 {
 	struct iort_its_msi_chip *its_msi_chip;
+	struct fwnode_handle *fw_node;
 
+	mutex_lock(&iort_msi_chip_lock);
+
+	its_msi_chip = __get_msi_chip(trans_id);
+	if (its_msi_chip) {
+		fw_node = its_msi_chip->fw_node;
+		goto out;
+	}
+
+	fw_node = irq_domain_alloc_fwnode((void *)(uintptr_t)trans_id);
 	its_msi_chip = kzalloc(sizeof(*its_msi_chip), GFP_KERNEL);
-	if (!its_msi_chip)
-		return -ENOMEM;
+	if (!its_msi_chip || !fw_node) {
+		kfree(its_msi_chip);
+		irq_domain_free_fwnode(fw_node);
+		fw_node = NULL;
+		goto out;
+	}
 
 	its_msi_chip->fw_node = fw_node;
 	its_msi_chip->translation_id = trans_id;
 	its_msi_chip->base_addr = base;
 
-	mutex_lock(&iort_msi_chip_lock);
 	list_add(&its_msi_chip->list, &iort_msi_chip_list);
+
+out:
 	mutex_unlock(&iort_msi_chip_lock);
 
-	return 0;
+	return fw_node;
 }
 
 /**
@@ -207,8 +220,14 @@ int iort_register_domain_token(int trans_id, phys_addr_t base,
  */
 void iort_deregister_domain_token(int trans_id)
 {
+	struct iort_its_msi_chip *its_msi_chip;
+
 	mutex_lock(&iort_msi_chip_lock);
-	kfree(__get_msi_chip(trans_id));
+	its_msi_chip = __get_msi_chip(trans_id);
+	if (its_msi_chip) {
+		irq_domain_free_fwnode(its_msi_chip->fw_node);
+		kfree(its_msi_chip);
+	}
 	mutex_unlock(&iort_msi_chip_lock);
 }
 
@@ -581,7 +600,7 @@ static int __maybe_unused iort_find_its_base(u32 its_id, phys_addr_t *base)
 	struct iort_its_msi_chip *its_msi_chip;
 	int ret = -ENODEV;
 
-	spin_lock(&iort_msi_chip_lock);
+	mutex_lock(&iort_msi_chip_lock);
 	list_for_each_entry(its_msi_chip, &iort_msi_chip_list, list) {
 		if (its_msi_chip->translation_id == its_id) {
 			*base = its_msi_chip->base_addr;
@@ -589,7 +608,7 @@ static int __maybe_unused iort_find_its_base(u32 its_id, phys_addr_t *base)
 			break;
 		}
 	}
-	spin_unlock(&iort_msi_chip_lock);
+	mutex_unlock(&iort_msi_chip_lock);
 
 	return ret;
 }

@@ -156,6 +156,20 @@ static struct acpi_table_header *iort_table;
 static LIST_HEAD(iort_msi_chip_list);
 static DEFINE_SPINLOCK(iort_msi_chip_lock);
 
+static struct iort_its_msi_chip *__get_msi_chip(int trans_id)
+{
+	struct iort_its_msi_chip *its_msi_chip = NULL, *tmp;
+
+	list_for_each_entry(tmp, &iort_msi_chip_list, list) {
+		if (tmp->translation_id == trans_id) {
+			its_msi_chip = tmp;
+			break;
+		}
+	}
+
+	return its_msi_chip;
+}
+
 /**
  * iort_register_domain_token() - register domain token along with related
  * ITS ID and base address to the list from where we can get it back later on.
@@ -193,16 +207,8 @@ int iort_register_domain_token(int trans_id, phys_addr_t base,
  */
 void iort_deregister_domain_token(int trans_id)
 {
-	struct iort_its_msi_chip *its_msi_chip, *t;
-
 	spin_lock(&iort_msi_chip_lock);
-	list_for_each_entry_safe(its_msi_chip, t, &iort_msi_chip_list, list) {
-		if (its_msi_chip->translation_id == trans_id) {
-			list_del(&its_msi_chip->list);
-			kfree(its_msi_chip);
-			break;
-		}
-	}
+	kfree(__get_msi_chip(trans_id));
 	spin_unlock(&iort_msi_chip_lock);
 }
 
@@ -218,12 +224,9 @@ struct fwnode_handle *iort_find_domain_token(int trans_id)
 	struct iort_its_msi_chip *its_msi_chip;
 
 	spin_lock(&iort_msi_chip_lock);
-	list_for_each_entry(its_msi_chip, &iort_msi_chip_list, list) {
-		if (its_msi_chip->translation_id == trans_id) {
-			fw_node = its_msi_chip->fw_node;
-			break;
-		}
-	}
+	its_msi_chip = __get_msi_chip(trans_id);
+	if (its_msi_chip)
+		fw_node = its_msi_chip->fw_node;
 	spin_unlock(&iort_msi_chip_lock);
 
 	return fw_node;

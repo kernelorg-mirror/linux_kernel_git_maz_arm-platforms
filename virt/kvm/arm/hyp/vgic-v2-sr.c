@@ -57,10 +57,8 @@ static void __hyp_text save_lrs(struct kvm_vcpu *vcpu, void __iomem *base)
 /* vcpu is already in the HYP VA space */
 void __hyp_text __vgic_v2_save_state(struct kvm_vcpu *vcpu)
 {
-	struct kvm *kvm = kern_hyp_va(vcpu->kvm);
 	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
-	struct vgic_dist *vgic = &kvm->arch.vgic;
-	void __iomem *base = kern_hyp_va(vgic->vctrl_base);
+	void __iomem *base = hyp_symbol_addr(kvm_vgic_global_state)->vctrl_hyp;
 	u64 used_lrs = vcpu->arch.vgic_cpu.used_lrs;
 
 	if (!base)
@@ -82,10 +80,8 @@ void __hyp_text __vgic_v2_save_state(struct kvm_vcpu *vcpu)
 /* vcpu is already in the HYP VA space */
 void __hyp_text __vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 {
-	struct kvm *kvm = kern_hyp_va(vcpu->kvm);
 	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
-	struct vgic_dist *vgic = &kvm->arch.vgic;
-	void __iomem *base = kern_hyp_va(vgic->vctrl_base);
+	void __iomem *base = hyp_symbol_addr(kvm_vgic_global_state)->vctrl_hyp;
 	int i;
 	u64 used_lrs = vcpu->arch.vgic_cpu.used_lrs;
 
@@ -140,7 +136,7 @@ int __hyp_text __vgic_v2_perform_cpuif_access(struct kvm_vcpu *vcpu)
 		return -1;
 
 	rd = kvm_vcpu_dabt_get_rd(vcpu);
-	addr  = kern_hyp_va(hyp_symbol_addr(kvm_vgic_global_state)->vcpu_base_va);
+	addr  = hyp_symbol_addr(kvm_vgic_global_state)->vcpu_hyp_va;
 	addr += fault_ipa - vgic->vgic_cpu_base;
 
 	if (kvm_vcpu_dabt_iswrite(vcpu)) {

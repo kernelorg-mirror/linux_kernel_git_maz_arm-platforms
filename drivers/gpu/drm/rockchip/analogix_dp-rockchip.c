@@ -14,6 +14,7 @@
 
 #include <linux/component.h>
 #include <linux/mfd/syscon.h>
+#include <linux/pm_runtime.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/regmap.h>
@@ -113,10 +114,12 @@ static void analogix_dp_psr_work(struct work_struct *work)
 	}
 
 	mutex_lock(&dp->psr_lock);
+	pm_runtime_get_sync(dp->dev);
 	if (dp->psr_state == EDP_VSC_PSR_STATE_ACTIVE)
 		analogix_dp_enable_psr(dp->dev);
 	else
 		analogix_dp_disable_psr(dp->dev);
+	pm_runtime_put_sync(dp->dev);
 	mutex_unlock(&dp->psr_lock);
 }
 

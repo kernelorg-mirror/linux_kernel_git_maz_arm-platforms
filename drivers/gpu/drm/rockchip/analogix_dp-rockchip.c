@@ -14,6 +14,7 @@
 
 #include <linux/component.h>
 #include <linux/mfd/syscon.h>
+#include <linux/pm_runtime.h>
 #include <linux/of_device.h>
 #include <linux/of_graph.h>
 #include <linux/regmap.h>
@@ -94,10 +95,14 @@ static int analogix_dp_psr_set(struct drm_encoder *encoder, bool enabled)
 		return -ETIMEDOUT;
 	}
 
+	pm_runtime_get_sync(dp->dev);
 	if (enabled)
-		return analogix_dp_enable_psr(dp->adp);
+		ret = analogix_dp_enable_psr(dp->adp);
 	else
-		return analogix_dp_disable_psr(dp->adp);
+		ret = analogix_dp_disable_psr(dp->adp);
+	pm_runtime_put_sync(dp->dev);
+
+	return ret;
 }
 
 static int rockchip_dp_pre_init(struct rockchip_dp_device *dp)

@@ -354,6 +354,21 @@ again:
 		goto again;
 	}
 
+	/*
+	 * We don't implement any secure call, so bail out early. We
+	 * will still reach handle_smc if an SError has been detected
+	 * on exit (ARM_EXIT_WITH_SERROR_BIT is set).
+	 *
+	 * If we ever have to implement something, we'll have to
+	 * whitelist them here so that they reach handle_smc instead
+	 * of immediately reenter the guest.
+	 */
+	if (exit_code == ARM_EXCEPTION_TRAP &&
+	    kvm_vcpu_trap_get_class(vcpu) == ESR_ELx_EC_SMC64) {
+		vcpu_set_reg(vcpu, 0, ~0UL);
+		goto again;
+	}
+
 	if (static_branch_unlikely(&vgic_v2_cpuif_trap) &&
 	    exit_code == ARM_EXCEPTION_TRAP) {
 		bool valid;

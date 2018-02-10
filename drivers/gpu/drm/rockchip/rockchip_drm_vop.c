@@ -32,6 +32,7 @@
 #include <linux/of_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/component.h>
+#include <linux/irq.h>
 
 #include <linux/reset.h>
 #include <linux/delay.h>
@@ -1569,13 +1570,11 @@ static int vop_bind(struct device *dev, struct device *master, void *data)
 
 	mutex_init(&vop->vsync_mutex);
 
+	irq_set_status_flags(vop->irq, IRQ_NOAUTOEN);
 	ret = devm_request_irq(dev, vop->irq, vop_isr,
 			       IRQF_SHARED, dev_name(dev), vop);
 	if (ret)
 		return ret;
-
-	/* IRQ is initially disabled; it gets enabled in power_on */
-	disable_irq(vop->irq);
 
 	ret = vop_create_crtc(vop);
 	if (ret)

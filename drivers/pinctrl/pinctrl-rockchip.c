@@ -3114,22 +3114,18 @@ static u32 rk3288_grf_gpio6c_iomux;
 static int __maybe_unused rockchip_pinctrl_suspend(struct device *dev)
 {
 	struct rockchip_pinctrl *info = dev_get_drvdata(dev);
-	int ret = pinctrl_force_sleep(info->pctl_dev);
-
-	if (ret)
-		return ret;
 
 	/*
 	 * RK3288 GPIO6_C6 mux would be modified by Maskrom when resume, so save
 	 * the setting here, and restore it at resume.
 	 */
 	if (info->ctrl->type == RK3288) {
+		int ret;
+
 		ret = regmap_read(info->regmap_base, RK3288_GRF_GPIO6C_IOMUX,
 				  &rk3288_grf_gpio6c_iomux);
-		if (ret) {
-			pinctrl_force_default(info->pctl_dev);
+		if (ret)
 			return ret;
-		}
 	}
 
 	return 0;
@@ -3138,14 +3134,18 @@ static int __maybe_unused rockchip_pinctrl_suspend(struct device *dev)
 static int __maybe_unused rockchip_pinctrl_resume(struct device *dev)
 {
 	struct rockchip_pinctrl *info = dev_get_drvdata(dev);
-	int ret = regmap_write(info->regmap_base, RK3288_GRF_GPIO6C_IOMUX,
-			       rk3288_grf_gpio6c_iomux |
-			       GPIO6C6_SEL_WRITE_ENABLE);
 
-	if (ret)
-		return ret;
+	if (info->ctrl->type == RK3288) {
+		int ret;
 
-	return pinctrl_force_default(info->pctl_dev);
+		ret = regmap_write(info->regmap_base, RK3288_GRF_GPIO6C_IOMUX,
+				   rk3288_grf_gpio6c_iomux |
+				   GPIO6C6_SEL_WRITE_ENABLE);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
 }
 
 static SIMPLE_DEV_PM_OPS(rockchip_pinctrl_dev_pm_ops, rockchip_pinctrl_suspend,

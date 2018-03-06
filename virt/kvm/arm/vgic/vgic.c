@@ -720,18 +720,9 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 	list_for_each_entry(irq, &vgic_cpu->ap_list_head, ap_list) {
 		spin_lock(&irq->irq_lock);
 
-		if (unlikely(vgic_target_oracle(irq) != vcpu))
-			goto next;
-
-		/*
-		 * If we get an SGI with multiple sources, try to get
-		 * them in all at once.
-		 */
-		do {
+		if (likely(vgic_target_oracle(irq) == vcpu))
 			vgic_populate_lr(vcpu, irq, count++);
-		} while (irq->source && count < kvm_vgic_global_state.nr_lr);
 
-next:
 		spin_unlock(&irq->irq_lock);
 
 		if (count == kvm_vgic_global_state.nr_lr) {

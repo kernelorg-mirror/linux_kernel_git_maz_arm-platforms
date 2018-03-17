@@ -55,6 +55,7 @@ struct bp_hardening_data {
      defined(CONFIG_HARDEN_EL2_VECTORS))
 extern char __bp_harden_hyp_vecs_start[], __bp_harden_hyp_vecs_end[];
 extern atomic_t arm64_el2_vector_last_slot;
+#endif  /* CONFIG_HARDEN_BRANCH_PREDICTOR || CONFIG_HARDEN_EL2_VECTORS */
 
 #ifdef CONFIG_HARDEN_BRANCH_PREDICTOR
 DECLARE_PER_CPU_READ_MOSTLY(struct bp_hardening_data, bp_hardening_data);
@@ -83,7 +84,6 @@ static inline struct bp_hardening_data *arm64_get_bp_hardening_data(void)
 
 static inline void arm64_apply_bp_hardening(void)	{ }
 #endif	/* CONFIG_HARDEN_BRANCH_PREDICTOR */
-#endif  /* CONFIG_HARDEN_BRANCH_PREDICTOR || CONFIG_HARDEN_EL2_VECTORS */
 
 extern void paging_init(void);
 extern void bootmem_init(void);

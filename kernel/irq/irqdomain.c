@@ -220,6 +220,20 @@ struct irq_domain *__irq_domain_add(struct fwnode_handle *fwnode, int size,
 	domain->revmap_direct_max_irq = direct_max;
 	irq_domain_check_hierarchy(domain);
 
+#ifdef CONFIG_GENERIC_IRQ_DEBUGFS
+	if (domain->ops->override_name) {
+		char *new_name;
+
+		new_name = domain->ops->override_name(domain);
+		if (new_name) {
+			if (domain->flags & IRQ_DOMAIN_NAME_ALLOCATED)
+				kfree(domain->name);
+			domain->name = new_name;
+			domain->flags |= IRQ_DOMAIN_NAME_ALLOCATED;
+		}
+	}
+#endif
+
 	mutex_lock(&irq_domain_mutex);
 	debugfs_add_domain_dir(domain);
 	list_add(&domain->link, &irq_domain_list);

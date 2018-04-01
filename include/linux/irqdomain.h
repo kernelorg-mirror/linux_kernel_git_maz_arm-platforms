@@ -119,6 +119,7 @@ struct irq_domain_ops {
 			 unsigned long *out_hwirq, unsigned int *out_type);
 #endif
 #ifdef CONFIG_GENERIC_IRQ_DEBUGFS
+	char *(*override_name)(struct irq_domain *d);
 	void (*debug_show)(struct seq_file *m, struct irq_domain *d,
 			   struct irq_data *irqd, int ind);
 #endif

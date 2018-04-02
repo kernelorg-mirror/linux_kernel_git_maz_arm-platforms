@@ -69,7 +69,13 @@ irq_debug_show_chip(struct seq_file *m, struct irq_data *data, int ind)
 		seq_printf(m, "chip: None\n");
 		return;
 	}
-	seq_printf(m, "%*schip:    %s\n", ind, "", chip->name);
+	seq_printf(m, "%*schip:    ", ind, "");
+	if (chip->irq_print_chip) {
+		chip->irq_print_chip(data, m);
+		seq_printf(m, "\n");
+	} else {
+		seq_printf(m, "%s\n", chip->name);
+	}
 	seq_printf(m, "%*sflags:   0x%lx\n", ind + 1, "", chip->flags);
 	irq_debug_show_bits(m, ind, chip->flags, irqchip_flags,
 			    ARRAY_SIZE(irqchip_flags));

@@ -32,7 +32,10 @@ static void irq_debug_show_masks(struct seq_file *m, struct irq_desc *desc)
 	struct irq_data *data = irq_desc_get_irq_data(desc);
 	struct cpumask *msk;
 
-	msk = irq_data_get_affinity_mask(data);
+	if (irq_is_percpu_devid(data->irq))
+		msk = (struct cpumask *)desc->percpu_affinity;
+	else
+		msk = irq_data_get_affinity_mask(data);
 	seq_printf(m, "affinity: %*pbl\n", cpumask_pr_args(msk));
 #ifdef CONFIG_GENERIC_IRQ_EFFECTIVE_AFF_MASK
 	msk = irq_data_get_effective_affinity_mask(data);

@@ -205,6 +205,15 @@ int partition_translate_id(struct partition_desc *desc, void *partition_id)
 	return i;
 }
 
+#ifdef CONFIG_GENERIC_IRQ_DEBUGFS
+static atomic_t part_id;
+static char *partition_override_name(struct irq_domain *domain)
+{
+	return kasprintf(GFP_KERNEL, "%s-part-%d",
+			 domain->name, atomic_fetch_inc(&part_id));
+}
+#endif
+
 struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 					     struct partition_affinity *parts,
 					     int nr_parts,
@@ -223,6 +232,9 @@ struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 	desc->ops = *ops;
 	desc->ops.free = partition_domain_free;
 	desc->ops.alloc = partition_domain_alloc;
+#ifdef CONFIG_GENERIC_IRQ_DEBUGFS
+	desc->ops.override_name = partition_override_name;
+#endif
 
 	d = irq_domain_create_linear(fwnode, nr_parts, &desc->ops, desc);
 	if (!d)

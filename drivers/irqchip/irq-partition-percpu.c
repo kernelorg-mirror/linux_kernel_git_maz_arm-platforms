@@ -33,6 +33,18 @@ struct partition_desc {
 	struct irq_domain_ops		ops;
 };
 
+static struct irq_data *partition_get_irqd_chip(struct partition_desc *part,
+						struct irq_chip **chip)
+{
+	if (part->chained_desc) {
+		*chip = irq_desc_get_chip(part->chained_desc);
+		return irq_desc_get_irq_data(part->chained_desc);
+	}
+
+	*chip = NULL;
+	return NULL;
+}
+
 static bool partition_check_cpu(struct partition_desc *part,
 				unsigned int cpu, unsigned int hwirq)
 {
@@ -45,9 +57,9 @@ static bool partition_check_cpu(struct partition_desc *part,
 	struct irq_data *data;						\
 									\
 	part = irq_data_get_irq_chip_data(d);				\
-	chip = irq_desc_get_chip(part->chained_desc);			\
-	data = irq_desc_get_irq_data(part->chained_desc);		\
-	if (partition_check_cpu(part, smp_processor_id(), d->hwirq) &&	\
+	data = partition_get_irqd_chip(part, &chip);			\
+	if (data &&							\
+	    partition_check_cpu(part, smp_processor_id(), d->hwirq) &&	\
 	    chip->method)
 
 #define PART_CALL_METHOD_VOID(method, d, ...)				\
@@ -96,10 +108,12 @@ static int partition_irq_set_type(struct irq_data *d, unsigned int type)
 static void partition_irq_print_chip(struct irq_data *d, struct seq_file *p)
 {
 	struct partition_desc *part = irq_data_get_irq_chip_data(d);
-	struct irq_chip *chip = irq_desc_get_chip(part->chained_desc);
-	struct irq_data *data = irq_desc_get_irq_data(part->chained_desc);
+	struct irq_chip *chip;
+	struct irq_data *data;
 
-	seq_printf(p, " %5s-%lu", chip->name, data->hwirq);
+	data = partition_get_irqd_chip(part, &chip);
+	if (data)
+		seq_printf(p, " %5s-%lu", chip->name, data->hwirq);
 }
 
 static struct irq_chip partition_irq_chip = {

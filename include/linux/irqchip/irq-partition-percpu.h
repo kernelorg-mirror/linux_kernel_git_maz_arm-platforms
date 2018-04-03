@@ -31,7 +31,7 @@ int partition_translate_id(struct partition_desc *desc, void *partition_id);
 struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 					     struct partition_affinity *parts,
 					     int nr_parts,
-					     int chained_irq,
+					     void (*convert)(struct irq_fwspec *fwspec),
 					     const struct irq_domain_ops *ops);
 struct irq_domain *partition_get_domain(struct partition_desc *dsc);
 #else
@@ -45,7 +45,7 @@ static inline
 struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 					     struct partition_affinity *parts,
 					     int nr_parts,
-					     int chained_irq,
+					     void (*convert)(struct irq_fwspec *fwspec),
 					     const struct irq_domain_ops *ops)
 {
 	return NULL;

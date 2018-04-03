@@ -25,12 +25,15 @@
 #include <linux/slab.h>
 
 struct partition_desc {
+	struct mutex			lock;
 	int				nr_parts;
 	struct partition_affinity	*parts;
 	struct irq_domain		*domain;
 	struct irq_desc			*chained_desc;
 	unsigned long			*bitmap;
 	struct irq_domain_ops		ops;
+	struct irq_fwspec		fwspec;
+	void (*convert)(struct irq_fwspec *fwspec);
 };
 
 static struct irq_data *partition_get_irqd_chip(struct partition_desc *part,
@@ -166,9 +169,14 @@ static int partition_domain_alloc(struct irq_domain *domain, unsigned int virq,
 
 	part = domain->host_data;
 
+	mutex_lock(&part->lock);
+	if (!part->fwspec.param_count) {
+		part->fwspec = *fwspec;
+		part->convert(&part->fwspec);
+	}
+	mutex_unlock(&part->lock);
+
 	set_bit(hwirq, part->bitmap);
-	irq_set_chained_handler_and_data(irq_desc_get_irq(part->chained_desc),
-					 partition_handle_irq, part);
 	irq_set_percpu_devid_partition(virq, &part->parts[hwirq].mask);
 	irq_domain_set_info(domain, virq, hwirq, &partition_irq_chip, part,
 			    handle_percpu_devid_irq, NULL, NULL);
@@ -209,6 +217,32 @@ int partition_translate_id(struct partition_desc *desc, void *partition_id)
 	return i;
 }
 
+static int partition_domain_activate(struct irq_domain *domain,
+				     struct irq_data *d, bool reserve)
+{
+	struct partition_desc *part = irq_data_get_irq_chip_data(d);
+	int ret = 0;
+
+	mutex_lock(&part->lock);
+	if (!part->chained_desc) {
+		unsigned int irq;
+
+		irq = irq_create_fwspec_mapping(&part->fwspec);
+		if (WARN_ON(!irq)) {
+			ret = -EINVAL;
+			goto out;
+		}
+
+		part->chained_desc = irq_to_desc(irq);
+		irq_set_chained_handler_and_data(irq,
+						 partition_handle_irq,
+						 part);
+	}
+out:
+	mutex_unlock(&part->lock);
+	return ret;
+}
+
 #ifdef CONFIG_GENERIC_IRQ_DEBUGFS
 static atomic_t part_id;
 static char *partition_override_name(struct irq_domain *domain)
@@ -221,7 +255,7 @@ static char *partition_override_name(struct irq_domain *domain)
 struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 					     struct partition_affinity *parts,
 					     int nr_parts,
-					     int chained_irq,
+					     void (*convert)(struct irq_fwspec *fwspec),
 					     const struct irq_domain_ops *ops)
 {
 	struct partition_desc *desc;
@@ -233,12 +267,16 @@ struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 	if (!desc)
 		return NULL;
 
+	mutex_init(&desc->lock);
+
 	desc->ops = *ops;
 	desc->ops.free = partition_domain_free;
 	desc->ops.alloc = partition_domain_alloc;
+	desc->ops.activate = partition_domain_activate;
 #ifdef CONFIG_GENERIC_IRQ_DEBUGFS
 	desc->ops.override_name = partition_override_name;
 #endif
+	desc->convert = convert;
 
 	d = irq_domain_create_linear(fwnode, nr_parts, &desc->ops, desc);
 	if (!d)
@@ -250,7 +288,6 @@ struct partition_desc *partition_create_desc(struct fwnode_handle *fwnode,
 	if (WARN_ON(!desc->bitmap))
 		goto out;
 
-	desc->chained_desc = irq_to_desc(chained_irq);
 	desc->nr_parts = nr_parts;
 	desc->parts = parts;
 

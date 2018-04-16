@@ -104,6 +104,10 @@
 		      <0x0 0x2c02f000 0 0x2000>;	// GICV
 		interrupts = <1 9 4>;
 
+		msi-controller;
+		mbi-ranges = <256 128>;
+		//mbi-alias = <0x0 0x2f040000>;
+
 		its: its@2f020000 {
 			#msi-cells = <1>;
 			compatible = "arm,gic-v3-its";
@@ -143,7 +147,7 @@
 				<0x0 0x0 0x0 0x3 &gic 0x0 0x0 0x0 0xaa 0x4>,
 				<0x0 0x0 0x0 0x4 &gic 0x0 0x0 0x0 0xab 0x4>;
 		interrupt-map-mask = <0x0 0x0 0x0 0x7>;
-		msi-map = <0 &its 0 0x10000>;
+		msi-parent = <&gic>;
 		iommu-map = <0x0 &smmu 0x0 0x10000>;
 	};
 
@@ -154,7 +158,7 @@
 		interrupt-names = "eventq", "priq", "cmdq-sync", "gerror";
 		dma-coherent;
 		#iommu-cells = <1>;
-		msi-parent = <&its 0x10000>;
+		msi-parent = <&gic>;
 	};
 
 	smb {

@@ -449,6 +449,9 @@ static void save_lrs(struct kvm_vcpu *vcpu, void __iomem *base)
 	u64 elrsr;
 	int i;
 
+	if (nested_virt_in_use(vcpu))
+		used_lrs = kvm_vgic_global_state.nr_lr;
+
 	elrsr = readl_relaxed(base + GICH_ELRSR0);
 	if (unlikely(used_lrs > 32))
 		elrsr |= ((u64)readl_relaxed(base + GICH_ELRSR1)) << 32;
@@ -471,7 +474,7 @@ void vgic_v2_save_state(struct kvm_vcpu *vcpu)
 	if (!base)
 		return;
 
-	if (used_lrs) {
+	if (used_lrs || nested_virt_in_use(vcpu)) {
 		save_lrs(vcpu, base);
 		writel_relaxed(0, base + GICH_HCR);
 	}
@@ -486,6 +489,9 @@ void vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 
 	if (!base)
 		return;
+
+	if (nested_virt_in_use(vcpu))
+		used_lrs = kvm_vgic_global_state.nr_lr;
 
 	if (used_lrs) {
 		writel_relaxed(cpu_if->vgic_hcr, base + GICH_HCR);

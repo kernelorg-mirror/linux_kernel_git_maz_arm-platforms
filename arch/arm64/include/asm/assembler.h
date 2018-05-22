@@ -26,6 +26,7 @@
 #include <asm/asm-offsets.h>
 #include <asm/cpufeature.h>
 #include <asm/debug-monitors.h>
+#include <asm/lse.h>
 #include <asm/page.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/ptrace.h>
@@ -699,6 +700,42 @@ USER(\label, ic	ivau, \tmp2)			// invalidate I line PoU
 	.endif
 	.previous
 .Lyield_out_\@ :
+	.endm
+
+/*
+ * test_and_clear_flag:
+ *
+ * res: register containing the result (0 or 1 << bitnum)
+ * addr: address of the word to be manipulated
+ * bitnum: number of the bit in that word
+ * wtmp: temporary register, must be a 32bit reg
+ */
+	.macro test_and_clear_flag, res, addr, bitnum, wtmp
+alt_lse "  prfm	 pstl1strm, [\addr]",		"nop"
+alt_lse "8:ldxr  \res, [\addr]",		"ldr	 \res, [\addr]"
+	   tbz	 \res, #\bitnum, 9f
+alt_lse "  bic	 \res, \res, #(1 << \bitnum)",	"mov	 \res, #(1 << \bitnum)"
+alt_lse "  stlxr \wtmp, \res, [\addr]",		"ldclral \res, \res, [\addr]"
+alt_lse "  cbnz	 \wtmp, 8b",			"nop"
+alt_lse "  dmb   ish",				"nop"
+alt_lse "  orr	 \res, \res, #(1 << \bitnum)",	"nop"
+9:
+	.endm
+
+/*
+ * set_flag:
+ *
+ * addr: address of the word to be manipulated
+ * bitnum: number of the bit in that word
+ * tmp: temporary register
+ * wtmp: temporary register, must be a 32bit reg
+ */
+	.macro set_flag, addr, bitnum, tmp, wtmp
+alt_lse "  prfm	pstl1strm, [\addr]",		"mov   \tmp, #(1 << \bitnum)"
+alt_lse "8:ldxr \tmp, [\addr]", 		"stset \tmp, [\addr]"
+alt_lse "  orr	\tmp, \tmp, #(1 << \bitnum)",	"nop"
+alt_lse "  stxr \wtmp, \tmp, [\addr]",		"nop"
+alt_lse "  cbnz	\wtmp, 8b",			"nop"
 	.endm
 
 #endif	/* __ASM_ASSEMBLER_H */

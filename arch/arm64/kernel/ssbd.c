@@ -43,20 +43,21 @@ static int ssbd_prctl_set(struct task_struct *task, unsigned long ctrl)
 		    task_spec_ssb_force_disable(task))
 			return -EPERM;
 		task_clear_spec_ssb_disable(task);
+		clear_tsk_thread_flag(task, TIF_SSBD_PENDING);
 		clear_tsk_thread_flag(task, TIF_SSBD);
 		break;
 	case PR_SPEC_DISABLE:
 		if (state == ARM64_SSBD_FORCE_DISABLE)
 			return -EPERM;
 		task_set_spec_ssb_disable(task);
-		set_tsk_thread_flag(task, TIF_SSBD);
+		set_tsk_thread_flag(task, TIF_SSBD_PENDING);
 		break;
 	case PR_SPEC_FORCE_DISABLE:
 		if (state == ARM64_SSBD_FORCE_DISABLE)
 			return -EPERM;
 		task_set_spec_ssb_disable(task);
 		task_set_spec_ssb_force_disable(task);
-		set_tsk_thread_flag(task, TIF_SSBD);
+		set_tsk_thread_flag(task, TIF_SSBD_PENDING);
 		break;
 	default:
 		return -ERANGE;

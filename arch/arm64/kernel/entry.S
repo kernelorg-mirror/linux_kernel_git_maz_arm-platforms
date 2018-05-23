@@ -896,12 +896,27 @@ el0_error_naked:
 	b	ret_to_user
 ENDPROC(el0_error)
 
+	.macro fixup_ssbd, tmp1, tmp2, wtmp
+#ifdef CONFIG_ARM64_SSBD
+alternative_cb	arm64_enable_wa2_handling
+	b	2f
+alternative_cb_end
+	// If the thread is in the SSBD_PENDING state, move it to
+	// the SSBD state, ensuring that the mitigation stays on.
+	add	\tmp2, tsk, #TSK_TI_FLAGS
+	test_and_clear_flag \tmp1, \tmp2, TIF_SSBD_PENDING, \wtmp
+	cbz	\tmp1, 2f
+	set_flag \tmp2, TIF_SSBD, \tmp1, \wtmp
+2:
+#endif
+	.endm
 
 /*
  * This is the fast syscall return path.  We do as little as possible here,
  * and this includes saving x0 back into the kernel stack.
  */
 ret_fast_syscall:
+	fixup_ssbd	x20, x21 , w22
 	disable_daif
 	str	x0, [sp, #S_X0]			// returned x0
 	ldr	x1, [tsk, #TSK_TI_FLAGS]	// re-check for syscall tracing
@@ -930,6 +945,7 @@ work_pending:
  * "slow" syscall return path.
  */
 ret_to_user:
+	fixup_ssbd	x20, x21, w22
 	disable_daif
 	ldr	x1, [tsk, #TSK_TI_FLAGS]
 	and	x2, x1, #_TIF_WORK_MASK

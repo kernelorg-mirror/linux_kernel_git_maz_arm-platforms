@@ -77,6 +77,13 @@ int arch_prctl_spec_ctrl_set(struct task_struct *task, unsigned long which,
 	}
 }
 
+#ifdef CONFIG_SECCOMP
+void arch_seccomp_spec_mitigate(struct task_struct *task)
+{
+	ssbd_prctl_set(task, PR_SPEC_FORCE_DISABLE);
+}
+#endif
+
 static int ssbd_prctl_get(struct task_struct *task)
 {
 	switch (arm64_get_ssbd_state()) {

@@ -222,6 +222,9 @@ static void machine_kexec_mask_interrupts(void)
 		struct irq_chip *chip;
 		int ret;
 
+		if (!irq_irqchip_is_root(i))
+			continue;
+
 		chip = irq_desc_get_chip(desc);
 		if (!chip)
 			continue;

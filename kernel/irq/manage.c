@@ -2240,3 +2240,27 @@ int irq_set_irqchip_state(unsigned int irq, enum irqchip_irq_state which,
 	return err;
 }
 EXPORT_SYMBOL_GPL(irq_set_irqchip_state);
+
+bool irq_irqchip_is_root(unsigned irq)
+{
+	struct irq_data *data = irq_get_irq_data(irq);
+
+	if (!data)
+		return false;
+
+	do {
+		struct irq_chip *chip;
+
+		chip = irq_data_get_irq_chip(data);
+		if (chip->flags & IRQCHIP_ROOT)
+			return true;
+
+#ifdef CONFIG_IRQ_DOMAIN_HIERARCHY
+		data = data->parent_data;
+#else
+		data = NULL;
+#endif
+	} while (data);
+
+	return false;
+}

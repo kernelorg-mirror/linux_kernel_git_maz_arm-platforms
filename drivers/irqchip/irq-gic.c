@@ -1083,10 +1083,12 @@ static void gic_init_chip(struct gic_chip_data *gic, struct device *dev,
 		gic->chip.irq_set_vcpu_affinity = gic_irq_set_vcpu_affinity;
 	}
 
+	if (gic == &gic_data[0]) {
 #ifdef CONFIG_SMP
-	if (gic == &gic_data[0])
 		gic->chip.irq_set_affinity = gic_set_affinity;
 #endif
+		gic->chip.flags |= IRQCHIP_ROOT;
+	}
 }
 
 static int gic_init_bases(struct gic_chip_data *gic, int irq_start,

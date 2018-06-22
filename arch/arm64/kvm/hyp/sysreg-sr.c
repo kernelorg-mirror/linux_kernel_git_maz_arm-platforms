@@ -122,10 +122,54 @@ static void __hyp_text __sysreg_restore_user_state(struct kvm_cpu_context *ctxt)
 	write_sysreg(ctxt->sys_regs[TPIDRRO_EL0], 	tpidrro_el0);
 }
 
-static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
+static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 {
-	write_sysreg(ctxt->sys_regs[MPIDR_EL1],		vmpidr_el2);
-	write_sysreg(ctxt->sys_regs[CSSELR_EL1],	csselr_el1);
+	write_sysreg_el1(ctxt->sys_regs[MAIR_EL2],	mair);
+	write_sysreg_el1(ctxt->sys_regs[VBAR_EL2],	vbar);
+	write_sysreg_el1(ctxt->sys_regs[CONTEXTIDR_EL2],contextidr);
+	write_sysreg_el1(ctxt->sys_regs[AMAIR_EL2],	amair);
+
+	if (vcpu_el2_e2h_is_set(ctxt)) {
+		/*
+		 * In VHE mode those registers are compatible between
+		 * EL1 and EL2.
+		 */
+		write_sysreg_el1(ctxt->sys_regs[SCTLR_EL2],	sctlr);
+		write_sysreg_el1(ctxt->sys_regs[CPTR_EL2],	cpacr);
+		write_sysreg_el1(ctxt->sys_regs[TTBR0_EL2],	ttbr0);
+		write_sysreg_el1(ctxt->sys_regs[TTBR1_EL2],	ttbr1);
+		write_sysreg_el1(ctxt->sys_regs[TCR_EL2],	tcr);
+		write_sysreg_el1(ctxt->sys_regs[CNTHCTL_EL2],	cntkctl);
+
+		/*
+		 * Although we trap sysreg accesses using their EL2 encoding,
+		 * a VHE guest expects to access those using their EL1 encoding
+		 * as well, which does not trap. So we need to sync those back
+		 * here.
+		 */
+		write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
+		write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
+		write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
+		write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);
+	} else {
+		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
+				 sctlr);
+		write_sysreg_el1(translate_cptr(ctxt->sys_regs[CPTR_EL2]),
+				 cpacr);
+		write_sysreg_el1(translate_ttbr0(ctxt->sys_regs[TTBR0_EL2]),
+				 ttbr0);
+		write_sysreg_el1(translate_tcr(ctxt->sys_regs[TCR_EL2]), tcr);
+		write_sysreg_el1(translate_cnthctl(ctxt->sys_regs[CNTHCTL_EL2]),
+				 cntkctl);
+	}
+
+	write_sysreg(ctxt->sys_regs[SP_EL2],		sp_el1);
+	write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
+	write_sysreg_el1(ctxt->sys_regs[SPSR_EL1],	spsr);
+}
+
+static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)
+{
 	write_sysreg_el1(ctxt->sys_regs[SCTLR_EL1],	sctlr);
 	write_sysreg(ctxt->sys_regs[ACTLR_EL1],	  	actlr_el1);
 	write_sysreg_el1(ctxt->sys_regs[CPACR_EL1],	cpacr);
@@ -141,12 +185,24 @@ static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 	write_sysreg_el1(ctxt->sys_regs[CONTEXTIDR_EL1],contextidr);
 	write_sysreg_el1(ctxt->sys_regs[AMAIR_EL1],	amair);
 	write_sysreg_el1(ctxt->sys_regs[CNTKCTL_EL1], 	cntkctl);
-	write_sysreg(ctxt->sys_regs[PAR_EL1],		par_el1);
-	write_sysreg(ctxt->sys_regs[TPIDR_EL1],		tpidr_el1);
 
 	write_sysreg(ctxt->gp_regs.sp_el1,		sp_el1);
 	write_sysreg_el1(ctxt->gp_regs.elr_el1,		elr);
 	write_sysreg_el1(ctxt->gp_regs.spsr[KVM_SPSR_EL1],spsr);
+}
+
+static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
+{
+	write_sysreg(ctxt->sys_regs[MPIDR_EL1],		vmpidr_el2);
+	write_sysreg(ctxt->sys_regs[CSSELR_EL1],	csselr_el1);
+	write_sysreg(ctxt->sys_regs[ACTLR_EL1],	  	actlr_el1);
+	write_sysreg(ctxt->sys_regs[PAR_EL1],		par_el1);
+	write_sysreg(ctxt->sys_regs[TPIDR_EL1],		tpidr_el1);
+
+	if (vcpu_mode_el2_ctxt(ctxt))
+		__sysreg_restore_vel2_state(ctxt);
+	else
+		__sysreg_restore_vel1_state(ctxt);
 }
 
 static void __hyp_text

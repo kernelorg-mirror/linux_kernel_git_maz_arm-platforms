@@ -50,12 +50,9 @@ static void __hyp_text __sysreg_save_user_state(struct kvm_cpu_context *ctxt)
 	ctxt->sys_regs[TPIDRRO_EL0]	= read_sysreg(tpidrro_el0);
 }
 
-static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
+static void __hyp_text __sysreg_save_vel1_state(struct kvm_cpu_context *ctxt)
 {
-	ctxt->sys_regs[MPIDR_EL1]	= read_sysreg(vmpidr_el2);
-	ctxt->sys_regs[CSSELR_EL1]	= read_sysreg(csselr_el1);
 	ctxt->sys_regs[SCTLR_EL1]	= read_sysreg_el1(sctlr);
-	ctxt->sys_regs[ACTLR_EL1]	= read_sysreg(actlr_el1);
 	ctxt->sys_regs[CPACR_EL1]	= read_sysreg_el1(cpacr);
 	ctxt->sys_regs[TTBR0_EL1]	= read_sysreg_el1(ttbr0);
 	ctxt->sys_regs[TTBR1_EL1]	= read_sysreg_el1(ttbr1);
@@ -69,12 +66,57 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 	ctxt->sys_regs[CONTEXTIDR_EL1]	= read_sysreg_el1(contextidr);
 	ctxt->sys_regs[AMAIR_EL1]	= read_sysreg_el1(amair);
 	ctxt->sys_regs[CNTKCTL_EL1]	= read_sysreg_el1(cntkctl);
-	ctxt->sys_regs[PAR_EL1]		= read_sysreg(par_el1);
-	ctxt->sys_regs[TPIDR_EL1]	= read_sysreg(tpidr_el1);
 
 	ctxt->gp_regs.sp_el1		= read_sysreg(sp_el1);
 	ctxt->gp_regs.elr_el1		= read_sysreg_el1(elr);
 	ctxt->gp_regs.spsr[KVM_SPSR_EL1]= read_sysreg_el1(spsr);
+}
+
+static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
+{
+	ctxt->sys_regs[ESR_EL2]		= read_sysreg_el1(esr);
+	ctxt->sys_regs[AFSR0_EL2]	= read_sysreg_el1(afsr0);
+	ctxt->sys_regs[AFSR1_EL2]	= read_sysreg_el1(afsr1);
+	ctxt->sys_regs[FAR_EL2]		= read_sysreg_el1(far);
+	ctxt->sys_regs[MAIR_EL2]	= read_sysreg_el1(mair);
+	ctxt->sys_regs[VBAR_EL2]	= read_sysreg_el1(vbar);
+	ctxt->sys_regs[CONTEXTIDR_EL2]	= read_sysreg_el1(contextidr);
+	ctxt->sys_regs[AMAIR_EL2]	= read_sysreg_el1(amair);
+
+	/*
+	 * In VHE mode those registers are compatible between EL1 and EL2,
+	 * and the guest uses the _EL1 versions on the CPU naturally.
+	 * So we save them into their _EL2 versions here.
+	 * For nVHE mode we trap accesses to those registers, so our
+	 * _EL2 copy in sys_regs[] is always up-to-date and we don't need
+	 * to save anything here.
+	 */
+	if (vcpu_el2_e2h_is_set(ctxt)) {
+		ctxt->sys_regs[SCTLR_EL2]	= read_sysreg_el1(sctlr);
+		ctxt->sys_regs[CPTR_EL2]	= read_sysreg_el1(cpacr);
+		ctxt->sys_regs[TTBR0_EL2]	= read_sysreg_el1(ttbr0);
+		ctxt->sys_regs[TTBR1_EL2]	= read_sysreg_el1(ttbr1);
+		ctxt->sys_regs[TCR_EL2]		= read_sysreg_el1(tcr);
+		ctxt->sys_regs[CNTHCTL_EL2]	= read_sysreg_el1(cntkctl);
+	}
+
+	ctxt->sys_regs[SP_EL2]		= read_sysreg(sp_el1);
+	ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
+	ctxt->sys_regs[SPSR_EL1]	= read_sysreg_el1(spsr);
+}
+
+static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
+{
+	ctxt->sys_regs[MPIDR_EL1]	= read_sysreg(vmpidr_el2);
+	ctxt->sys_regs[CSSELR_EL1]	= read_sysreg(csselr_el1);
+	ctxt->sys_regs[ACTLR_EL1]	= read_sysreg(actlr_el1);
+	ctxt->sys_regs[PAR_EL1]		= read_sysreg(par_el1);
+	ctxt->sys_regs[TPIDR_EL1]	= read_sysreg(tpidr_el1);
+
+	if (unlikely(vcpu_mode_el2_ctxt(ctxt)))
+		__sysreg_save_vel2_state(ctxt);
+	else
+		__sysreg_save_vel1_state(ctxt);
 }
 
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)

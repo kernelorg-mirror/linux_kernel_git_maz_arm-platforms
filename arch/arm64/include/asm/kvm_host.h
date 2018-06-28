@@ -150,6 +150,8 @@ enum vcpu_sysreg {
 	FPEXC32_EL2,	/* Floating-Point Exception Control Register */
 	DBGVCR32_EL2,	/* Debug Vector Catch Register */
 
+	SPSR_EL1,	/* The CPU's SPSR_EL1 while running in vEL2 */
+
 	SP_EL1,
 
 	/* EL2 registers sorted ascending by Op0, Op1, CRn, CRm, Op2 */

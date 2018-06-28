@@ -201,10 +201,67 @@ static inline bool vcpu_el2_e2h_is_set(const struct kvm_cpu_context *ctxt)
 	return ctxt->sys_regs[HCR_EL2] & HCR_E2H;
 }
 
+static inline void vcpu_write_spsr_el2(struct kvm_vcpu *vcpu, unsigned long val)
+{
+	if (!vcpu_el2_e2h_is_set(&vcpu->arch.ctxt)) {
+		/*
+		 * Keep the original EL2 copy, since the CPU might overwrite
+		 * it when actually running in EL1 and taking an exception.
+		 */
+		__vcpu_sys_reg(vcpu, SPSR_EL2) = val;
+
+		/*
+		 * Clear the .M field when writing SPSR to the CPU, so that we
+		 * can detect when the CPU clobbered our SPSR copy during a
+		 * local exception.
+		 */
+		val &= ~0xc;
+	}
+
+	if (vcpu->arch.sysregs_loaded_on_cpu)
+		write_sysreg_el1(val, spsr);
+	else
+		__vcpu_sys_reg(vcpu, SPSR_EL1) = val;
+}
+
+static inline unsigned long vcpu_read_spsr_el2(const struct kvm_vcpu *vcpu)
+{
+	unsigned long val;
+
+	if (vcpu->arch.sysregs_loaded_on_cpu)
+		val = read_sysreg_el1(spsr);
+	else
+		val = __vcpu_sys_reg(vcpu, SPSR_EL1);
+
+	if (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt))
+		return val;
+
+	/*
+	 * SPSR.M == 0 means the CPU has not touched the SPSR, so the
+	 * register has still the value we saved on the last write.
+	 */
+	if ((val & 0xc) == 0)
+		return __vcpu_sys_reg(vcpu, SPSR_EL2);
+
+	/*
+	 * Otherwise there was a "local" exception on the CPU,
+	 * which from the guest's point of view was being taken from
+	 * EL2 to EL2, although it actually happened to be from
+	 * EL1 to EL1.
+	 * So we need to fix the .M field in SPSR, to make it look
+	 * like EL2, which is what the guest would expect.
+	 */
+	return (val & ~0x0c) | CurrentEL_EL2;
+}
+
 static inline unsigned long vcpu_read_spsr(const struct kvm_vcpu *vcpu)
 {
+
 	if (vcpu_mode_is_32bit(vcpu))
 		return vcpu_read_spsr32(vcpu);
+
+	if (unlikely(vcpu_mode_el2(vcpu)))
+		return vcpu_read_spsr_el2(vcpu);
 
 	if (vcpu->arch.sysregs_loaded_on_cpu)
 		return read_sysreg_el1(spsr);
@@ -216,6 +273,11 @@ static inline void vcpu_write_spsr(struct kvm_vcpu *vcpu, unsigned long v)
 {
 	if (vcpu_mode_is_32bit(vcpu)) {
 		vcpu_write_spsr32(vcpu, v);
+		return;
+	}
+
+	if (unlikely(vcpu_mode_el2(vcpu))) {
+		vcpu_write_spsr_el2(vcpu, v);
 		return;
 	}
 

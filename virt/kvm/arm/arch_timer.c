@@ -383,31 +383,37 @@ out:
 void kvm_timer_schedule(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	int i;
 
 	vtimer_save_state(vcpu);
 
-	/*
-	 * No need to schedule a background timer if any guest timer has
-	 * already expired, because kvm_vcpu_block will return before putting
-	 * the thread to sleep.
-	 */
-	if (kvm_timer_should_fire(vtimer) || kvm_timer_should_fire(ptimer))
-		return;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+
+		/*
+		 * No need to schedule a background timer if any guest timer
+		 * has already expired, because kvm_vcpu_block will return
+		 * before putting the thread to sleep.
+		 */
+		if (kvm_timer_should_fire(gtimer))
+			return;
+
+		if (kvm_timer_irq_can_fire(gtimer)) {
+			/*
+			 * This guest timer has not yet expired, schedule a
+			 * background timer. Set the earliest expiration time
+			 * among all the guest timers.
+			 */
+			soft_timer_start(&timer->bg_timer,
+					 kvm_timer_earliest_exp(vcpu));
+			return;
+		}
+	}
 
 	/*
-	 * If both timers are not capable of raising interrupts (disabled or
+	 * If all timers are not capable of raising interrupts (disabled or
 	 * masked), then there's no more work for us to do.
 	 */
-	if (!kvm_timer_irq_can_fire(vtimer) && !kvm_timer_irq_can_fire(ptimer))
-		return;
-
-	/*
-	 * The guest timers have not yet expired, schedule a background timer.
-	 * Set the earliest expiration time among the guest timers.
-	 */
-	soft_timer_start(&timer->bg_timer, kvm_timer_earliest_exp(vcpu));
 }
 
 static void vtimer_restore_state(struct kvm_vcpu *vcpu)

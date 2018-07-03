@@ -250,13 +250,16 @@ static bool kvm_timer_should_fire(struct arch_timer_context *timer_ctx)
 
 bool kvm_timer_is_pending(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	int i;
 
-	if (kvm_timer_should_fire(vtimer))
-		return true;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
 
-	return kvm_timer_should_fire(ptimer);
+		if (kvm_timer_should_fire(gtimer))
+			return true;
+	}
+
+	return false;
 }
 
 /*

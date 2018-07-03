@@ -646,6 +646,9 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 
 	vtimer->irq.irq = default_vtimer_irq.irq;
 	ptimer->irq.irq = default_ptimer_irq.irq;
+
+	vtimer->timer_id = TIMER_VTIMER;
+	ptimer->timer_id = TIMER_PTIMER;
 }
 
 static void kvm_timer_init_interrupt(void *info)

@@ -23,6 +23,12 @@
 #include <linux/hrtimer.h>
 #include <linux/workqueue.h>
 
+enum kvm_arch_timers {
+	TIMER_VTIMER,
+	TIMER_PTIMER,
+	NR_KVM_TIMERS
+};
+
 struct arch_timer_context {
 	/* Registers: control register, timer value */
 	u32				cnt_ctl;
@@ -43,11 +49,13 @@ struct arch_timer_context {
 
 	/* Virtual offset */
 	u64			cntvoff;
+
+	/* Which timer is this, in case we need to access a system register. */
+	enum kvm_arch_timers	timer_id;
 };
 
 struct arch_timer_cpu {
-	struct arch_timer_context	vtimer;
-	struct arch_timer_context	ptimer;
+	struct arch_timer_context	timers[NR_KVM_TIMERS];
 
 	/* Background timer used when the guest is not running */
 	struct hrtimer			bg_timer;
@@ -92,7 +100,8 @@ void kvm_timer_init_vhe(void);
 
 bool kvm_arch_timer_get_input_level(int vintid);
 
-#define vcpu_vtimer(v)	(&(v)->arch.timer_cpu.vtimer)
-#define vcpu_ptimer(v)	(&(v)->arch.timer_cpu.ptimer)
+#define vcpu_timer(v, timer) (&((v)->arch.timer_cpu.timers[timer]))
+#define vcpu_vtimer(v) vcpu_timer(v, TIMER_VTIMER)
+#define vcpu_ptimer(v) vcpu_timer(v, TIMER_PTIMER)
 
 #endif

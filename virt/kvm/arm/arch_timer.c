@@ -892,22 +892,19 @@ void kvm_timer_init_vhe(void)
 	write_sysreg(val, cnthctl_el2);
 }
 
-static void set_timer_irqs(struct kvm *kvm, int vtimer_irq, int ptimer_irq)
+static void set_timer_irqs(struct kvm *kvm, enum kvm_arch_timers timer,
+			   int irq)
 {
 	struct kvm_vcpu *vcpu;
 	int i;
 
-	kvm_for_each_vcpu(i, vcpu, kvm) {
-		vcpu_vtimer(vcpu)->irq.irq = vtimer_irq;
-		vcpu_ptimer(vcpu)->irq.irq = ptimer_irq;
-	}
+	kvm_for_each_vcpu(i, vcpu, kvm)
+		vcpu_timer(vcpu, timer)->irq.irq = irq;
 }
 
 int kvm_arm_timer_set_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr)
 {
 	int __user *uaddr = (int __user *)(long)attr->addr;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 	int irq;
 
 	if (!irqchip_in_kernel(vcpu->kvm))
@@ -924,10 +921,10 @@ int kvm_arm_timer_set_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr)
 
 	switch (attr->attr) {
 	case KVM_ARM_VCPU_TIMER_IRQ_VTIMER:
-		set_timer_irqs(vcpu->kvm, irq, ptimer->irq.irq);
+		set_timer_irqs(vcpu->kvm, TIMER_VTIMER, irq);
 		break;
 	case KVM_ARM_VCPU_TIMER_IRQ_PTIMER:
-		set_timer_irqs(vcpu->kvm, vtimer->irq.irq, irq);
+		set_timer_irqs(vcpu->kvm, TIMER_PTIMER, irq);
 		break;
 	default:
 		return -ENXIO;

@@ -531,19 +531,21 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 bool kvm_timer_should_notify_user(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 	struct kvm_sync_regs *sregs = &vcpu->run->s.regs;
-	bool vlevel, plevel;
+	int i;
 
 	if (likely(irqchip_in_kernel(vcpu->kvm)))
 		return false;
 
-	vlevel = sregs->device_irq_level & KVM_ARM_DEV_EL1_VTIMER;
-	plevel = sregs->device_irq_level & KVM_ARM_DEV_EL1_PTIMER;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+		bool level = sregs->device_irq_level & irq_dev_map[i];
 
-	return kvm_timer_should_fire(vtimer) != vlevel ||
-	       kvm_timer_should_fire(ptimer) != plevel;
+		if (kvm_timer_should_fire(gtimer) != level)
+		       return true;
+	}
+
+	return false;
 }
 
 void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)

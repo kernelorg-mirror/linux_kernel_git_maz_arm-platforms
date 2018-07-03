@@ -38,14 +38,9 @@ static u32 host_vtimer_irq_flags;
 
 static DEFINE_STATIC_KEY_FALSE(has_gic_active_state);
 
-static const struct kvm_irq_level default_ptimer_irq = {
-	.irq	= 30,
-	.level	= 1,
-};
-
-static const struct kvm_irq_level default_vtimer_irq = {
-	.irq	= 27,
-	.level	= 1,
+static int default_timer_irqs[NR_KVM_TIMERS] = {
+	[TIMER_VTIMER] = 27,
+	[TIMER_PTIMER] = 30,
 };
 
 static bool kvm_timer_irq_can_fire(struct arch_timer_context *timer_ctx);
@@ -57,6 +52,27 @@ static int nr_guest_timers(struct kvm *kvm)
 {
 	/* For now, the guest sees all timers available in EL1. */
 	return 2;
+}
+
+static int nr_visible_timers(struct kvm *kvm)
+{
+	/* For now, we pass on just the virtual timer directly to the guest. */
+	return 1;
+}
+
+static bool timer_is_virtual(enum kvm_arch_timers timer)
+{
+	return timer == TIMER_VTIMER;
+}
+
+static bool timer_is_visible(struct kvm *kvm, enum kvm_arch_timers timer)
+{
+	return timer < nr_visible_timers(kvm);
+}
+
+static bool timer_is_emulated(struct kvm *kvm, enum kvm_arch_timers timer)
+{
+	return timer >= nr_visible_timers(kvm);
 }
 
 u64 kvm_phys_timer_read(void)
@@ -611,21 +627,27 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	int i;
 
-	/*
-	 * The bits in CNTV_CTL are architecturally reset to UNKNOWN for ARMv8
-	 * and to 0 for ARMv7.  We provide an implementation that always
-	 * resets the timer to be disabled and unmasked and is compliant with
-	 * the ARMv7 architecture.
-	 */
-	vtimer->cnt_ctl = 0;
-	ptimer->cnt_ctl = 0;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+
+		/*
+		 * The bits in CNTV_CTL are architecturally reset to UNKNOWN
+		 * for ARMv8 and to 0 for ARMv7.  We provide an implementation
+		 * that always resets the timer to be disabled and unmasked
+		 * and is compliant with the ARMv7 architecture.
+		 */
+		gtimer->cnt_ctl = 0;
+
+		if (timer_is_emulated(vcpu->kvm, i))
+			continue;
+
+		if (timer->enabled && irqchip_in_kernel(vcpu->kvm))
+			kvm_vgic_reset_mapped_irq(vcpu, gtimer->irq.irq);
+	}
+
 	kvm_timer_update_state(vcpu);
-
-	if (timer->enabled && irqchip_in_kernel(vcpu->kvm))
-		kvm_vgic_reset_mapped_irq(vcpu, vtimer->irq.irq);
 
 	return 0;
 }
@@ -654,25 +676,30 @@ static void update_timer_cntvoff(struct kvm_vcpu *vcpu,
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
-
-	/* Synchronize cntvoff across all vtimers of a VM. */
-	update_timer_cntvoff(vcpu, TIMER_VTIMER, kvm_phys_timer_read());
-	vcpu_ptimer(vcpu)->cntvoff = 0;
+	int i;
 
 	INIT_WORK(&timer->expired, kvm_timer_inject_irq_work);
 	hrtimer_init(&timer->bg_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	timer->bg_timer.function = kvm_bg_timer_expire;
 
-	hrtimer_init(&ptimer->linux_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
-	ptimer->linux_timer.function = kvm_timer_expire;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
 
-	vtimer->irq.irq = default_vtimer_irq.irq;
-	ptimer->irq.irq = default_ptimer_irq.irq;
+		gtimer->timer_id = i;
+		if (timer_is_virtual(i))
+			update_timer_cntvoff(vcpu, i, kvm_phys_timer_read());
+		else
+			gtimer->cntvoff = 0;
 
-	vtimer->timer_id = TIMER_VTIMER;
-	ptimer->timer_id = TIMER_PTIMER;
+		gtimer->irq.irq = default_timer_irqs[i];
+
+		if (timer_is_visible(vcpu->kvm, i))
+			continue;
+
+		hrtimer_init(&gtimer->linux_timer, CLOCK_MONOTONIC,
+			     HRTIMER_MODE_ABS);
+		gtimer->linux_timer.function = kvm_timer_expire;
+	}
 }
 
 int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
@@ -816,12 +843,18 @@ out_free_irq:
 void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	int i;
 
 	soft_timer_cancel(&timer->bg_timer, &timer->expired);
-	soft_timer_cancel(&ptimer->linux_timer, NULL);
-	kvm_vgic_unmap_phys_irq(vcpu, vtimer->irq.irq);
+
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+
+		if (timer_is_visible(vcpu->kvm, i))
+			kvm_vgic_unmap_phys_irq(vcpu, gtimer->irq.irq);
+		else
+			soft_timer_cancel(&gtimer->linux_timer, NULL);
+	}
 }
 
 static bool timer_irqs_are_valid(struct kvm_vcpu *vcpu)

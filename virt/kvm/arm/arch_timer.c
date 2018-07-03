@@ -53,6 +53,12 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,
 				 struct arch_timer_context *timer_ctx);
 static bool kvm_timer_should_fire(struct arch_timer_context *timer_ctx);
 
+static int nr_guest_timers(struct kvm *kvm)
+{
+	/* For now, the guest sees all timers available in EL1. */
+	return 2;
+}
+
 u64 kvm_phys_timer_read(void)
 {
 	return timecounter->cc->read(timecounter->cc);
@@ -151,21 +157,21 @@ static bool kvm_timer_irq_can_fire(struct arch_timer_context *timer_ctx)
  */
 static u64 kvm_timer_earliest_exp(struct kvm_vcpu *vcpu)
 {
-	u64 min_virt = ULLONG_MAX, min_phys = ULLONG_MAX;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	u64 min_time = ULLONG_MAX;
+	int i;
+	bool can_fire = false;
 
-	if (kvm_timer_irq_can_fire(vtimer))
-		min_virt = kvm_timer_compute_delta(vtimer);
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
 
-	if (kvm_timer_irq_can_fire(ptimer))
-		min_phys = kvm_timer_compute_delta(ptimer);
+		if (!kvm_timer_irq_can_fire(gtimer))
+			continue;
 
-	/* If none of timers can fire, then return 0 */
-	if ((min_virt == ULLONG_MAX) && (min_phys == ULLONG_MAX))
-		return 0;
+		can_fire = true;
+		min_time = min(kvm_timer_compute_delta(gtimer), min_time);
+	}
 
-	return min(min_virt, min_phys);
+	return can_fire ? min_time : 0;
 }
 
 static enum hrtimer_restart kvm_bg_timer_expire(struct hrtimer *hrt)

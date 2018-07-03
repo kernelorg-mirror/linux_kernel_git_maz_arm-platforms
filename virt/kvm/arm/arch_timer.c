@@ -262,22 +262,27 @@ bool kvm_timer_is_pending(struct kvm_vcpu *vcpu)
 	return false;
 }
 
+static u8 irq_dev_map[NR_KVM_TIMERS] = {
+		[TIMER_PTIMER] = KVM_ARM_DEV_EL1_PTIMER,
+		[TIMER_VTIMER] = KVM_ARM_DEV_EL1_VTIMER,
+};
+
 /*
  * Reflect the timer output level into the kvm_run structure
  */
 void kvm_timer_update_run(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 	struct kvm_sync_regs *regs = &vcpu->run->s.regs;
+	int i;
 
-	/* Populate the device bitmap with the timer states */
-	regs->device_irq_level &= ~(KVM_ARM_DEV_EL1_VTIMER |
-				    KVM_ARM_DEV_EL1_PTIMER);
-	if (kvm_timer_should_fire(vtimer))
-		regs->device_irq_level |= KVM_ARM_DEV_EL1_VTIMER;
-	if (kvm_timer_should_fire(ptimer))
-		regs->device_irq_level |= KVM_ARM_DEV_EL1_PTIMER;
+	for (i = 0; i < nr_guest_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+
+		/* Populate the device bitmap with the timer states */
+		regs->device_irq_level &= ~irq_dev_map[i];
+		if (kvm_timer_should_fire(gtimer))
+			regs->device_irq_level |= irq_dev_map[i];
+	}
 }
 
 static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,

@@ -25,6 +25,7 @@
 
 #include <clocksource/arm_arch_timer.h>
 #include <asm/arch_timer.h>
+#include <asm/kvm_emulate.h>
 #include <asm/kvm_hyp.h>
 
 #include <kvm/arm_vgic.h>
@@ -690,6 +691,91 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 		return kvm_phys_timer_read();
 	}
 	return (u64)-1;
+}
+
+static struct arch_timer_context *get_timer_from_sysreg(struct kvm_vcpu *vcpu,
+							u32 sr)
+{
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_CNTP_CTL_EL0:
+	case SYS_CNTP_CVAL_EL0:
+	case SYS_AARCH32_CNTP_TVAL:
+	case SYS_AARCH32_CNTP_CTL:
+	case SYS_AARCH32_CNTP_CVAL:
+		return vcpu_ptimer(vcpu);
+	default:
+		BUG();
+	}
+}
+
+u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr)
+{
+	struct arch_timer_context *timer;
+	u64 val;
+
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
+	timer = get_timer_from_sysreg(vcpu, sr);
+
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_AARCH32_CNTP_TVAL:
+		val = kvm_phys_timer_read() - timer->cntvoff - timer->cnt_cval;
+		break;
+
+	case SYS_CNTP_CTL_EL0:
+	case SYS_AARCH32_CNTP_CTL:
+		val = read_timer_ctl(timer);
+		break;
+
+	case SYS_CNTP_CVAL_EL0:
+	case SYS_AARCH32_CNTP_CVAL:
+		val = timer->cnt_cval;
+		break;
+
+	default:
+		BUG();
+	}
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
+
+	return val;
+}
+
+void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val)
+{
+	struct arch_timer_context *timer;
+
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
+	timer = get_timer_from_sysreg(vcpu, sr);
+
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_AARCH32_CNTP_TVAL:
+		timer->cnt_cval = val - kvm_phys_timer_read() - timer->cntvoff;
+		break;
+
+	case SYS_CNTP_CTL_EL0:
+	case SYS_AARCH32_CNTP_CTL:
+		timer->cnt_ctl = val & ~ARCH_TIMER_CTRL_IT_STAT;
+		break;
+
+	case SYS_CNTP_CVAL_EL0:
+	case SYS_AARCH32_CNTP_CVAL:
+		timer->cnt_cval = val;
+		break;
+
+	default:
+		BUG();
+	}
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
 }
 
 static int kvm_timer_starting_cpu(unsigned int cpu)

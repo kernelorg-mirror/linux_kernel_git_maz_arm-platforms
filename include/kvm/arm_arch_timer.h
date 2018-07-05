@@ -88,4 +88,7 @@ bool kvm_arch_timer_get_input_level(int vintid);
 #define vcpu_vtimer(v)	(&(v)->arch.timer_cpu.vtimer)
 #define vcpu_ptimer(v)	(&(v)->arch.timer_cpu.ptimer)
 
+u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr);
+void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val);
+
 #endif

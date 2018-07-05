@@ -102,7 +102,7 @@ static void soft_timer_cancel(struct hrtimer *hrt, struct work_struct *work)
 static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 {
 	struct kvm_vcpu *vcpu = *(struct kvm_vcpu **)dev_id;
-	struct arch_timer_context *vtimer;
+	struct arch_timer_context *gtimer;
 
 	/*
 	 * We may see a timer interrupt after vcpu_put() has been called which
@@ -113,13 +113,17 @@ static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 	if (!vcpu)
 		return IRQ_HANDLED;
 
-	vtimer = vcpu_vtimer(vcpu);
-	if (kvm_timer_should_fire(vtimer))
-		kvm_timer_update_irq(vcpu, true, vtimer);
+	if (irq == host_vtimer_irq)
+		gtimer = vcpu_timer(vcpu, TIMER_VTIMER);
+	else
+		return IRQ_NONE;
+
+	if (kvm_timer_should_fire(gtimer))
+		kvm_timer_update_irq(vcpu, true, gtimer);
 
 	if (userspace_irqchip(vcpu->kvm) &&
 	    !static_branch_unlikely(&has_gic_active_state))
-		disable_percpu_irq(host_vtimer_irq);
+		disable_percpu_irq(irq);
 
 	return IRQ_HANDLED;
 }

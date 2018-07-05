@@ -2006,6 +2006,13 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_CNTVOFF_EL2), access_rw, reset_val, CNTVOFF_EL2, 0 },
 	{ SYS_DESC(SYS_CNTHCTL_EL2), access_rw, reset_val, CNTHCTL_EL2, 0 },
 
+	{ SYS_DESC(SYS_CNTHP_TVAL_EL2), access_arch_timer },
+	{ SYS_DESC(SYS_CNTHP_CTL_EL2), access_arch_timer },
+	{ SYS_DESC(SYS_CNTHP_CVAL_EL2), access_arch_timer },
+	{ SYS_DESC(SYS_CNTHV_TVAL_EL2), access_arch_timer },
+	{ SYS_DESC(SYS_CNTHV_CTL_EL2), access_arch_timer },
+	{ SYS_DESC(SYS_CNTHV_CVAL_EL2), access_arch_timer },
+
 	{ SYS_DESC(sctlr_EL12), access_vm_reg, reset_val, SCTLR_EL1, 0x00C50078 },
 	{ SYS_DESC(cpacr_EL12), access_rw, reset_val, CPACR_EL1, 0 },
 	{ SYS_DESC(ttbr0_EL12), access_vm_reg, reset_unknown, TTBR0_EL1 },
@@ -2022,6 +2029,14 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(vbar_EL12), access_rw, reset_val, VBAR_EL1, 0 },
 	{ SYS_DESC(contextidr_EL12), access_vm_reg, reset_val, CONTEXTIDR_EL1, 0 },
 	{ SYS_DESC(cntkctl_EL12), access_rw, reset_val, CNTKCTL_EL1, 0 },
+
+	{ SYS_DESC(cntp_tval_EL02), access_arch_timer },
+	{ SYS_DESC(cntp_ctl_EL02), access_arch_timer },
+	{ SYS_DESC(cntp_cval_EL02), access_arch_timer },
+
+	{ SYS_DESC(cntv_tval_EL02), access_arch_timer },
+	{ SYS_DESC(cntv_ctl_EL02), access_arch_timer },
+	{ SYS_DESC(cntv_cval_EL02), access_arch_timer },
 
 	{ SYS_DESC(SYS_SP_EL2), NULL, reset_unknown, SP_EL2 },
 };

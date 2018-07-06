@@ -1230,6 +1230,13 @@ static int __init arch_timer_of_init(struct device_node *np)
 		return -EINVAL;
 	}
 
+	/*
+	 * If the (VHE) host is not using the physical timer, we can
+	 * pass it on to a guest.
+	 */
+	if (arch_timer_uses_ppi != ARCH_TIMER_PHYS_NONSECURE_PPI)
+		arch_timer_kvm_info.physical_irq = arch_timer_ppi[ARCH_TIMER_PHYS_NONSECURE_PPI];
+
 	/* On some systems, the counter stops ticking when in suspend. */
 	arch_counter_suspend_stop = of_property_read_bool(np,
 							 "arm,no-tick-in-suspend");

@@ -50,6 +50,9 @@ struct arch_timer_context {
 	/* Virtual offset */
 	u64			cntvoff;
 
+	/* Used when this timer is emulated. */
+	struct hrtimer		linux_timer;
+
 	/* Which timer is this, in case we need to access a system register. */
 	enum kvm_arch_timers	timer_id;
 };
@@ -62,9 +65,6 @@ struct arch_timer_cpu {
 
 	/* Work queued with the above timer expires */
 	struct work_struct		expired;
-
-	/* Physical timer emulation */
-	struct hrtimer			phys_timer;
 
 	/* Is the timer enabled */
 	bool			enabled;

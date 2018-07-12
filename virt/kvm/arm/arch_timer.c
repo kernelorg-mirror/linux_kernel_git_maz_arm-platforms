@@ -850,6 +850,54 @@ static int kvm_timer_dying_cpu(unsigned int cpu)
 	return 0;
 }
 
+static int kvm_init_timer_irq(enum kvm_arch_timers timer, int irq,
+			      bool has_gic)
+{
+	int err;
+
+	if (irq <= 0) {
+		kvm_err("kvm_arch_timer: invalid virtual timer IRQ: %d\n", irq);
+		return -ENODEV;
+	}
+	host_timer_irq[timer] = irq;
+
+	host_timer_irq_flags[timer] = irq_get_trigger_type(host_timer_irq[timer]);
+	if (host_timer_irq_flags[timer] != IRQF_TRIGGER_HIGH &&
+	    host_timer_irq_flags[timer] != IRQF_TRIGGER_LOW) {
+		kvm_err("Invalid trigger for IRQ%d, assuming level low\n",
+			host_timer_irq[timer]);
+		host_timer_irq_flags[timer] = IRQF_TRIGGER_LOW;
+	}
+
+	err = request_percpu_irq(host_timer_irq[timer], kvm_arch_timer_handler,
+				 "kvm guest timer", kvm_get_running_vcpus());
+	if (err) {
+		kvm_err("kvm_arch_timer: can't request interrupt %d (%d)\n",
+			host_timer_irq[timer], err);
+		return err;
+	}
+
+	if (has_gic) {
+		err = irq_set_vcpu_affinity(irq, kvm_get_running_vcpus());
+		if (err) {
+			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
+			goto out_free_irq;
+		}
+
+		static_branch_enable(&has_gic_active_state);
+	}
+
+	kvm_debug("%s timer IRQ%d\n",
+		  timer == TIMER_VTIMER ? "virtual" : "physical", irq);
+
+	used_timer_irqs++;
+
+	return 0;
+out_free_irq:
+	free_percpu_irq(irq, kvm_get_running_vcpus());
+	return err;
+}
+
 int kvm_timer_hyp_init(bool has_gic)
 {
 	struct arch_timer_kvm_info *info;
@@ -863,51 +911,14 @@ int kvm_timer_hyp_init(bool has_gic)
 		return -ENODEV;
 	}
 
-	if (info->virtual_irq <= 0) {
-		kvm_err("kvm_arch_timer: invalid virtual timer IRQ: %d\n",
-			info->virtual_irq);
-		return -ENODEV;
-	}
-	host_timer_irq[0] = info->virtual_irq;
-
-	host_timer_irq_flags[0] = irq_get_trigger_type(host_timer_irq[0]);
-	if (host_timer_irq_flags[0] != IRQF_TRIGGER_HIGH &&
-	    host_timer_irq_flags[0] != IRQF_TRIGGER_LOW) {
-		kvm_err("Invalid trigger for IRQ%d, assuming level low\n",
-			host_timer_irq[0]);
-		host_timer_irq_flags[0] = IRQF_TRIGGER_LOW;
-	}
-
-	err = request_percpu_irq(host_timer_irq[0], kvm_arch_timer_handler,
-				 "kvm guest timer", kvm_get_running_vcpus());
-	if (err) {
-		kvm_err("kvm_arch_timer: can't request interrupt %d (%d)\n",
-			host_timer_irq[0], err);
+	err = kvm_init_timer_irq(TIMER_VTIMER, info->virtual_irq, has_gic);
+	if (err)
 		return err;
-	}
-
-	if (has_gic) {
-		err = irq_set_vcpu_affinity(host_timer_irq[0],
-					    kvm_get_running_vcpus());
-		if (err) {
-			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
-			goto out_free_irq;
-		}
-
-		static_branch_enable(&has_gic_active_state);
-	}
-
-	kvm_debug("virtual timer IRQ%d\n", host_timer_irq[0]);
-
-	used_timer_irqs++;
 
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
 			  kvm_timer_dying_cpu);
 	return 0;
-out_free_irq:
-	free_percpu_irq(host_timer_irq[0], kvm_get_running_vcpus());
-	return err;
 }
 
 void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)

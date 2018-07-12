@@ -442,10 +442,12 @@ static void set_cntvoff(u64 cntvoff)
 	kvm_call_hyp(__kvm_timer_set_cntvoff, low, high);
 }
 
-static inline void set_vtimer_irq_phys_active(struct kvm_vcpu *vcpu, bool active)
+static inline void set_timer_irq_phys_active(int host_irq, bool active)
 {
 	int r;
-	r = irq_set_irqchip_state(host_vtimer_irq, IRQCHIP_STATE_ACTIVE, active);
+
+	r = irq_set_irqchip_state(host_irq, IRQCHIP_STATE_ACTIVE, active);
+
 	WARN_ON(r);
 }
 
@@ -458,7 +460,7 @@ static void kvm_timer_vcpu_load_gic(struct kvm_vcpu *vcpu)
 		phys_active = kvm_vgic_map_is_active(vcpu, vtimer->irq.irq);
 	else
 		phys_active = vtimer->irq.level;
-	set_vtimer_irq_phys_active(vcpu, phys_active);
+	set_timer_irq_phys_active(host_vtimer_irq, phys_active);
 }
 
 static void kvm_timer_vcpu_load_nogic(struct kvm_vcpu *vcpu)
@@ -567,7 +569,7 @@ static void unmask_vtimer_irq_user(struct kvm_vcpu *vcpu)
 	if (!kvm_timer_should_fire(vtimer)) {
 		kvm_timer_update_irq(vcpu, false, vtimer);
 		if (static_branch_likely(&has_gic_active_state))
-			set_vtimer_irq_phys_active(vcpu, false);
+			set_timer_irq_phys_active(host_vtimer_irq, false);
 		else
 			enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
 	}

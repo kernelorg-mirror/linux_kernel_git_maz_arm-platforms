@@ -858,14 +858,20 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 
 static int kvm_timer_starting_cpu(unsigned int cpu)
 {
-	enable_percpu_irq(host_timer_irq[0], host_timer_irq_flags[0]);
+	int i;
+
+	for (i = 0; i < used_timer_irqs; i++)
+		enable_percpu_irq(host_timer_irq[i], host_timer_irq_flags[i]);
 
 	return 0;
 }
 
 static int kvm_timer_dying_cpu(unsigned int cpu)
 {
-	disable_percpu_irq(host_timer_irq[0]);
+	int i;
+
+	for (i = 0; i < used_timer_irqs; i++)
+		disable_percpu_irq(host_timer_irq[i]);
 
 	return 0;
 }

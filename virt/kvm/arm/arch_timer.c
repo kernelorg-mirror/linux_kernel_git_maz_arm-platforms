@@ -995,8 +995,10 @@ bool kvm_arch_timer_get_input_level(int vintid)
 
 	if (vintid == vcpu_vtimer(vcpu)->irq.irq)
 		timer = vcpu_vtimer(vcpu);
+	else if (vintid == vcpu_ptimer(vcpu)->irq.irq)
+		timer = vcpu_ptimer(vcpu);
 	else
-		BUG(); /* We only map the vtimer so far */
+		BUG(); /* We only map those timer so far */
 
 	return kvm_timer_should_fire(timer);
 }
@@ -1004,8 +1006,7 @@ bool kvm_arch_timer_get_input_level(int vintid)
 int kvm_timer_enable(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	int ret;
+	int i;
 
 	if (timer->enabled)
 		return 0;
@@ -1022,10 +1023,16 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		return -EINVAL;
 	}
 
-	ret = kvm_vgic_map_phys_irq(vcpu, host_timer_irq[0], vtimer->irq.irq,
-				    kvm_arch_timer_get_input_level);
-	if (ret)
-		return ret;
+	for (i = 0; i < nr_visible_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+		int ret;
+
+		ret = kvm_vgic_map_phys_irq(vcpu, host_timer_irq[i],
+					    gtimer->irq.irq,
+					    kvm_arch_timer_get_input_level);
+		if (ret)
+			return ret;
+	}
 
 no_vgic:
 	timer->enabled = 1;

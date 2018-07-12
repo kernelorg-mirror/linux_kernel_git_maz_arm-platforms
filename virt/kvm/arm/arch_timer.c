@@ -520,41 +520,54 @@ static inline void set_timer_irq_phys_active(int host_irq, bool active)
 
 static void kvm_timer_vcpu_load_gic(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	bool phys_active;
+	int i;
 
-	if (irqchip_in_kernel(vcpu->kvm))
-		phys_active = kvm_vgic_map_is_active(vcpu, vtimer->irq.irq);
-	else
-		phys_active = vtimer->irq.level;
-	set_timer_irq_phys_active(host_timer_irq[0], phys_active);
+	for (i = 0; i < nr_visible_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+		bool phys_active;
+
+		if (irqchip_in_kernel(vcpu->kvm))
+			phys_active = kvm_vgic_map_is_active(vcpu,
+							     gtimer->irq.irq);
+		else
+			phys_active = gtimer->irq.level;
+
+		set_timer_irq_phys_active(host_timer_irq[i], phys_active);
+	}
 }
 
 static void kvm_timer_vcpu_load_nogic(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
+	int i;
 
-	/*
-	 * When using a userspace irqchip with the architected timers and a
-	 * host interrupt controller that doesn't support an active state, we
-	 * must still prevent continuously exiting from the guest, and
-	 * therefore mask the physical interrupt by disabling it on the host
-	 * interrupt controller when the virtual level is high, such that the
-	 * guest can make forward progress.  Once we detect the output level
-	 * being de-asserted, we unmask the interrupt again so that we exit
-	 * from the guest when the timer fires.
-	 */
-	if (vtimer->irq.level)
-		disable_percpu_irq(host_timer_irq[0]);
-	else
-		enable_percpu_irq(host_timer_irq[0], host_timer_irq_flags[0]);
+	for (i = 0; i < nr_visible_timers(vcpu->kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
+
+		/*
+		 * When using a userspace irqchip with the architected timers
+		 * and a host interrupt controller that doesn't support an
+		 * active state, we must still prevent continuously exiting
+		 * from the guest, and therefore mask the physical interrupt
+		 * by disabling it on the host interrupt controller when the
+		 * virtual level is high, such that the guest can make forward
+		 * progress.  Once we detect the output level being de-asserted,
+		 * we unmask the interrupt again so that we exit from the
+		 * guest when the timer fires.
+		 */
+		if (gtimer->irq.level)
+			disable_percpu_irq(host_timer_irq[i]);
+		else
+			enable_percpu_irq(host_timer_irq[i],
+					  host_timer_irq_flags[i]);
+	}
 }
 
 void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	struct kvm *kvm = vcpu->kvm;
+	int i;
 
 	if (unlikely(!timer->enabled))
 		return;
@@ -568,12 +581,15 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	timer_restore_state(vcpu);
 
-	/* Set the background timer for the physical timer emulation. */
-	timer_emulate(ptimer);
+	/* Set the background timers for the emulated timers. */
+	for (i = nr_visible_timers(kvm); i < nr_guest_timers(kvm); i++) {
+		struct arch_timer_context *gtimer = vcpu_timer(vcpu, i);
 
-	/* If the timer fired while we weren't running, inject it now */
-	if (kvm_timer_should_fire(ptimer) != ptimer->irq.level)
-		kvm_timer_update_irq(vcpu, !ptimer->irq.level, ptimer);
+		timer_emulate(gtimer);
+		/* If the timer fired while we weren't running, inject it now */
+		if (kvm_timer_should_fire(gtimer) != gtimer->irq.level)
+			kvm_timer_update_irq(vcpu, !gtimer->irq.level, gtimer);
+	}
 }
 
 bool kvm_timer_should_notify_user(struct kvm_vcpu *vcpu)
@@ -598,6 +614,8 @@ bool kvm_timer_should_notify_user(struct kvm_vcpu *vcpu)
 void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct kvm *kvm = vcpu->kvm;
+	int i;
 
 	if (unlikely(!timer->enabled))
 		return;
@@ -613,7 +631,8 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 	 * In any case, we re-schedule the hrtimer for the physical timer when
 	 * coming back to the VCPU thread in kvm_timer_vcpu_load().
 	 */
-	soft_timer_cancel(&timer->timers[TIMER_PTIMER].linux_timer, NULL);
+	for (i = nr_visible_timers(kvm); i < nr_guest_timers(kvm); i++)
+		soft_timer_cancel(&timer->timers[i].linux_timer, NULL);
 
 	/*
 	 * The kernel may decide to run userspace after calling vcpu_put, so

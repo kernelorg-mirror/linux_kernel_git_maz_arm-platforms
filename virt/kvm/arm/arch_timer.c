@@ -650,17 +650,18 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
  * timer and if so, unmask the timer irq signal on the host interrupt
  * controller to ensure that we see future timer signals.
  */
-static void unmask_vtimer_irq_user(struct kvm_vcpu *vcpu)
+static void unmask_timer_irq_user(struct kvm_vcpu *vcpu,
+				  enum kvm_arch_timers timer)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
+	struct arch_timer_context *gtimer = vcpu_timer(vcpu, timer);
 
-	if (!kvm_timer_should_fire(vtimer)) {
-		kvm_timer_update_irq(vcpu, false, vtimer);
+	if (!kvm_timer_should_fire(gtimer)) {
+		kvm_timer_update_irq(vcpu, false, gtimer);
 		if (static_branch_likely(&has_gic_active_state))
-			set_timer_irq_phys_active(host_timer_irq[0], false);
+			set_timer_irq_phys_active(host_timer_irq[timer], false);
 		else
-			enable_percpu_irq(host_timer_irq[0],
-					  host_timer_irq_flags[0]);
+			enable_percpu_irq(host_timer_irq[timer],
+					  host_timer_irq_flags[timer]);
 	}
 }
 
@@ -672,7 +673,7 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 		return;
 
 	if (unlikely(!irqchip_in_kernel(vcpu->kvm)))
-		unmask_vtimer_irq_user(vcpu);
+		unmask_timer_irq_user(vcpu, TIMER_VTIMER);
 }
 
 int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)

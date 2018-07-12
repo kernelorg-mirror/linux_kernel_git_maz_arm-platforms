@@ -32,9 +32,12 @@
 
 #include "trace.h"
 
+#define MAX_VISIBLE_TIMERS				2
+
 static struct timecounter *timecounter;
-static unsigned int host_vtimer_irq;
-static u32 host_vtimer_irq_flags;
+static int used_timer_irqs = 0;
+static unsigned int host_timer_irq[MAX_VISIBLE_TIMERS] = { 0 };
+static u32 host_timer_irq_flags[MAX_VISIBLE_TIMERS];
 
 static DEFINE_STATIC_KEY_FALSE(has_gic_active_state);
 
@@ -113,7 +116,7 @@ static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 	if (!vcpu)
 		return IRQ_HANDLED;
 
-	if (irq == host_vtimer_irq)
+	if (irq == host_timer_irq[0])
 		gtimer = vcpu_timer(vcpu, TIMER_VTIMER);
 	else
 		return IRQ_NONE;
@@ -524,7 +527,7 @@ static void kvm_timer_vcpu_load_gic(struct kvm_vcpu *vcpu)
 		phys_active = kvm_vgic_map_is_active(vcpu, vtimer->irq.irq);
 	else
 		phys_active = vtimer->irq.level;
-	set_timer_irq_phys_active(host_vtimer_irq, phys_active);
+	set_timer_irq_phys_active(host_timer_irq[0], phys_active);
 }
 
 static void kvm_timer_vcpu_load_nogic(struct kvm_vcpu *vcpu)
@@ -542,9 +545,9 @@ static void kvm_timer_vcpu_load_nogic(struct kvm_vcpu *vcpu)
 	 * from the guest when the timer fires.
 	 */
 	if (vtimer->irq.level)
-		disable_percpu_irq(host_vtimer_irq);
+		disable_percpu_irq(host_timer_irq[0]);
 	else
-		enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+		enable_percpu_irq(host_timer_irq[0], host_timer_irq_flags[0]);
 }
 
 void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
@@ -635,9 +638,10 @@ static void unmask_vtimer_irq_user(struct kvm_vcpu *vcpu)
 	if (!kvm_timer_should_fire(vtimer)) {
 		kvm_timer_update_irq(vcpu, false, vtimer);
 		if (static_branch_likely(&has_gic_active_state))
-			set_timer_irq_phys_active(host_vtimer_irq, false);
+			set_timer_irq_phys_active(host_timer_irq[0], false);
 		else
-			enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+			enable_percpu_irq(host_timer_irq[0],
+					  host_timer_irq_flags[0]);
 	}
 }
 
@@ -834,14 +838,15 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 
 static int kvm_timer_starting_cpu(unsigned int cpu)
 {
-	enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+	enable_percpu_irq(host_timer_irq[0], host_timer_irq_flags[0]);
 
 	return 0;
 }
 
 static int kvm_timer_dying_cpu(unsigned int cpu)
 {
-	disable_percpu_irq(host_vtimer_irq);
+	disable_percpu_irq(host_timer_irq[0]);
+
 	return 0;
 }
 
@@ -863,26 +868,26 @@ int kvm_timer_hyp_init(bool has_gic)
 			info->virtual_irq);
 		return -ENODEV;
 	}
-	host_vtimer_irq = info->virtual_irq;
+	host_timer_irq[0] = info->virtual_irq;
 
-	host_vtimer_irq_flags = irq_get_trigger_type(host_vtimer_irq);
-	if (host_vtimer_irq_flags != IRQF_TRIGGER_HIGH &&
-	    host_vtimer_irq_flags != IRQF_TRIGGER_LOW) {
+	host_timer_irq_flags[0] = irq_get_trigger_type(host_timer_irq[0]);
+	if (host_timer_irq_flags[0] != IRQF_TRIGGER_HIGH &&
+	    host_timer_irq_flags[0] != IRQF_TRIGGER_LOW) {
 		kvm_err("Invalid trigger for IRQ%d, assuming level low\n",
-			host_vtimer_irq);
-		host_vtimer_irq_flags = IRQF_TRIGGER_LOW;
+			host_timer_irq[0]);
+		host_timer_irq_flags[0] = IRQF_TRIGGER_LOW;
 	}
 
-	err = request_percpu_irq(host_vtimer_irq, kvm_arch_timer_handler,
+	err = request_percpu_irq(host_timer_irq[0], kvm_arch_timer_handler,
 				 "kvm guest timer", kvm_get_running_vcpus());
 	if (err) {
 		kvm_err("kvm_arch_timer: can't request interrupt %d (%d)\n",
-			host_vtimer_irq, err);
+			host_timer_irq[0], err);
 		return err;
 	}
 
 	if (has_gic) {
-		err = irq_set_vcpu_affinity(host_vtimer_irq,
+		err = irq_set_vcpu_affinity(host_timer_irq[0],
 					    kvm_get_running_vcpus());
 		if (err) {
 			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
@@ -892,14 +897,16 @@ int kvm_timer_hyp_init(bool has_gic)
 		static_branch_enable(&has_gic_active_state);
 	}
 
-	kvm_debug("virtual timer IRQ%d\n", host_vtimer_irq);
+	kvm_debug("virtual timer IRQ%d\n", host_timer_irq[0]);
+
+	used_timer_irqs++;
 
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
 			  kvm_timer_dying_cpu);
 	return 0;
 out_free_irq:
-	free_percpu_irq(host_vtimer_irq, kvm_get_running_vcpus());
+	free_percpu_irq(host_timer_irq[0], kvm_get_running_vcpus());
 	return err;
 }
 
@@ -978,7 +985,7 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		return -EINVAL;
 	}
 
-	ret = kvm_vgic_map_phys_irq(vcpu, host_vtimer_irq, vtimer->irq.irq,
+	ret = kvm_vgic_map_phys_irq(vcpu, host_timer_irq[0], vtimer->irq.irq,
 				    kvm_arch_timer_get_input_level);
 	if (ret)
 		return ret;

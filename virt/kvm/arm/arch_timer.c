@@ -255,8 +255,12 @@ static bool kvm_timer_should_fire(struct arch_timer_context *timer_ctx)
 	if (timer_ctx->loaded) {
 		u32 cnt_ctl;
 
-		/* Only the virtual timer can be loaded so far */
-		cnt_ctl = read_sysreg_el0(cntv_ctl);
+		switch (timer_ctx->timer_id) {
+		case TIMER_VTIMER: cnt_ctl = read_sysreg_el0(cntv_ctl); break;
+		case TIMER_PTIMER: cnt_ctl = read_sysreg_el0(cntp_ctl); break;
+		default: return false;
+		}
+
 		return  (cnt_ctl & ARCH_TIMER_CTRL_ENABLE) &&
 		        (cnt_ctl & ARCH_TIMER_CTRL_IT_STAT) &&
 		       !(cnt_ctl & ARCH_TIMER_CTRL_IT_MASK);

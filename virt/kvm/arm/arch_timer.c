@@ -653,11 +653,6 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	ptimer->timer_id = TIMER_PTIMER;
 }
 
-static void kvm_timer_init_interrupt(void *info)
-{
-	enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
-}
-
 int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 {
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
@@ -727,7 +722,8 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 
 static int kvm_timer_starting_cpu(unsigned int cpu)
 {
-	kvm_timer_init_interrupt(NULL);
+	enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+
 	return 0;
 }
 

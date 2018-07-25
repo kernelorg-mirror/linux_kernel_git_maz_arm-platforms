@@ -1537,6 +1537,8 @@ struct kvm_assigned_msix_entry {
 #define KVM_ARM_DEV_EL1_VTIMER		(1 << 0)
 #define KVM_ARM_DEV_EL1_PTIMER		(1 << 1)
 #define KVM_ARM_DEV_PMU			(1 << 2)
+#define KVM_ARM_DEV_EL2_HVTIMER		(1 << 3)
+#define KVM_ARM_DEV_EL2_HPTIMER		(1 << 4)
 
 struct kvm_hyperv_eventfd {
 	__u32 conn_id;

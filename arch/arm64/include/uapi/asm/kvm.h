@@ -223,6 +223,16 @@ struct kvm_vcpu_events {
 #define KVM_REG_ARM_TIMER_CNT		ARM64_SYS_REG(3, 3, 14, 3, 2)
 #define KVM_REG_ARM_TIMER_CVAL		ARM64_SYS_REG(3, 3, 14, 0, 2)
 
+/* HYP Physical Timer EL2 Registers */
+#define KVM_REG_ARM_HPTIMER_TVAL	ARM64_SYS_REG(3, 4, 14, 2, 0)
+#define KVM_REG_ARM_HPTIMER_CTL		ARM64_SYS_REG(3, 4, 14, 2, 1)
+#define KVM_REG_ARM_HPTIMER_CVAL	ARM64_SYS_REG(3, 4, 14, 2, 2)
+
+/* HYP Virtual Timer EL2 Registers */
+#define KVM_REG_ARM_HVTIMER_TVAL	ARM64_SYS_REG(3, 4, 14, 3, 0)
+#define KVM_REG_ARM_HVTIMER_CTL		ARM64_SYS_REG(3, 4, 14, 3, 1)
+#define KVM_REG_ARM_HVTIMER_CVAL	ARM64_SYS_REG(3, 4, 14, 3, 2)
+
 /* KVM-as-firmware specific pseudo-registers */
 #define KVM_REG_ARM_FW			(0x0014 << KVM_REG_ARM_COPROC_SHIFT)
 #define KVM_REG_ARM_FW_REG(r)		(KVM_REG_ARM64 | KVM_REG_SIZE_U64 | \
@@ -266,6 +276,8 @@ struct kvm_vcpu_events {
 #define KVM_ARM_VCPU_TIMER_CTRL		1
 #define   KVM_ARM_VCPU_TIMER_IRQ_VTIMER		0
 #define   KVM_ARM_VCPU_TIMER_IRQ_PTIMER		1
+#define   KVM_ARM_VCPU_TIMER_IRQ_HVTIMER	2
+#define   KVM_ARM_VCPU_TIMER_IRQ_HPTIMER	3
 
 /* KVM_IRQ_LINE irq field index values */
 #define KVM_ARM_IRQ_TYPE_SHIFT		24

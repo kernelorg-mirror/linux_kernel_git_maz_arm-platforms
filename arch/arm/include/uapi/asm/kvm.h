@@ -187,6 +187,16 @@ struct kvm_vcpu_events {
 #define KVM_REG_ARM_TIMER_CNT		ARM_CP15_REG64(1, 14)
 #define KVM_REG_ARM_TIMER_CVAL		ARM_CP15_REG64(3, 14)
 
+/* Hypervisor Timer Registers */
+#define KVM_REG_ARM_HPTIMER_TVAL	ARM_CP15_REG32(4, 14, 2, 0)
+#define KVM_REG_ARM_HPTIMER_CTL		ARM_CP15_REG32(4, 14, 2, 1)
+#define KVM_REG_ARM_HPTIMER_CVAL	ARM_CP15_REG64(6, 14)
+
+/* Hypervisor Virtual Timer Registers, aliased to the virtual timer */
+#define KVM_REG_ARM_HVTIMER_TVAL		ARM_CP15_REG32(0, 14, 3, 0)
+#define KVM_REG_ARM_HVTIMER_CTL		ARM_CP15_REG32(0, 14, 3, 1)
+#define KVM_REG_ARM_HVTIMER_CVAL	ARM_CP15_REG64(3, 14)
+
 /* Normal registers are mapped as coprocessor 16. */
 #define KVM_REG_ARM_CORE		(0x0010 << KVM_REG_ARM_COPROC_SHIFT)
 #define KVM_REG_ARM_CORE_REG(name)	(offsetof(struct kvm_regs, name) / 4)
@@ -248,6 +258,8 @@ struct kvm_vcpu_events {
 #define KVM_ARM_VCPU_TIMER_CTRL		1
 #define   KVM_ARM_VCPU_TIMER_IRQ_VTIMER		0
 #define   KVM_ARM_VCPU_TIMER_IRQ_PTIMER		1
+#define   KVM_ARM_VCPU_TIMER_IRQ_HVTIMER	2
+#define   KVM_ARM_VCPU_TIMER_IRQ_HPTIMER	3
 
 #define   KVM_DEV_ARM_VGIC_CTRL_INIT		0
 #define   KVM_DEV_ARM_ITS_SAVE_TABLES		1

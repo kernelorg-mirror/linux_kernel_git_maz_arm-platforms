@@ -736,9 +736,11 @@ static struct arch_timer_context *get_timer_from_regid(struct kvm_vcpu *vcpu,
 	case TIMER_REG(TIMER_CNT):
 	case TIMER_REG(TIMER_CTL):
 	case TIMER_REG(TIMER_CVAL):
+	case TIMER_REG(TIMER_TVAL):
 		return vcpu_timer(vcpu, TIMER_VTIMER);
 	case TIMER_REG(PTIMER_CTL):
 	case TIMER_REG(PTIMER_CVAL):
+	case TIMER_REG(PTIMER_TVAL):
 		return vcpu_timer(vcpu, TIMER_PTIMER);
 	}
 
@@ -771,6 +773,11 @@ int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 	case TIMER_REG(PTIMER_CVAL):
 	case TIMER_REG(TIMER_CVAL):
 		gtimer->cnt_cval = value;
+		break;
+	case TIMER_REG(PTIMER_TVAL):
+	case TIMER_REG(TIMER_TVAL):
+		gtimer->cnt_cval = (kvm_phys_timer_read() - gtimer->cntvoff) +
+				   (int)value;
 		break;
 	default:
 		return -1;
@@ -813,6 +820,9 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 	case TIMER_REG(PTIMER_CVAL):
 	case TIMER_REG(TIMER_CVAL):
 		return gtimer->cnt_cval;
+	case TIMER_REG(PTIMER_TVAL):
+	case TIMER_REG(TIMER_TVAL):
+		return (int)(gtimer->cnt_cval - kvm_phys_timer_read());
 	}
 
 	return (u64)-1;

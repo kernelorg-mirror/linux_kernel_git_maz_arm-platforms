@@ -212,11 +212,13 @@ struct kvm_vcpu_events {
 #define ARM64_SYS_REG(...) (__ARM64_SYS_REG(__VA_ARGS__) | KVM_REG_SIZE_U64)
 
 /* Physical Timer EL0 Registers */
+#define KVM_REG_ARM_PTIMER_TVAL		ARM64_SYS_REG(3, 3, 14, 2, 0)
 #define KVM_REG_ARM_PTIMER_CTL		ARM64_SYS_REG(3, 3, 14, 2, 1)
 #define KVM_REG_ARM_PTIMER_CVAL		ARM64_SYS_REG(3, 3, 14, 2, 2)
 #define KVM_REG_ARM_PTIMER_CNT		ARM64_SYS_REG(3, 3, 14, 0, 1)
 
 /* EL0 Virtual Timer Registers */
+#define KVM_REG_ARM_TIMER_TVAL		ARM64_SYS_REG(3, 3, 14, 3, 0)
 #define KVM_REG_ARM_TIMER_CTL		ARM64_SYS_REG(3, 3, 14, 3, 1)
 #define KVM_REG_ARM_TIMER_CNT		ARM64_SYS_REG(3, 3, 14, 3, 2)
 #define KVM_REG_ARM_TIMER_CVAL		ARM64_SYS_REG(3, 3, 14, 0, 2)

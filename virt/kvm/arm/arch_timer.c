@@ -726,34 +726,58 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	}
 }
 
+#define KVM_ARM_TIMER_REG_MASK	0xffff
+#define TIMER_REG(reg)		(KVM_REG_ARM_ ## reg & KVM_ARM_TIMER_REG_MASK)
+
+static struct arch_timer_context *get_timer_from_regid(struct kvm_vcpu *vcpu,
+						       u64 regid)
+{
+	switch (regid & KVM_ARM_TIMER_REG_MASK) {
+	case TIMER_REG(TIMER_CNT):
+	case TIMER_REG(TIMER_CTL):
+	case TIMER_REG(TIMER_CVAL):
+		return vcpu_timer(vcpu, TIMER_VTIMER);
+	case TIMER_REG(PTIMER_CTL):
+	case TIMER_REG(PTIMER_CVAL):
+		return vcpu_timer(vcpu, TIMER_PTIMER);
+	}
+
+	pr_warn("unhandled timer ID register: 0x%llx\n", regid);
+
+	return NULL;
+}
+
 int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	struct arch_timer_context *gtimer = get_timer_from_regid(vcpu, regid);
 
-	switch (regid) {
-	case KVM_REG_ARM_TIMER_CTL:
-		vtimer->cnt_ctl = value & ~ARCH_TIMER_CTRL_IT_STAT;
-		break;
-	case KVM_REG_ARM_TIMER_CNT:
+	if (!gtimer)
+		return -1;
+
+	/*
+	 * The @regid coming from the sysreg trap handler is synthesized,
+	 * and does not contain the respective namespace parts in the upper
+	 * bits. So mask those out to let this switch here serve both sources.
+	 */
+	switch (regid & KVM_ARM_TIMER_REG_MASK) {
+	case TIMER_REG(TIMER_CNT):
 		update_timer_cntvoff(vcpu, TIMER_VTIMER,
 				     kvm_phys_timer_read() - value);
 		break;
-	case KVM_REG_ARM_TIMER_CVAL:
-		vtimer->cnt_cval = value;
+	case TIMER_REG(PTIMER_CTL):
+	case TIMER_REG(TIMER_CTL):
+		gtimer->cnt_ctl = value & ~ARCH_TIMER_CTRL_IT_STAT;
 		break;
-	case KVM_REG_ARM_PTIMER_CTL:
-		ptimer->cnt_ctl = value & ~ARCH_TIMER_CTRL_IT_STAT;
+	case TIMER_REG(PTIMER_CVAL):
+	case TIMER_REG(TIMER_CVAL):
+		gtimer->cnt_cval = value;
 		break;
-	case KVM_REG_ARM_PTIMER_CVAL:
-		ptimer->cnt_cval = value;
-		break;
-
 	default:
 		return -1;
 	}
 
 	kvm_timer_update_state(vcpu);
+
 	return 0;
 }
 
@@ -773,23 +797,24 @@ static u64 read_timer_ctl(struct arch_timer_context *timer)
 
 u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 {
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
+	struct arch_timer_context *gtimer = get_timer_from_regid(vcpu, regid);
 
-	switch (regid) {
-	case KVM_REG_ARM_TIMER_CTL:
-		return read_timer_ctl(vtimer);
-	case KVM_REG_ARM_TIMER_CNT:
-		return kvm_phys_timer_read() - vtimer->cntvoff;
-	case KVM_REG_ARM_TIMER_CVAL:
-		return vtimer->cnt_cval;
-	case KVM_REG_ARM_PTIMER_CTL:
-		return read_timer_ctl(ptimer);
-	case KVM_REG_ARM_PTIMER_CVAL:
-		return ptimer->cnt_cval;
-	case KVM_REG_ARM_PTIMER_CNT:
+	if (!gtimer)
+		return (u64)-1;
+
+	switch (regid & KVM_ARM_TIMER_REG_MASK) {
+	case TIMER_REG(TIMER_CNT):
+		return kvm_phys_timer_read() - gtimer->cntvoff;
+	case TIMER_REG(PTIMER_CNT):
 		return kvm_phys_timer_read();
+	case TIMER_REG(PTIMER_CTL):
+	case TIMER_REG(TIMER_CTL):
+		return read_timer_ctl(gtimer);
+	case TIMER_REG(PTIMER_CVAL):
+	case TIMER_REG(TIMER_CVAL):
+		return gtimer->cnt_cval;
 	}
+
 	return (u64)-1;
 }
 

@@ -23,9 +23,13 @@
 #include <linux/hrtimer.h>
 #include <linux/workqueue.h>
 
+/* We emulate all four non-secure timers for nested virt guests. */
+
 enum kvm_arch_timers {
 	TIMER_VTIMER,
 	TIMER_PTIMER,
+	TIMER_HPTIMER,
+	TIMER_HVTIMER,
 	NR_KVM_TIMERS
 };
 

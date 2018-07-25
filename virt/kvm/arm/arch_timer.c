@@ -44,6 +44,8 @@ static DEFINE_STATIC_KEY_FALSE(has_gic_active_state);
 static int default_timer_irqs[NR_KVM_TIMERS] = {
 	[TIMER_VTIMER] = 27,
 	[TIMER_PTIMER] = 30,
+	[TIMER_HPTIMER] = 26,
+	[TIMER_HVTIMER] = 28
 };
 
 static bool kvm_timer_irq_can_fire(struct arch_timer_context *timer_ctx);
@@ -69,7 +71,7 @@ static int nr_visible_timers(struct kvm *kvm)
 
 static bool timer_is_virtual(enum kvm_arch_timers timer)
 {
-	return timer == TIMER_VTIMER;
+	return (timer == TIMER_VTIMER) || (timer == TIMER_HVTIMER);
 }
 
 static bool timer_is_visible(struct kvm *kvm, enum kvm_arch_timers timer)
@@ -298,6 +300,8 @@ bool kvm_timer_is_pending(struct kvm_vcpu *vcpu)
 static u8 irq_dev_map[NR_KVM_TIMERS] = {
 		[TIMER_PTIMER] = KVM_ARM_DEV_EL1_PTIMER,
 		[TIMER_VTIMER] = KVM_ARM_DEV_EL1_VTIMER,
+		[TIMER_HPTIMER] = KVM_ARM_DEV_EL2_HPTIMER,
+		[TIMER_HVTIMER] = KVM_ARM_DEV_EL2_HVTIMER
 };
 
 /*
@@ -1135,6 +1139,12 @@ int kvm_arm_timer_get_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr)
 	case KVM_ARM_VCPU_TIMER_IRQ_PTIMER:
 		timer = vcpu_ptimer(vcpu);
 		break;
+	case KVM_ARM_VCPU_TIMER_IRQ_HPTIMER:
+		timer = vcpu_timer(vcpu, TIMER_HPTIMER);
+		break;
+	case KVM_ARM_VCPU_TIMER_IRQ_HVTIMER:
+		timer = vcpu_timer(vcpu, TIMER_HVTIMER);
+		break;
 	default:
 		return -ENXIO;
 	}
@@ -1148,6 +1158,8 @@ int kvm_arm_timer_has_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr)
 	switch (attr->attr) {
 	case KVM_ARM_VCPU_TIMER_IRQ_VTIMER:
 	case KVM_ARM_VCPU_TIMER_IRQ_PTIMER:
+	case KVM_ARM_VCPU_TIMER_IRQ_HVTIMER:
+	case KVM_ARM_VCPU_TIMER_IRQ_HPTIMER:
 		return 0;
 	}
 

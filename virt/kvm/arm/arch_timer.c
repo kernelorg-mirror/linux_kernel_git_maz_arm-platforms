@@ -59,8 +59,12 @@ static int nr_guest_timers(struct kvm *kvm)
 
 static int nr_visible_timers(struct kvm *kvm)
 {
-	/* For now, we pass on just the virtual timer directly to the guest. */
-	return 1;
+	/*
+	 * On VHE, the host uses the EL2 physical timer, so we pass on
+	 * both the virtual and physical timer to the guest directly.
+	 * This will be reflected by having registered two host IRQs.
+	 */
+	return used_timer_irqs;
 }
 
 static bool timer_is_virtual(enum kvm_arch_timers timer)
@@ -118,6 +122,8 @@ static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 
 	if (irq == host_timer_irq[0])
 		gtimer = vcpu_timer(vcpu, TIMER_VTIMER);
+	else if (irq == host_timer_irq[1])
+		gtimer = vcpu_timer(vcpu, TIMER_PTIMER);
 	else
 		return IRQ_NONE;
 
@@ -945,6 +951,13 @@ int kvm_timer_hyp_init(bool has_gic)
 	if (err)
 		return err;
 
+	if (info->physical_irq) {
+		err = kvm_init_timer_irq(TIMER_PTIMER, info->physical_irq,
+					 has_gic);
+		if (err)
+			return err;
+	}
+
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
 			  kvm_timer_dying_cpu);
@@ -1056,11 +1069,14 @@ void kvm_timer_init_vhe(void)
 	u64 val;
 
 	/*
-	 * Disallow physical timer access for the guest.
-	 * Physical counter access is allowed.
+	 * We always allow access to the physical counter, but only to
+	 * the physical timer if the host is not using it.
 	 */
 	val = read_sysreg(cnthctl_el2);
-	val &= ~(CNTHCTL_EL1PCEN << cnthctl_shift);
+	if (used_timer_irqs < 2)
+		val &= ~(CNTHCTL_EL1PCEN << cnthctl_shift);
+	else
+		val |= (CNTHCTL_EL1PCEN << cnthctl_shift);
 	val |= (CNTHCTL_EL1PCTEN << cnthctl_shift);
 	write_sysreg(val, cnthctl_el2);
 }

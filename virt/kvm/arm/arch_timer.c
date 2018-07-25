@@ -784,6 +784,17 @@ static struct arch_timer_context *get_timer_from_regid(struct kvm_vcpu *vcpu,
 	case TIMER_REG(PTIMER_CVAL):
 	case TIMER_REG(PTIMER_TVAL):
 		return vcpu_timer(vcpu, TIMER_PTIMER);
+	case TIMER_REG(HPTIMER_CTL):
+	case TIMER_REG(HPTIMER_CVAL):
+	case TIMER_REG(HPTIMER_TVAL):
+		return vcpu_timer(vcpu, TIMER_HPTIMER);
+/* In AArch32 the virtual HYP timer is using the virtual timer registers. */
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_TVAL):
+	case TIMER_REG(HVTIMER_CVAL):
+	case TIMER_REG(HVTIMER_CTL):
+		return vcpu_timer(vcpu, TIMER_HVTIMER);
+#endif
 	}
 
 	pr_warn("unhandled timer ID register: 0x%llx\n", regid);
@@ -810,14 +821,26 @@ int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 		break;
 	case TIMER_REG(PTIMER_CTL):
 	case TIMER_REG(TIMER_CTL):
+	case TIMER_REG(HPTIMER_CTL):
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_CTL):
+#endif
 		gtimer->cnt_ctl = value & ~ARCH_TIMER_CTRL_IT_STAT;
 		break;
 	case TIMER_REG(PTIMER_CVAL):
 	case TIMER_REG(TIMER_CVAL):
+	case TIMER_REG(HPTIMER_CVAL):
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_CVAL):
+#endif
 		gtimer->cnt_cval = value;
 		break;
 	case TIMER_REG(PTIMER_TVAL):
 	case TIMER_REG(TIMER_TVAL):
+	case TIMER_REG(HPTIMER_TVAL):
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_TVAL):
+#endif
 		gtimer->cnt_cval = (kvm_phys_timer_read() - gtimer->cntvoff) +
 				   (int)value;
 		break;
@@ -858,9 +881,17 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 		return kvm_phys_timer_read();
 	case TIMER_REG(PTIMER_CTL):
 	case TIMER_REG(TIMER_CTL):
+	case TIMER_REG(HPTIMER_CTL):
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_CTL):
+#endif
 		return read_timer_ctl(gtimer);
 	case TIMER_REG(PTIMER_CVAL):
 	case TIMER_REG(TIMER_CVAL):
+	case TIMER_REG(HPTIMER_CVAL):
+#ifdef CONFIG_ARM64
+	case TIMER_REG(HVTIMER_CVAL):
+#endif
 		return gtimer->cnt_cval;
 	case TIMER_REG(PTIMER_TVAL):
 	case TIMER_REG(TIMER_TVAL):

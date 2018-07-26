@@ -290,21 +290,19 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,
 }
 
 /* Schedule the background timer for the emulated timer. */
-static void phys_timer_emulate(struct kvm_vcpu *vcpu)
+static void timer_emulate(struct arch_timer_context *gtimer)
 {
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
-
 	/*
 	 * If the timer can fire now, we don't need to have a soft timer
 	 * scheduled for the future.  If the timer cannot fire at all,
 	 * then we also don't need a soft timer.
 	 */
-	if (kvm_timer_should_fire(ptimer) || !kvm_timer_irq_can_fire(ptimer)) {
-		soft_timer_cancel(&ptimer->linux_timer, NULL);
+	if (kvm_timer_should_fire(gtimer) || !kvm_timer_irq_can_fire(gtimer)) {
+		soft_timer_cancel(&gtimer->linux_timer, NULL);
 		return;
 	}
 
-	soft_timer_start(&ptimer->linux_timer, kvm_timer_compute_delta(ptimer));
+	soft_timer_start(&gtimer->linux_timer, kvm_timer_compute_delta(gtimer));
 }
 
 /*
@@ -332,7 +330,7 @@ static void kvm_timer_update_state(struct kvm_vcpu *vcpu)
 	level = kvm_timer_should_fire(vtimer);
 	kvm_timer_update_irq(vcpu, level, vtimer);
 
-	phys_timer_emulate(vcpu);
+	timer_emulate(ptimer);
 
 	if (kvm_timer_should_fire(ptimer) != ptimer->irq.level)
 		kvm_timer_update_irq(vcpu, !ptimer->irq.level, ptimer);
@@ -502,7 +500,7 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 	vtimer_restore_state(vcpu);
 
 	/* Set the background timer for the physical timer emulation. */
-	phys_timer_emulate(vcpu);
+	timer_emulate(ptimer);
 
 	/* If the timer fired while we weren't running, inject it now */
 	if (kvm_timer_should_fire(ptimer) != ptimer->irq.level)

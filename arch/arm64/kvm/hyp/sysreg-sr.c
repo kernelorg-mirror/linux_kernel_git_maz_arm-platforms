@@ -119,10 +119,21 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 		__sysreg_save_vel1_state(ctxt);
 }
 
+/* Read the guest's PSTATE from SPSR_EL2, but restore vEL2 if needed. */
+static u64 __hyp_text from_hw_pstate(const struct kvm_cpu_context *ctxt)
+{
+	u64 reg = read_sysreg_el2(spsr);
+
+	if ((ctxt->gp_regs.regs.pstate & 0x0c) != PSR_MODE_EL2t)
+		return reg;
+
+	return (reg & ~0x0c) | PSR_MODE_EL2t;
+}
+
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)
 {
 	ctxt->gp_regs.regs.pc		= read_sysreg_el2(elr);
-	ctxt->gp_regs.regs.pstate	= read_sysreg_el2(spsr);
+	ctxt->gp_regs.regs.pstate	= from_hw_pstate(ctxt);
 
 	if (cpus_have_const_cap(ARM64_HAS_RAS_EXTN))
 		ctxt->sys_regs[DISR_EL1] = read_sysreg_s(SYS_VDISR_EL2);
@@ -247,11 +258,22 @@ static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 		__sysreg_restore_vel1_state(ctxt);
 }
 
+/* Read the VCPU state's PSTATE, but translate (v)EL2 to EL1. */
+static u64 __hyp_text to_hw_pstate(const struct kvm_cpu_context *ctxt)
+{
+	u64 reg = ctxt->gp_regs.regs.pstate;
+
+	if ((reg & 0x0c) != PSR_MODE_EL2t)
+		return reg;
+
+	return (reg & ~0x0c) | PSR_MODE_EL1t;
+}
+
 static void __hyp_text
 __sysreg_restore_el2_return_state(struct kvm_cpu_context *ctxt)
 {
 	write_sysreg_el2(ctxt->gp_regs.regs.pc,		elr);
-	write_sysreg_el2(ctxt->gp_regs.regs.pstate,	spsr);
+	write_sysreg_el2(to_hw_pstate(ctxt),		spsr);
 
 	if (cpus_have_const_cap(ARM64_HAS_RAS_EXTN))
 		write_sysreg_s(ctxt->sys_regs[DISR_EL1], SYS_VDISR_EL2);

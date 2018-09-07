@@ -18,6 +18,12 @@
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
 
+/* TODO: change these two functions to mimic the vcpu_put/load() routines.
+ * These should differentiate between vEL2 and (v)EL1 to write the right
+ * registers into the CPU.
+ * Do we need to consider sysregs_loaded_on_cpu for this?
+ */
+
 static void __hyp_text __save_vmregs(struct kvm_cpu_context *ctxt)
 {
 	ctxt->sys_regs[TTBR0_EL1]	= read_sysreg_el1(ttbr0);

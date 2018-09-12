@@ -366,6 +366,7 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 	kvm_arm_reset_debug_ptr(vcpu);
 
 	vcpu->arch.hw_mmu = mmu;
+	vcpu->arch.vttbr_el2 = kvm_get_vttbr(&mmu->vmid, mmu);
 
 	return kvm_vgic_vcpu_init(vcpu);
 }

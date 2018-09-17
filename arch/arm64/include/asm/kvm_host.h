@@ -151,6 +151,7 @@ enum vcpu_sysreg {
 	DBGVCR32_EL2,	/* Debug Vector Catch Register */
 
 	SPSR_EL1,	/* The CPU's SPSR_EL1 while running in vEL2 */
+	ELR_EL1,
 
 	SP_EL1,
 

@@ -133,6 +133,9 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 	else
 		INIT_LIST_HEAD(&kvm->arch.vgic.rd_regions);
 
+	kvm->arch.vgic.vgic_hyp_base = VGIC_ADDR_UNDEF;
+	kvm->arch.vgic.vgic_vcpu_base = VGIC_ADDR_UNDEF;
+
 out_unlock:
 	for (; vcpu_lock_idx >= 0; vcpu_lock_idx--) {
 		vcpu = kvm_get_vcpu(kvm, vcpu_lock_idx);

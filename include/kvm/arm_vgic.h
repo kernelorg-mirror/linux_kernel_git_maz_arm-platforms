@@ -233,7 +233,11 @@ struct vgic_dist {
 	gpa_t			vgic_dist_base;		/* distributor */
 	union {
 		/* either a GICv2 CPU interface */
-		gpa_t			vgic_cpu_base;
+		struct {
+			gpa_t		vgic_cpu_base;
+			gpa_t		vgic_hyp_base;
+			gpa_t		vgic_vcpu_base;
+		};
 		/* or a number of GICv3 redistributor regions */
 		struct list_head rd_regions;
 	};

@@ -554,7 +554,8 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	if (static_branch_likely(&has_gic_active_state)) {
 		kvm_timer_vcpu_load_gic(vtimer);
-		kvm_timer_vcpu_load_gic(ptimer);
+		if (has_vhe())
+			kvm_timer_vcpu_load_gic(ptimer);
 	} else {
 		kvm_timer_vcpu_load_nogic(vcpu);
 	}

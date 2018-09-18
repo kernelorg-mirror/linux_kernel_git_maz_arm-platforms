@@ -18,6 +18,7 @@
 #include <linux/kvm.h>
 #include <linux/kvm_host.h>
 
+#include <asm/kvm_coproc.h>
 #include <asm/kvm_emulate.h>
 
 #include "trace.h"
@@ -48,6 +49,36 @@ static u64 get_el2_except_vector(struct kvm_vcpu *vcpu,
 	return __vcpu_sys_reg(vcpu, VBAR_EL2) + exc_offset + type;
 }
 
+void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
+{
+	unsigned long spsr = vcpu_read_spsr_el2(vcpu);
+	unsigned long elr = vcpu_read_sys_reg(vcpu, ELR_EL2);
+
+	trace_kvm_nested_eret(vcpu, elr, spsr);
+
+	/*
+	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
+	 * bit is set.
+	 */
+	if (forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return;
+	}
+
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
+	/*
+	 * Note that the current exception level is always the virtual EL2,
+	 * since we set HCR_EL2.NV bit only when entering the virtual EL2.
+	 */
+	*vcpu_pc(vcpu) = elr;
+	*vcpu_cpsr(vcpu) = spsr;
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
+}
+
 /*
  * Emulate taking an exception to EL2.
  * See ARM ARM J8.1.2 AArch64.TakeException()
@@ -63,6 +94,9 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 		return -EINVAL;
 	}
 
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
 	vcpu_write_spsr_el2(vcpu, *vcpu_cpsr(vcpu));
 	__vcpu_sys_reg(vcpu, ELR_EL2) = *vcpu_pc(vcpu);
 	__vcpu_sys_reg(vcpu, ESR_EL2) = esr_el2;
@@ -73,6 +107,9 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 	*vcpu_cpsr(vcpu) |= PSR_A_BIT | PSR_F_BIT | PSR_I_BIT | PSR_D_BIT;
 
 	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
 
 	return ret;
 }

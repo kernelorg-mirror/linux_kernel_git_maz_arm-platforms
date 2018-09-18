@@ -226,25 +226,7 @@ static int handle_sve(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 static int kvm_handle_eret(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
-	unsigned long spsr = vcpu_read_spsr_el2(vcpu);
-	unsigned long elr = vcpu_read_sys_reg(vcpu, ELR_EL2);
-
-	trace_kvm_nested_eret(vcpu, elr, spsr);
-
-	/*
-	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
-	 * bit is set.
-	 */
-	if (forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
-
-	/*
-	 * Note that the current exception level is always the virtual EL2,
-	 * since we set HCR_EL2.NV bit only when entering the virtual EL2.
-	 */
-	*vcpu_pc(vcpu) = elr;
-	*vcpu_cpsr(vcpu) = spsr;
-
+	kvm_emulate_nested_eret(vcpu);
 	return 1;
 }
 

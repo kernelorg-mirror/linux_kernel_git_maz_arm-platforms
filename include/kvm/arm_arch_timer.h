@@ -23,16 +23,6 @@
 #include <linux/hrtimer.h>
 #include <linux/workqueue.h>
 
-/* We emulate all four non-secure timers for nested virt guests. */
-
-enum kvm_arch_timers {
-	TIMER_VTIMER,
-	TIMER_PTIMER,
-	TIMER_HPTIMER,
-	TIMER_HVTIMER,
-	NR_KVM_TIMERS
-};
-
 struct arch_timer_context {
 	/* Registers: control register, timer value */
 	u32				cnt_ctl;
@@ -53,22 +43,20 @@ struct arch_timer_context {
 
 	/* Virtual offset */
 	u64			cntvoff;
-
-	/* Used when this timer is emulated. */
-	struct hrtimer		linux_timer;
-
-	/* Which timer is this, in case we need to access a system register. */
-	enum kvm_arch_timers	timer_id;
 };
 
 struct arch_timer_cpu {
-	struct arch_timer_context	timers[NR_KVM_TIMERS];
+	struct arch_timer_context	vtimer;
+	struct arch_timer_context	ptimer;
 
 	/* Background timer used when the guest is not running */
 	struct hrtimer			bg_timer;
 
 	/* Work queued with the above timer expires */
 	struct work_struct		expired;
+
+	/* Physical timer emulation */
+	struct hrtimer			phys_timer;
 
 	/* Is the timer enabled */
 	bool			enabled;
@@ -104,8 +92,7 @@ void kvm_timer_init_vhe(void);
 
 bool kvm_arch_timer_get_input_level(int vintid);
 
-#define vcpu_timer(v, timer) (&((v)->arch.timer_cpu.timers[timer]))
-#define vcpu_vtimer(v) vcpu_timer(v, TIMER_VTIMER)
-#define vcpu_ptimer(v) vcpu_timer(v, TIMER_PTIMER)
+#define vcpu_vtimer(v)	(&(v)->arch.timer_cpu.vtimer)
+#define vcpu_ptimer(v)	(&(v)->arch.timer_cpu.ptimer)
 
 #endif

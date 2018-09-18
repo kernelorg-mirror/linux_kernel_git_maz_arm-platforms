@@ -1206,6 +1206,7 @@ static int __init arch_timer_of_init(struct device_node *np)
 		arch_timer_ppi[i] = irq_of_parse_and_map(np, i);
 
 	arch_timer_kvm_info.virtual_irq = arch_timer_ppi[ARCH_TIMER_VIRT_PPI];
+	arch_timer_kvm_info.physical_irq = arch_timer_ppi[ARCH_TIMER_PHYS_NONSECURE_PPI];
 
 	rate = arch_timer_get_cntfrq();
 	arch_timer_of_configure_rate(rate, np);
@@ -1229,13 +1230,6 @@ static int __init arch_timer_of_init(struct device_node *np)
 		pr_err("No interrupt available, giving up\n");
 		return -EINVAL;
 	}
-
-	/*
-	 * If the (VHE) host is not using the physical timer, we can
-	 * pass it on to a guest.
-	 */
-	if (arch_timer_uses_ppi != ARCH_TIMER_PHYS_NONSECURE_PPI)
-		arch_timer_kvm_info.physical_irq = arch_timer_ppi[ARCH_TIMER_PHYS_NONSECURE_PPI];
 
 	/* On some systems, the counter stops ticking when in suspend. */
 	arch_counter_suspend_stop = of_property_read_bool(np,
@@ -1543,6 +1537,7 @@ static int __init arch_timer_acpi_init(struct acpi_table_header *table)
 		acpi_gtdt_map_ppi(ARCH_TIMER_HYP_PPI);
 
 	arch_timer_kvm_info.virtual_irq = arch_timer_ppi[ARCH_TIMER_VIRT_PPI];
+	arch_timer_kvm_info.physical_irq = arch_timer_ppi[ARCH_TIMER_PHYS_NONSECURE_PPI];
 
 	/*
 	 * When probing via ACPI, we have no mechanism to override the sysreg

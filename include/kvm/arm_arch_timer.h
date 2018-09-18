@@ -46,6 +46,10 @@ struct arch_timer_context {
 
 	/* Emulated Timer (may be unused) */
 	struct hrtimer			hrtimer;
+
+	/* Duplicated state from arch_timer.c for convenience */
+	u32				host_timer_irq;
+	u32				host_timer_irq_flags;
 };
 
 enum loaded_timer_state {
@@ -107,5 +111,7 @@ bool kvm_arch_timer_get_input_level(int vintid);
 #define vcpu_timer(v)	(&(v)->arch.timer_cpu)
 #define vcpu_vtimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_VTIMER])
 #define vcpu_ptimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_PTIMER])
+
+#define arch_timer_ctx_index(ctx)	((ctx) - vcpu_vtimer((ctx)->vcpu))
 
 #endif

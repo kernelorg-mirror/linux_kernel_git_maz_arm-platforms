@@ -2,6 +2,7 @@
 #if !defined(_TRACE_KVM_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _TRACE_KVM_H
 
+#include <kvm/arm_arch_timer.h>
 #include <linux/tracepoint.h>
 
 #undef TRACE_SYSTEM
@@ -260,6 +261,37 @@ TRACE_EVENT(kvm_timer_update_irq,
 
 	TP_printk("VCPU: %ld, IRQ %d, level %d",
 		  __entry->vcpu_id, __entry->irq, __entry->level)
+);
+
+TRACE_EVENT(kvm_get_timer_map,
+	TP_PROTO(unsigned long vcpu_id, struct timer_map *map),
+	TP_ARGS(vcpu_id, map),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,		vcpu_id	)
+		__field(	int,			direct_vtimer	)
+		__field(	int,			direct_ptimer	)
+		__field(	int,			emul_vtimer	)
+		__field(	int,			emul_ptimer	)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_id		= vcpu_id;
+		__entry->direct_vtimer		= arch_timer_ctx_index(map->direct_vtimer);
+		__entry->direct_ptimer =
+			(map->direct_ptimer) ? arch_timer_ctx_index(map->direct_ptimer) : -1;
+		__entry->emul_vtimer =
+			(map->emul_vtimer) ? arch_timer_ctx_index(map->emul_vtimer) : -1;
+		__entry->emul_ptimer =
+			(map->emul_ptimer) ? arch_timer_ctx_index(map->emul_ptimer) : -1;
+	),
+
+	TP_printk("VCPU: %ld, dv: %d, dp: %d, ev: %d, ep: %d",
+		  __entry->vcpu_id,
+		  __entry->direct_vtimer,
+		  __entry->direct_ptimer,
+		  __entry->emul_vtimer,
+		  __entry->emul_ptimer)
 );
 
 #endif /* _TRACE_KVM_H */

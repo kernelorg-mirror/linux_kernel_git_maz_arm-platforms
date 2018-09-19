@@ -71,13 +71,6 @@ u64 kvm_phys_timer_read(void)
 	return timecounter->cc->read(timecounter->cc);
 }
 
-struct timer_map {
-	struct arch_timer_context *direct_vtimer;
-	struct arch_timer_context *direct_ptimer;
-	struct arch_timer_context *emul_vtimer;
-	struct arch_timer_context *emul_ptimer;
-};
-
 static void get_timer_map(struct kvm_vcpu *vcpu, struct timer_map *map)
 {
 	if (nested_virt_in_use(vcpu)) {
@@ -92,9 +85,7 @@ static void get_timer_map(struct kvm_vcpu *vcpu, struct timer_map *map)
 			map->emul_vtimer = vcpu_hvtimer(vcpu);
 			map->emul_ptimer = vcpu_hptimer(vcpu);
 		}
-	}
-
-	if (has_vhe()) {
+	} else if (has_vhe()) {
 		map->direct_vtimer = vcpu_vtimer(vcpu);
 		map->direct_ptimer = vcpu_ptimer(vcpu);
 		map->emul_vtimer = NULL;
@@ -105,8 +96,9 @@ static void get_timer_map(struct kvm_vcpu *vcpu, struct timer_map *map)
 		map->emul_vtimer = NULL;
 		map->emul_ptimer = vcpu_ptimer(vcpu);
 	}
-}
 
+	trace_kvm_get_timer_map(vcpu->vcpu_id, map);
+}
 
 static inline bool userspace_irqchip(struct kvm *kvm)
 {
@@ -283,7 +275,7 @@ static bool kvm_timer_should_fire(struct arch_timer_context *timer_ctx)
 	timer = vcpu_timer(timer_ctx->vcpu);
 	index = arch_timer_ctx_index(timer_ctx);
 
-	if (timer->loaded == TIMER_EL1_LOADED) {
+	if (timer_ctx->loaded) {
 		u32 cnt_ctl = 0;
 
 		switch (index) {
@@ -317,13 +309,14 @@ static bool kvm_timer_should_fire(struct arch_timer_context *timer_ctx)
 
 bool kvm_timer_is_pending(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	struct timer_map map;
 
-	if (kvm_timer_should_fire(vtimer))
-		return true;
+	get_timer_map(vcpu, &map);
 
-	return kvm_timer_should_fire(ptimer);
+	return kvm_timer_should_fire(map.direct_vtimer) ||
+	       (map.direct_ptimer && kvm_timer_should_fire(map.direct_ptimer)) ||
+	       (map.emul_vtimer   && kvm_timer_should_fire(map.emul_vtimer)) ||
+	       (map.emul_ptimer   && kvm_timer_should_fire(map.emul_ptimer));
 }
 
 /*
@@ -426,7 +419,7 @@ static void timer_save_state(struct arch_timer_context *ctx)
 
 	local_irq_save(flags);
 
-	if (timer->loaded == TIMER_NOT_LOADED)
+	if (ctx->loaded)
 		goto out;
 
 	switch (index) {
@@ -454,7 +447,7 @@ static void timer_save_state(struct arch_timer_context *ctx)
 		break; /* GCC is braindead */
 	}
 
-	timer->loaded = TIMER_NOT_LOADED;
+	ctx->loaded = false;
 out:
 	local_irq_restore(flags);
 }
@@ -514,7 +507,7 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 
 	local_irq_save(flags);
 
-	if (timer->loaded == TIMER_EL1_LOADED)
+	if (ctx->loaded)
 		goto out;
 
 	switch (index) {
@@ -534,7 +527,7 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 		break; /* GCC is braindead */
 	}
 
-	timer->loaded = TIMER_EL1_LOADED;
+	ctx->loaded = true;
 out:
 	local_irq_restore(flags);
 }
@@ -542,12 +535,13 @@ out:
 void kvm_timer_unschedule(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	struct timer_map map;
 
-	timer_restore_state(vtimer);
-	if (has_vhe()) {
-		timer_restore_state(ptimer);
+	get_timer_map(vcpu, &map);
+
+	timer_restore_state(map.direct_vtimer);
+	if (map.direct_ptimer) {
+		timer_restore_state(map.direct_ptimer);
 		return;
 	}
 
@@ -608,6 +602,40 @@ static void kvm_timer_vcpu_load_nogic(struct kvm_vcpu *vcpu)
 		enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
 }
 
+static void kvm_timer_vcpu_load_nested_switch(struct kvm_vcpu *vcpu,
+					      struct timer_map *map)
+{
+	int hw, ret;
+
+	if (!irqchip_in_kernel(vcpu->kvm))
+		return;
+
+	/*
+	 * We only ever unmap the vtimer irq on a VHE system that runs nested
+	 * virtualization, in which case we have both a valid emul_vtimer,
+	 * emul_ptimer, direct_vtimer, and direct_ptimer.
+	 *
+	 * Since this is called from kvm_timer_vcpu_load(), a change between
+	 * vEL2 and vEL1/0 will have just happened, and the timer_map will
+	 * represent this, and therefore we switch the emul/direct mappings
+	 * below.
+	 */
+	hw = kvm_vgic_get_map(vcpu, map->direct_vtimer->irq.irq);
+	if (hw < 0) {
+		kvm_vgic_unmap_phys_irq(vcpu, map->emul_vtimer->irq.irq);
+		kvm_vgic_unmap_phys_irq(vcpu, map->emul_ptimer->irq.irq);
+
+		ret = kvm_vgic_map_phys_irq(vcpu,
+					    map->direct_vtimer->host_timer_irq,
+					    map->direct_vtimer->irq.irq,
+					    kvm_arch_timer_get_input_level);
+		ret = kvm_vgic_map_phys_irq(vcpu,
+					    map->direct_ptimer->host_timer_irq,
+					    map->direct_ptimer->irq.irq,
+					    kvm_arch_timer_get_input_level);
+	}
+}
+
 void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
@@ -619,6 +647,8 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 	get_timer_map(vcpu, &map);
 
 	if (static_branch_likely(&has_gic_active_state)) {
+		kvm_timer_vcpu_load_nested_switch(vcpu, &map);
+
 		kvm_timer_vcpu_load_gic(map.direct_vtimer);
 		if (map.direct_ptimer)
 			kvm_timer_vcpu_load_gic(map.direct_ptimer);
@@ -726,8 +756,6 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 
 	/*
 	 * The bits in CNTV_CTL are architecturally reset to UNKNOWN for ARMv8
@@ -735,12 +763,21 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 	 * resets the timer to be disabled and unmasked and is compliant with
 	 * the ARMv7 architecture.
 	 */
-	vtimer->cnt_ctl = 0;
-	ptimer->cnt_ctl = 0;
+	vcpu_vtimer(vcpu)->cnt_ctl = 0;
+	vcpu_ptimer(vcpu)->cnt_ctl = 0;
+	vcpu_hvtimer(vcpu)->cnt_ctl = 0;
+	vcpu_hptimer(vcpu)->cnt_ctl = 0;
 	kvm_timer_update_state(vcpu);
 
-	if (timer->enabled && irqchip_in_kernel(vcpu->kvm))
-		kvm_vgic_reset_mapped_irq(vcpu, vtimer->irq.irq);
+	if (timer->enabled && irqchip_in_kernel(vcpu->kvm)) {
+		struct timer_map map;
+
+		get_timer_map(vcpu, &map);
+
+		kvm_vgic_reset_mapped_irq(vcpu, map.direct_vtimer->irq.irq);
+		if (map.direct_ptimer)
+			kvm_vgic_reset_mapped_irq(vcpu, map.direct_ptimer->irq.irq);
+	}
 
 	return 0;
 }
@@ -775,6 +812,8 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	/* Synchronize cntvoff across all vtimers of a VM. */
 	update_vtimer_cntvoff(vcpu, kvm_phys_timer_read());
 	ptimer->cntvoff = 0;
+	hvtimer->cntvoff = 0;
+	hptimer->cntvoff = 0;
 
 	INIT_WORK(&timer->expired, kvm_timer_inject_irq_work);
 	hrtimer_init(&timer->bg_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
@@ -813,6 +852,7 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 static void kvm_timer_init_interrupt(void *info)
 {
 	enable_percpu_irq(host_vtimer_irq, host_vtimer_irq_flags);
+	enable_percpu_irq(host_ptimer_irq, host_ptimer_irq_flags);
 }
 
 int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
@@ -931,6 +971,17 @@ int kvm_timer_hyp_init(bool has_gic)
 		return err;
 	}
 
+	if (has_gic) {
+		err = irq_set_vcpu_affinity(host_vtimer_irq,
+					    kvm_get_running_vcpus());
+		if (err) {
+			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
+			goto out_free_irq;
+		}
+
+		static_branch_enable(&has_gic_active_state);
+	}
+
 	/* Now let's do the physical EL1 timer irq */
 
 	if (info->physical_irq <= 0) {
@@ -955,19 +1006,17 @@ int kvm_timer_hyp_init(bool has_gic)
 		return err;
 	}
 
-
 	if (has_gic) {
-		err = irq_set_vcpu_affinity(host_vtimer_irq,
+		err = irq_set_vcpu_affinity(host_ptimer_irq,
 					    kvm_get_running_vcpus());
 		if (err) {
 			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
 			goto out_free_irq;
 		}
-
-		static_branch_enable(&has_gic_active_state);
 	}
 
 	kvm_debug("virtual timer IRQ%d\n", host_vtimer_irq);
+	kvm_debug("physical timer IRQ%d\n", host_ptimer_irq);
 
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,
@@ -981,12 +1030,15 @@ out_free_irq:
 void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
+	struct timer_map map;
+
+	get_timer_map(vcpu, &map);
 
 	soft_timer_cancel(&timer->bg_timer, &timer->expired);
-	soft_timer_cancel(&ptimer->hrtimer, NULL);
-	kvm_vgic_unmap_phys_irq(vcpu, vtimer->irq.irq);
+	if (map.emul_vtimer)
+		soft_timer_cancel(&map.emul_vtimer->hrtimer, NULL);
+	if (map.emul_ptimer)
+		soft_timer_cancel(&map.emul_ptimer->hrtimer, NULL);
 }
 
 static bool timer_irqs_are_valid(struct kvm_vcpu *vcpu)
@@ -1020,8 +1072,14 @@ bool kvm_arch_timer_get_input_level(int vintid)
 
 	if (vintid == vcpu_vtimer(vcpu)->irq.irq)
 		timer = vcpu_vtimer(vcpu);
+	else if (vintid == vcpu_ptimer(vcpu)->irq.irq)
+		timer = vcpu_ptimer(vcpu);
+	else if (vintid == vcpu_hvtimer(vcpu)->irq.irq)
+		timer = vcpu_hvtimer(vcpu);
+	else if (vintid == vcpu_hptimer(vcpu)->irq.irq)
+		timer = vcpu_hptimer(vcpu);
 	else
-		BUG(); /* We only map the vtimer so far */
+		BUG();
 
 	return kvm_timer_should_fire(timer);
 }
@@ -1029,7 +1087,7 @@ bool kvm_arch_timer_get_input_level(int vintid)
 int kvm_timer_enable(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
+	struct timer_map map;
 	int ret;
 
 	if (timer->enabled)
@@ -1047,8 +1105,22 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		return -EINVAL;
 	}
 
-	ret = kvm_vgic_map_phys_irq(vcpu, host_vtimer_irq, vtimer->irq.irq,
+	get_timer_map(vcpu, &map);
+
+	ret = kvm_vgic_map_phys_irq(vcpu,
+				    map.direct_vtimer->host_timer_irq,
+				    map.direct_vtimer->irq.irq,
 				    kvm_arch_timer_get_input_level);
+	if (ret)
+		return ret;
+
+	if (map.direct_ptimer) {
+		ret = kvm_vgic_map_phys_irq(vcpu,
+					    map.direct_ptimer->host_timer_irq,
+					    map.direct_ptimer->irq.irq,
+					    kvm_arch_timer_get_input_level);
+	}
+
 	if (ret)
 		return ret;
 

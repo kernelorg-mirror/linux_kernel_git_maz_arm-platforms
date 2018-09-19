@@ -28,6 +28,8 @@
 enum kvm_arch_timers {
 	TIMER_VTIMER,
 	TIMER_PTIMER,
+	TIMER_HVTIMER,
+	TIMER_HPTIMER,
 	NR_KVM_TIMERS
 };
 
@@ -55,6 +57,7 @@ struct arch_timer_context {
 enum loaded_timer_state {
 	TIMER_NOT_LOADED,
 	TIMER_EL1_LOADED,
+	TIMER_EL2_LOADED
 };
 
 struct arch_timer_cpu {
@@ -111,6 +114,8 @@ bool kvm_arch_timer_get_input_level(int vintid);
 #define vcpu_timer(v)	(&(v)->arch.timer_cpu)
 #define vcpu_vtimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_VTIMER])
 #define vcpu_ptimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_PTIMER])
+#define vcpu_hvtimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_HVTIMER])
+#define vcpu_hptimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_HPTIMER])
 
 #define arch_timer_ctx_index(ctx)	((ctx) - vcpu_vtimer((ctx)->vcpu))
 

@@ -592,7 +592,6 @@ static inline int kvm_arm_have_ssbd(void)
 
 void kvm_vcpu_load_sysregs(struct kvm_vcpu *vcpu);
 void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu);
-int __init kvmarm_nested_cfg(char *buf);
 int init_nested_virt(void);
 bool nested_virt_in_use(struct kvm_vcpu *vcpu);
 int handle_wfx_nested(struct kvm_vcpu *vcpu, bool is_wfe);

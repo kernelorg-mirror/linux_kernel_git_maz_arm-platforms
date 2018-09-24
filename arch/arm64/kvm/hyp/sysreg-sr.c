@@ -102,7 +102,7 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 
 	ctxt->sys_regs[SP_EL2]		= read_sysreg(sp_el1);
 	ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
-	ctxt->sys_regs[SPSR_EL1]	= read_sysreg_el1(spsr);
+	ctxt->sys_regs[SPSR_EL2]	= read_sysreg_el1(spsr);
 }
 
 static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
@@ -218,7 +218,7 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 
 	write_sysreg(ctxt->sys_regs[SP_EL2],		sp_el1);
 	write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
-	write_sysreg_el1(ctxt->sys_regs[SPSR_EL1],	spsr);
+	write_sysreg_el1(ctxt->sys_regs[SPSR_EL2],	spsr);
 }
 
 static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)

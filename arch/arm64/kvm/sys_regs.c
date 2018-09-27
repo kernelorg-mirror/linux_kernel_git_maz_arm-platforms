@@ -1501,33 +1501,31 @@ static bool access_id_aa64mmfr0_el1(struct kvm_vcpu *v,
 				    const struct sys_reg_desc *r)
 {
 	u64 val;
-	u64 vtcr_tg0 = VTCR_EL2_TGRAN_FLAGS & VTCR_EL2_TG0_MASK;
-
-	if (!nested_virt_in_use(v))
-		return access_id_reg(v, p, r);
 
 	if (p->is_write)
 		return write_to_read_only(v, p, r);
 
-	val = p->regval;
+	val = read_id_reg(r, false);
+
+	if (!nested_virt_in_use(v))
+		goto out;
+
 	/*
 	 * Don't expose granules smaller than the host's granule to the guest.
 	 * We can theoretically support a guest hypervisor having
 	 * smaller-than-host granularities but it is not worth it since it
 	 * makes the implementation complicated and it would waste memory.
 	 */
-	switch (vtcr_tg0) {
-	case VTCR_EL2_TG0_64K:
+	switch (PAGE_SIZE) {
+	case SZ_64K:
 		/* 16KB granule not supported */
 		val &= ~(0xf << ID_AA64MMFR0_TGRAN16_SHIFT);
 		val |= (ID_AA64MMFR0_TGRAN16_NI << ID_AA64MMFR0_TGRAN16_SHIFT);
 		/* fall through */
-	case VTCR_EL2_TG0_16K:
+	case SZ_16K:
 		/* 4KB granule not supported */
 		val &= ~(0xf << ID_AA64MMFR0_TGRAN4_SHIFT);
 		val |= (ID_AA64MMFR0_TGRAN4_NI << ID_AA64MMFR0_TGRAN4_SHIFT);
-		break;
-	default:
 		break;
 	}
 
@@ -1535,6 +1533,7 @@ static bool access_id_aa64mmfr0_el1(struct kvm_vcpu *v,
 	val &= ~(0xf << ID_AA64MMFR0_PARANGE_SHIFT);
 	val |= (0x2 << ID_AA64MMFR0_PARANGE_SHIFT); /* 40 bits */
 
+out:
 	p->regval = val;
 
 	return true;
@@ -1626,8 +1625,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	ID_SANITISED(ID_PFR1_EL1),
 	ID_SANITISED(ID_DFR0_EL1),
 	ID_HIDDEN(ID_AFR0_EL1),
-	{ SYS_DESC(SYS_ID_MMFR0_EL1), access_id_aa64mmfr0_el1, NULL, 0, 0,
-	  get_id_reg, set_id_reg },
+	ID_SANITISED(ID_MMFR0_EL1),
 	ID_SANITISED(ID_MMFR1_EL1),
 	ID_SANITISED(ID_MMFR2_EL1),
 	ID_SANITISED(ID_MMFR3_EL1),
@@ -1684,7 +1682,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	ID_UNALLOCATED(6,7),
 
 	/* CRm=7 */
-	ID_SANITISED(ID_AA64MMFR0_EL1),
+	{ SYS_DESC(SYS_ID_AA64MMFR0_EL1), access_id_aa64mmfr0_el1, NULL, 0, 0,
+	  get_id_reg, set_id_reg },
 	ID_SANITISED(ID_AA64MMFR1_EL1),
 	ID_SANITISED(ID_AA64MMFR2_EL1),
 	ID_UNALLOCATED(7,3),

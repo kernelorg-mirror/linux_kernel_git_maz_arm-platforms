@@ -267,7 +267,7 @@
 					compatible = "marvell,armada-ap806-thermal";
 					reg = <0x80 0x10>;
 					interrupt-parent = <&sei>;
-					interrupts = <18 IRQ_TYPE_LEVEL_HIGH>;
+					interrupts = <18>;
 					#thermal-sensor-cells = <1>;
 				};
 			};

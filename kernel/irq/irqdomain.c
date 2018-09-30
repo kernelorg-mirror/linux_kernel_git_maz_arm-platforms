@@ -113,6 +113,31 @@ void irq_domain_free_fwnode(struct fwnode_handle *fwnode)
 }
 EXPORT_SYMBOL_GPL(irq_domain_free_fwnode);
 
+static char *build_of_full_name(struct device_node *node)
+{
+	char *name;
+
+	name = kstrdup(of_node_full_name(node), GFP_KERNEL);
+#ifdef CONFIG_OF
+	if (!name)
+		return NULL;
+
+	while (node->parent && !of_node_is_root(node->parent)) {
+		char *tmp;
+
+		tmp = kasprintf(GFP_KERNEL, "%s:%s",
+				of_node_full_name(node->parent), name);
+		if (!tmp)
+			break;
+
+		kfree(name);
+		name = tmp;
+		node = node->parent;
+	}
+#endif
+	return name;
+}
+
 /**
  * __irq_domain_add() - Allocate a new irq_domain data structure
  * @fwnode: firmware node for the interrupt controller
@@ -176,22 +201,12 @@ struct irq_domain *__irq_domain_add(struct fwnode_handle *fwnode, int size,
 		domain->fwnode = fwnode;
 #endif
 	} else if (of_node) {
-		char *name;
-
-		/*
-		 * DT paths contain '/', which debugfs is legitimately
-		 * unhappy about. Replace them with ':', which does
-		 * the trick and is not as offensive as '\'...
-		 */
-		name = kstrdup(of_node_full_name(of_node), GFP_KERNEL);
-		if (!name) {
+		domain->name = build_of_full_name(of_node);
+		if (!domain->name) {
 			kfree(domain);
 			return NULL;
 		}
 
-		strreplace(name, '/', ':');
-
-		domain->name = name;
 		domain->fwnode = fwnode;
 		domain->flags |= IRQ_DOMAIN_NAME_ALLOCATED;
 	}

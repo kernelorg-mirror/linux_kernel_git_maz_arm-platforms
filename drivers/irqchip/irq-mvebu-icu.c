@@ -50,7 +50,6 @@ struct mvebu_icu_subset_data {
 };
 
 struct mvebu_icu {
-	struct irq_chip irq_chip;
 	void __iomem *base;
 	struct device *dev;
 
@@ -134,6 +133,24 @@ static void mvebu_icu_write_msg(struct msi_desc *desc, struct msi_msg *msg)
 	}
 }
 
+static struct irq_chip mvebu_icu_nsr_chip = {
+	.name			= "ICU-NSR",
+	.irq_mask		= irq_chip_mask_parent,
+	.irq_unmask		= irq_chip_unmask_parent,
+	.irq_eoi		= irq_chip_eoi_parent,
+	.irq_set_type		= irq_chip_set_type_parent,
+	.irq_set_affinity	= irq_chip_set_affinity_parent,
+};
+
+static struct irq_chip mvebu_icu_sei_chip = {
+	.name			= "ICU-SEI",
+	.irq_ack		= irq_chip_ack_parent,
+	.irq_mask		= irq_chip_mask_parent,
+	.irq_unmask		= irq_chip_unmask_parent,
+	.irq_set_type		= irq_chip_set_type_parent,
+	.irq_set_affinity	= irq_chip_set_affinity_parent,
+};
+
 static int
 mvebu_icu_irq_domain_translate(struct irq_domain *d, struct irq_fwspec *fwspec,
 			       unsigned long *hwirq, unsigned int *type)
@@ -207,6 +224,7 @@ mvebu_icu_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	struct mvebu_icu_msi_data *msi_data = platform_msi_get_host_data(domain);
 	struct mvebu_icu *icu = msi_data->icu;
 	struct mvebu_icu_irq_data *icu_irqd;
+	struct irq_chip *chip = &mvebu_icu_nsr_chip;
 
 	icu_irqd = kmalloc(sizeof(*icu_irqd), GFP_KERNEL);
 	if (!icu_irqd)
@@ -240,8 +258,11 @@ mvebu_icu_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	if (err)
 		goto free_msi;
 
+	if (icu_irqd->icu_group == ICU_GRP_SEI)
+		chip = &mvebu_icu_sei_chip;
+
 	err = irq_domain_set_hwirq_and_chip(domain, virq, hwirq,
-					    &icu->irq_chip, icu_irqd);
+					    chip, icu_irqd);
 	if (err) {
 		dev_err(icu->dev, "failed to set the data to IRQ domain\n");
 		goto free_msi;
@@ -381,12 +402,6 @@ static int mvebu_icu_probe(struct platform_device *pdev)
 
 	mutex_init(&icu->msi_lock);
 
-	icu->irq_chip.name = devm_kasprintf(&pdev->dev, GFP_KERNEL,
-					    "ICU.%x",
-					    (unsigned int)res->start);
-	if (!icu->irq_chip.name)
-		return -ENOMEM;
-
 	/*
 	 * Legacy bindings: ICU is one node with one MSI parent: force manually
 	 *                  the probe of the NSR interrupts side.
@@ -396,14 +411,6 @@ static int mvebu_icu_probe(struct platform_device *pdev)
 	 */
 	if (!of_get_child_count(pdev->dev.of_node))
 		static_branch_enable(&legacy_bindings);
-
-	icu->irq_chip.irq_mask = irq_chip_mask_parent;
-	icu->irq_chip.irq_unmask = irq_chip_unmask_parent;
-	icu->irq_chip.irq_eoi = irq_chip_eoi_parent;
-	icu->irq_chip.irq_set_type = irq_chip_set_type_parent;
-#ifdef CONFIG_SMP
-	icu->irq_chip.irq_set_affinity = irq_chip_set_affinity_parent;
-#endif
 
 	/*
 	 * Clean all ICU interrupts of type NSR and SEI, required to

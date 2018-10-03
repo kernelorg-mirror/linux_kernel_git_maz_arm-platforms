@@ -117,7 +117,7 @@ static int kvm_handle_fpasimd(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 
 	/* This is for nested virtualization */
-	if (__vcpu_sys_reg(vcpu, CPTR_EL2) & CPTR_EL2_TFP)
+	if (vcpu_read_sys_reg(vcpu, CPTR_EL2) & CPTR_EL2_TFP)
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
 	/* This is the case when the system doesn't support FP/ASIMD. */

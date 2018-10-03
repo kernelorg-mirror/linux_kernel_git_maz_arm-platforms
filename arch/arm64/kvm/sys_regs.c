@@ -1997,7 +1997,7 @@ static u64 setup_par_completed(struct kvm_vcpu *vcpu, struct kvm_s2_trans *out)
 	/* RES1 [11] */
 	par |= (1UL << 11);
 	/* SH [8:7]: Shareability attribute */
-	vtcr_sh0 = __vcpu_sys_reg(vcpu, VTCR_EL2) & VTCR_EL2_SH0_MASK;
+	vtcr_sh0 = vcpu_read_sys_reg(vcpu, VTCR_EL2) & VTCR_EL2_SH0_MASK;
 	par |= (vtcr_sh0 >> VTCR_EL2_SH0_SHIFT) << 7;
 
 	return par;
@@ -2196,7 +2196,7 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static bool handle_tlbi_el1(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			    const struct sys_reg_desc *r)
 {
-	u64 virtual_vttbr = __vcpu_sys_reg(vcpu, VTTBR_EL2);
+	u64 virtual_vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	u64 vttbr;
 	struct kvm_nested_s2_mmu *nested_mmu;
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;

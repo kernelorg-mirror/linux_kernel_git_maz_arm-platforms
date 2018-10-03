@@ -62,8 +62,8 @@ static int esr_s2_fault(struct kvm_vcpu *vcpu, int level, u32 fsc)
 
 int kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u64 esr_el2)
 {
-	vcpu->arch.ctxt.sys_regs[FAR_EL2] = vcpu->arch.fault.far_el2;
-	vcpu->arch.ctxt.sys_regs[HPFAR_EL2] = vcpu->arch.fault.hpfar_el2;
+	vcpu_write_sys_reg(vcpu, vcpu->arch.fault.far_el2, FAR_EL2);
+	vcpu_write_sys_reg(vcpu, vcpu->arch.fault.hpfar_el2, HPFAR_EL2);
 
 	return kvm_inject_nested_sync(vcpu, esr_el2);
 }
@@ -127,7 +127,7 @@ static int check_output_size(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 			      struct s2_walk_info *wi, struct kvm_s2_trans *out)
 {
-	u64 vttbr = vcpu->arch.ctxt.sys_regs[VTTBR_EL2];
+	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	int first_block_level, level, stride, input_size, base_lower_bound;
 	phys_addr_t base_addr;
 	unsigned int addr_top, addr_bottom;
@@ -186,7 +186,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 		 * Handle reversedescriptors if endianness differs between the
 		 * host and the guest hypervisor.
 		 */
-		if (__vcpu_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE)
+		if (vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE)
 			desc = be64_to_cpu(desc);
 		else
 			desc = le64_to_cpu(desc);
@@ -247,7 +247,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 		       struct kvm_s2_trans *result)
 {
-	u64 vtcr = vcpu->arch.ctxt.sys_regs[VTCR_EL2];
+	u64 vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
 	struct s2_walk_info wi;
 
 	if (!nested_virt_in_use(vcpu))
@@ -357,7 +357,7 @@ bool kvm_nested_s2_clear_curr_vmid(struct kvm_vcpu *vcpu, phys_addr_t start,
 				   u64 size)
 {
 	struct kvm_nested_s2_mmu *nested_mmu;
-	u64 vttbr = __vcpu_sys_reg(vcpu, VTTBR_EL2);
+	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 
 	/*
 	 * Look up a mmu that is used for the current VMID from the guest
@@ -422,7 +422,7 @@ static struct kvm_nested_s2_mmu *create_nested_mmu(struct kvm_vcpu *vcpu,
 
 static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 {
-	u64 vttbr = __vcpu_sys_reg(vcpu, VTTBR_EL2);
+	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	struct kvm_nested_s2_mmu *nested_mmu;
 
 	nested_mmu = lookup_nested_mmu(vcpu, vttbr);

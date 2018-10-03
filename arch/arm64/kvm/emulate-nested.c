@@ -46,7 +46,7 @@ static u64 get_el2_except_vector(struct kvm_vcpu *vcpu,
 		exc_offset = LOWER_EL_AArch32_VECTOR;
 	}
 
-	return __vcpu_sys_reg(vcpu, VBAR_EL2) + exc_offset + type;
+	return vcpu_read_sys_reg(vcpu, VBAR_EL2) + exc_offset + type;
 }
 
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)

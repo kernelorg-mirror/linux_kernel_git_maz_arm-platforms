@@ -113,7 +113,7 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 	ctxt->sys_regs[PAR_EL1]		= read_sysreg(par_el1);
 	ctxt->sys_regs[TPIDR_EL1]	= read_sysreg(tpidr_el1);
 
-	if (unlikely(vcpu_mode_el2_ctxt(ctxt)))
+	if (unlikely(__is_hyp_ctxt(ctxt)))
 		__sysreg_save_vel2_state(ctxt);
 	else
 		__sysreg_save_vel1_state(ctxt);
@@ -252,7 +252,7 @@ static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 	write_sysreg(ctxt->sys_regs[PAR_EL1],		par_el1);
 	write_sysreg(ctxt->sys_regs[TPIDR_EL1],		tpidr_el1);
 
-	if (vcpu_mode_el2_ctxt(ctxt))
+	if (__is_hyp_ctxt(ctxt))
 		__sysreg_restore_vel2_state(ctxt);
 	else
 		__sysreg_restore_vel1_state(ctxt);

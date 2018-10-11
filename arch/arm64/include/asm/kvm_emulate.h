@@ -223,24 +223,29 @@ static inline bool vcpu_el2_e2h_is_set(const struct kvm_cpu_context *ctxt)
 	return ctxt->sys_regs[HCR_EL2] & HCR_E2H;
 }
 
-static inline bool vcpu_el2_tge_is_set(const struct kvm_vcpu *vcpu)
+static inline bool vcpu_el2_tge_is_set(const struct kvm_cpu_context *ctxt)
 {
-	return (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_TGE);
+	return ctxt->sys_regs[HCR_EL2] & HCR_TGE;
 }
 
-static inline bool is_hyp_ctxt(const struct kvm_vcpu *vcpu)
+static inline bool __is_hyp_ctxt(const struct kvm_cpu_context *ctxt)
 {
 	/*
 	 * We are in a hypervisor context if the vcpu mode is EL2 or
 	 * E2H and TGE bits are set. The latter means we are in the user space
 	 * of the VHE kernel. ARMv8.1 ARM describes this as 'InHost'
 	 */
-	if (vcpu_mode_el2(vcpu) ||
-	    (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) && vcpu_el2_tge_is_set(vcpu)) ||
-	    WARN_ON(vcpu_el2_tge_is_set(vcpu)))
+	if (vcpu_mode_el2_ctxt(ctxt) ||
+	    (vcpu_el2_e2h_is_set(ctxt) && vcpu_el2_tge_is_set(ctxt)) ||
+	    WARN_ON(vcpu_el2_tge_is_set(ctxt)))
 		return true;
 
 	return false;
+}
+
+static inline bool is_hyp_ctxt(const struct kvm_vcpu *vcpu)
+{
+	return __is_hyp_ctxt(&vcpu->arch.ctxt);
 }
 
 static inline void vcpu_write_spsr_el2(struct kvm_vcpu *vcpu, unsigned long val)

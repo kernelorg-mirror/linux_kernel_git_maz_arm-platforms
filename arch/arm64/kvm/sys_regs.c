@@ -1539,28 +1539,6 @@ out:
 	return true;
 }
 
-static bool access_vttbr_el2(struct kvm_vcpu *vcpu,
-			     struct sys_reg_params *p,
-			     const struct sys_reg_desc *r)
-{
-	struct kvm_s2_mmu *mmu;
-	struct kvm_s2_vmid *vmid;
-
-	if (!p->is_write) {
-		p->regval = vcpu_read_sys_reg(vcpu, r->reg);
-		return true;
-	}
-
-	vcpu_write_sys_reg(vcpu, p->regval, r->reg);
-	mmu = vcpu_get_active_s2_mmu(vcpu);
-	vmid = vcpu_get_active_vmid(vcpu);
-
-	vcpu->arch.vttbr_el2 = kvm_get_vttbr(vmid, mmu);
-	vcpu->arch.hw_mmu = mmu;
-
-	return true;
-}
-
 /*
  * Architected system registers.
  * Important: Must be sorted ascending by Op0, Op1, CRn, CRm, Op2
@@ -1861,7 +1839,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_TTBR0_EL2), access_rw, reset_val, TTBR0_EL2, 0 },
 	{ SYS_DESC(SYS_TTBR1_EL2), access_rw, reset_val, TTBR1_EL2, 0 },
 	{ SYS_DESC(SYS_TCR_EL2), access_rw, reset_val, TCR_EL2, 0 },
-	{ SYS_DESC(SYS_VTTBR_EL2), access_vttbr_el2, reset_val, VTTBR_EL2, 0 },
+	{ SYS_DESC(SYS_VTTBR_EL2), access_rw, reset_val, VTTBR_EL2, 0 },
 	{ SYS_DESC(SYS_VTCR_EL2), access_rw, reset_val, VTCR_EL2, 0 },
 
 	{ SYS_DESC(SYS_DACR32_EL2), NULL, reset_unknown, DACR32_EL2 },

@@ -440,6 +440,15 @@ struct kvm_s2_mmu *vcpu_get_active_s2_mmu(struct kvm_vcpu *vcpu)
 	return get_s2_mmu_nested(vcpu);
 }
 
+void kvm_update_s2_vmid(struct kvm_vcpu *vcpu)
+{
+	struct kvm_s2_mmu *mmu = vcpu_get_active_s2_mmu(vcpu);
+	struct kvm_s2_vmid *vmid = vcpu_get_active_vmid(vcpu);
+
+	vcpu->arch.hw_mmu = mmu;
+	vcpu->arch.vttbr_el2 = kvm_get_vttbr(vmid, mmu);
+}
+
 int kvm_nested_mmio_ondemand(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			     phys_addr_t ipa)
 {

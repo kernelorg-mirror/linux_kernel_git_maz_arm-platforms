@@ -20,6 +20,7 @@
 
 #include <asm/kvm_coproc.h>
 #include <asm/kvm_emulate.h>
+#include <asm/kvm_mmu.h>
 
 #include "trace.h"
 
@@ -75,6 +76,7 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	*vcpu_pc(vcpu) = elr;
 	*vcpu_cpsr(vcpu) = spsr;
 
+	kvm_update_s2_vmid(vcpu);
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
 }
@@ -108,6 +110,7 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 
 	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
 
+	kvm_update_s2_vmid(vcpu);
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
 

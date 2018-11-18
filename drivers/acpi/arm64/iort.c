@@ -20,6 +20,7 @@
 
 #include <linux/acpi_iort.h>
 #include <linux/iommu.h>
+#include <linux/irqchip.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/pci.h>
@@ -169,6 +170,46 @@ static struct iort_its_msi_chip *__get_msi_chip(int trans_id)
 
 	return its_msi_chip;
 }
+
+static int __init iort_parse_madt_its(struct acpi_subtable_header *header,
+				      const unsigned long end)
+{
+	struct acpi_madt_generic_translator *its_entry;
+	struct iort_its_msi_chip *its_msi_chip;
+	struct fwnode_handle *fw_node;
+
+	its_entry = (struct acpi_madt_generic_translator *)header;
+
+	mutex_lock(&iort_msi_chip_lock);
+
+	if (__get_msi_chip(its_entry->translation_id)) {
+		mutex_unlock(&iort_msi_chip_lock);
+		return 0;
+	}
+
+	fw_node = irq_domain_alloc_fwnode((void *)(uintptr_t)its_entry->translation_id);
+	its_msi_chip = kzalloc(sizeof(*its_msi_chip), GFP_KERNEL);
+	if (!its_msi_chip || !fw_node) {
+		kfree(its_msi_chip);
+		irq_domain_free_fwnode(fw_node);
+		pr_err("Unable to allocate GICv3 ITS @%llx domain token\n",
+		       its_entry->base_address);
+		return -ENOMEM;
+	}
+
+	its_msi_chip->fw_node = fw_node;
+	its_msi_chip->translation_id = its_entry->translation_id;
+	its_msi_chip->base_addr = its_entry->base_address;
+
+	list_add(&its_msi_chip->list, &iort_msi_chip_list);
+
+	mutex_unlock(&iort_msi_chip_lock);
+
+	pr_info("Found GICv3 ITS @%llxd\n", its_entry->base_address);
+	return 0;
+}
+IRQCHIP_ACPI_DECLARE(iort_its, ACPI_MADT_TYPE_GENERIC_DISTRIBUTOR,
+		     NULL, -1, iort_parse_madt_its);
 
 /**
  * iort_get_domain_token() - return a domain token for a given ITS ID,

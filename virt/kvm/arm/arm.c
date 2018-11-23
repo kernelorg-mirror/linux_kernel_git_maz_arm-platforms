@@ -66,7 +66,7 @@ static DEFINE_PER_CPU(struct kvm_vcpu *, kvm_arm_running_vcpu);
 static atomic64_t kvm_vmid_gen = ATOMIC64_INIT(1);
 static u32 kvm_next_vmid;
 static unsigned int kvm_vmid_bits __read_mostly;
-static DEFINE_RWLOCK(kvm_vmid_lock);
+static DEFINE_SPINLOCK(kvm_vmid_lock);
 
 static bool vgic_present;
 
@@ -502,7 +502,9 @@ void force_vm_exit(const cpumask_t *mask)
  */
 static bool need_new_vmid_gen(struct kvm_s2_vmid *vmid)
 {
-	return unlikely(vmid->vmid_gen != atomic64_read(&kvm_vmid_gen));
+	u64 current_vmid_gen = atomic64_read(&kvm_vmid_gen);
+	smp_rmb(); /* Orders read of kvm_vmid_gen and kvm->arch.vmid */
+	return unlikely(READ_ONCE(vmid->vmid_gen) != current_vmid_gen);
 }
 
 /**
@@ -522,22 +524,18 @@ static void update_vttbr(struct kvm *kvm, struct kvm_s2_vmid *vmid)
 	u64 new_vttbr;
 	int i = 0;
 
-	read_lock(&kvm_vmid_lock);
-	new_gen = need_new_vmid_gen(vmid);
-	read_unlock(&kvm_vmid_lock);
-
-	if (!new_gen)
+	if (!need_new_vmid_gen(kvm))
 		return;
 
-	write_lock(&kvm_vmid_lock);
+	spin_lock(&kvm_vmid_lock);
 
 	/*
 	 * We need to re-check the vmid_gen here to ensure that if another vcpu
 	 * already allocated a valid vmid for this vm, then this vcpu should
 	 * use the same vmid.
 	 */
-	if (!need_new_vmid_gen(vmid)) {
-		write_unlock(&kvm_vmid_lock);
+	if (!need_new_vmid_gen(kvm)) {
+		spin_unlock(&kvm_vmid_lock);
 		return;
 	}
 
@@ -560,7 +558,6 @@ static void update_vttbr(struct kvm *kvm, struct kvm_s2_vmid *vmid)
 		kvm_call_hyp(__kvm_flush_vm_context);
 	}
 
-	vmid->vmid_gen = atomic64_read(&kvm_vmid_gen);
 	vmid->vmid = kvm_next_vmid;
 	kvm_next_vmid++;
 	kvm_next_vmid &= (1 << kvm_vmid_bits) - 1;
@@ -570,7 +567,10 @@ static void update_vttbr(struct kvm *kvm, struct kvm_s2_vmid *vmid)
 		vcpu->arch.vttbr_el2 = new_vttbr;
 	}
 
-	write_unlock(&kvm_vmid_lock);
+	smp_wmb();
+	WRITE_ONCE(vmid->vmid_gen, atomic64_read(&kvm_vmid_gen));
+
+	spin_unlock(&kvm_vmid_lock);
 }
 
 static int kvm_vcpu_first_run_init(struct kvm_vcpu *vcpu)

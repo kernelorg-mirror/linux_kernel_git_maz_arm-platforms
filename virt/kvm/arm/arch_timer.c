@@ -408,48 +408,35 @@ out:
  * thread is removed from its waitqueue and made runnable when there's a timer
  * interrupt to handle.
  */
-void kvm_timer_schedule(struct kvm_vcpu *vcpu)
+static void kvm_timer_blocking(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
 	struct timer_map map;
 
-	preempt_disable();
-
 	get_timer_map(vcpu, &map);
 
-	timer_save_state(map.direct_vtimer);
-	if (map.direct_ptimer)
-		timer_save_state(map.direct_ptimer);
-
 	/*
-	 * No need to schedule a background timer if any guest timer has
-	 * already expired, because kvm_vcpu_block will return before putting
-	 * the thread to sleep.
-	 */
-	if (kvm_timer_should_fire(map.direct_vtimer) ||
-	    kvm_timer_should_fire(map.direct_ptimer) ||
-	    kvm_timer_should_fire(map.emul_vtimer) ||
-	    kvm_timer_should_fire(map.emul_ptimer))
-		goto out;
-
-	/*
-	 * If both timers are not capable of raising interrupts (disabled or
+	 * If no timers are capable of raising interrupts (disabled or
 	 * masked), then there's no more work for us to do.
 	 */
 	if (!kvm_timer_irq_can_fire(map.direct_vtimer) &&
 	    !kvm_timer_irq_can_fire(map.direct_ptimer) &&
 	    !kvm_timer_irq_can_fire(map.emul_vtimer) &&
 	    !kvm_timer_irq_can_fire(map.emul_ptimer))
-		goto out;
+		return;
 
 	/*
-	 * The guest timers have not yet expired, schedule a background timer.
+	 * At least one guest time will expire. Schedule a background timer.
 	 * Set the earliest expiration time among the guest timers.
 	 */
 	soft_timer_start(&timer->bg_timer, kvm_timer_earliest_exp(vcpu));
+}
 
-out:
-	preempt_enable();
+static void kvm_timer_unblocking(struct kvm_vcpu *vcpu)
+{
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
+
+	soft_timer_cancel(&timer->bg_timer);
 }
 
 static void timer_restore_state(struct arch_timer_context *ctx)
@@ -486,20 +473,6 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 	ctx->loaded = true;
 out:
 	local_irq_restore(flags);
-}
-
-void kvm_timer_unschedule(struct kvm_vcpu *vcpu)
-{
-	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
-	struct timer_map map;
-
-	soft_timer_cancel(&timer->bg_timer);
-
-	get_timer_map(vcpu, &map);
-
-	timer_restore_state(map.direct_vtimer);
-	if (map.direct_ptimer)
-		timer_restore_state(map.direct_ptimer);
 }
 
 static void set_cntvoff(u64 cntvoff)
@@ -612,6 +585,8 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 
 	set_cntvoff(map.direct_vtimer->cntvoff);
 
+	kvm_timer_unblocking(vcpu);
+
 	timer_restore_state(map.direct_vtimer);
 	if (map.direct_ptimer)
 		timer_restore_state(map.direct_ptimer);
@@ -667,6 +642,9 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 		soft_timer_cancel(&map.emul_vtimer->hrtimer);
 	if (map.emul_ptimer)
 		soft_timer_cancel(&map.emul_ptimer->hrtimer);
+
+	if (swait_active(kvm_arch_vcpu_wq(vcpu)))
+		kvm_timer_blocking(vcpu);
 
 	/*
 	 * The kernel may decide to run userspace after calling vcpu_put, so

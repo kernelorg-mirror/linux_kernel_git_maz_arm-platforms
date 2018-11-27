@@ -236,8 +236,8 @@ static inline bool is_hyp_ctxt(const struct kvm_vcpu *vcpu)
 	 * of the VHE kernel. ARMv8.1 ARM describes this as 'InHost'
 	 */
 	if (vcpu_mode_el2(vcpu) ||
-	    (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) &&
-	     vcpu_el2_tge_is_set(vcpu)))
+	    (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) && vcpu_el2_tge_is_set(vcpu)) ||
+	    WARN_ON(vcpu_el2_tge_is_set(vcpu)))
 		return true;
 
 	return false;

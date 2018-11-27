@@ -177,6 +177,7 @@ static void __hyp_text __sysreg_restore_user_state(struct kvm_cpu_context *ctxt)
 
 static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 {
+	write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
 	write_sysreg_el1(ctxt->sys_regs[MAIR_EL2],	mair);
 	write_sysreg_el1(ctxt->sys_regs[VBAR_EL2],	vbar);
 	write_sysreg_el1(ctxt->sys_regs[CONTEXTIDR_EL2],contextidr);
@@ -200,7 +201,6 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		 * as well, which does not trap. So we need to sync those back
 		 * here.
 		 */
-		write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
 		write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
 		write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
 		write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);

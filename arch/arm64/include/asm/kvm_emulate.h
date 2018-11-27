@@ -263,7 +263,7 @@ static inline void vcpu_write_spsr_el2(struct kvm_vcpu *vcpu, unsigned long val)
 	if (vcpu->arch.sysregs_loaded_on_cpu && vcpu_mode_el2(vcpu))
 		write_sysreg_el1(val, spsr);
 	else
-		__vcpu_sys_reg(vcpu, SPSR_EL1) = val;
+		__vcpu_sys_reg(vcpu, SPSR_EL2) = val;
 }
 
 static inline unsigned long vcpu_read_spsr_el2(const struct kvm_vcpu *vcpu)
@@ -273,7 +273,7 @@ static inline unsigned long vcpu_read_spsr_el2(const struct kvm_vcpu *vcpu)
 	if (vcpu->arch.sysregs_loaded_on_cpu && vcpu_mode_el2(vcpu))
 		val = read_sysreg_el1(spsr);
 	else
-		val = __vcpu_sys_reg(vcpu, SPSR_EL1);
+		val = __vcpu_sys_reg(vcpu, SPSR_EL2);
 
 	if (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt))
 		return val;

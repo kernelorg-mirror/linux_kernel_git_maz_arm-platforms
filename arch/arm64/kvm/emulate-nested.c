@@ -66,7 +66,7 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	}
 
 	preempt_disable();
-	kvm_timer_vcpu_put(vcpu);
+	kvm_arch_vcpu_put(vcpu);
 
 	/*
 	 * Note that the current exception level is always the virtual EL2,
@@ -75,7 +75,7 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	*vcpu_pc(vcpu) = elr;
 	*vcpu_cpsr(vcpu) = spsr;
 
-	kvm_timer_vcpu_load(vcpu);
+	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
 }
 
@@ -95,9 +95,9 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 	}
 
 	preempt_disable();
-	kvm_timer_vcpu_put(vcpu);
+	kvm_arch_vcpu_put(vcpu);
 
-	vcpu_write_spsr_el2(vcpu, *vcpu_cpsr(vcpu));
+	__vcpu_sys_reg(vcpu, SPSR_EL2) = *vcpu_cpsr(vcpu);
 	__vcpu_sys_reg(vcpu, ELR_EL2) = *vcpu_pc(vcpu);
 	__vcpu_sys_reg(vcpu, ESR_EL2) = esr_el2;
 
@@ -108,7 +108,7 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 
 	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
 
-	kvm_timer_vcpu_load(vcpu);
+	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
 
 	return ret;

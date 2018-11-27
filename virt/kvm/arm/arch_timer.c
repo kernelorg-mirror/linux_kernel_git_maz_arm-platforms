@@ -112,11 +112,9 @@ static void soft_timer_start(struct hrtimer *hrt, u64 ns)
 		      HRTIMER_MODE_ABS);
 }
 
-static void soft_timer_cancel(struct hrtimer *hrt, struct work_struct *work)
+static void soft_timer_cancel(struct hrtimer *hrt)
 {
 	hrtimer_cancel(hrt);
-	if (work)
-		cancel_work_sync(work);
 }
 
 static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
@@ -149,23 +147,6 @@ static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 		disable_percpu_irq(host_vtimer_irq);
 
 	return IRQ_HANDLED;
-}
-
-/*
- * Work function for handling the backup timer that we schedule when a vcpu is
- * no longer running, but had a timer programmed to fire in the future.
- */
-static void kvm_timer_inject_irq_work(struct work_struct *work)
-{
-	struct kvm_vcpu *vcpu;
-
-	vcpu = container_of(work, struct kvm_vcpu, arch.timer_cpu.expired);
-
-	/*
-	 * If the vcpu is blocked we want to wake it up so that it will see
-	 * the timer has expired when entering the guest.
-	 */
-	kvm_vcpu_wake_up(vcpu);
 }
 
 static u64 kvm_timer_compute_delta(struct arch_timer_context *timer_ctx)
@@ -240,7 +221,7 @@ static enum hrtimer_restart kvm_bg_timer_expire(struct hrtimer *hrt)
 		return HRTIMER_RESTART;
 	}
 
-	schedule_work(&timer->expired);
+	kvm_vcpu_wake_up(vcpu);
 	return HRTIMER_NORESTART;
 }
 
@@ -368,7 +349,7 @@ static void timer_emulate(struct arch_timer_context *ctx)
 	 * then we also don't need a soft timer.
 	 */
 	if (kvm_timer_should_fire(ctx) || !kvm_timer_irq_can_fire(ctx)) {
-		soft_timer_cancel(&ctx->hrtimer, NULL);
+		soft_timer_cancel(&ctx->hrtimer);
 		return;
 	}
 
@@ -512,7 +493,7 @@ void kvm_timer_unschedule(struct kvm_vcpu *vcpu)
 	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct timer_map map;
 
-	soft_timer_cancel(&timer->bg_timer, &timer->expired);
+	soft_timer_cancel(&timer->bg_timer);
 
 	get_timer_map(vcpu, &map);
 
@@ -683,9 +664,9 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 	 * coming back to the VCPU thread in kvm_timer_vcpu_load().
 	 */
 	if (map.emul_vtimer)
-		soft_timer_cancel(&map.emul_vtimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_vtimer->hrtimer);
 	if (map.emul_ptimer)
-		soft_timer_cancel(&map.emul_ptimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_ptimer->hrtimer);
 
 	/*
 	 * The kernel may decide to run userspace after calling vcpu_put, so
@@ -758,9 +739,9 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 	}
 
 	if (map.emul_vtimer)
-		soft_timer_cancel(&map.emul_vtimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_vtimer->hrtimer);
 	if (map.emul_ptimer)
-		soft_timer_cancel(&map.emul_ptimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_ptimer->hrtimer);
 
 	return 0;
 }
@@ -798,7 +779,6 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	hvtimer->cntvoff = 0;
 	hptimer->cntvoff = 0;
 
-	INIT_WORK(&timer->expired, kvm_timer_inject_irq_work);
 	hrtimer_init(&timer->bg_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS);
 	timer->bg_timer.function = kvm_bg_timer_expire;
 
@@ -1028,11 +1008,11 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
-	soft_timer_cancel(&timer->bg_timer, &timer->expired);
+	soft_timer_cancel(&timer->bg_timer);
 	if (map.emul_vtimer)
-		soft_timer_cancel(&map.emul_vtimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_vtimer->hrtimer);
 	if (map.emul_ptimer)
-		soft_timer_cancel(&map.emul_ptimer->hrtimer, NULL);
+		soft_timer_cancel(&map.emul_ptimer->hrtimer);
 }
 
 static bool timer_irqs_are_valid(struct kvm_vcpu *vcpu)

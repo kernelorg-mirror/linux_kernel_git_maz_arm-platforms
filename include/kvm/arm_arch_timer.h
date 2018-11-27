@@ -21,7 +21,6 @@
 
 #include <linux/clocksource.h>
 #include <linux/hrtimer.h>
-#include <linux/workqueue.h>
 
 /* We emulate all four non-secure timers for nested virt guests. */
 
@@ -73,9 +72,6 @@ struct arch_timer_cpu {
 
 	/* Background timer used when the guest is not running */
 	struct hrtimer			bg_timer;
-
-	/* Work queued with the above timer expires */
-	struct work_struct		expired;
 
 	/* Is the timer enabled */
 	bool			enabled;

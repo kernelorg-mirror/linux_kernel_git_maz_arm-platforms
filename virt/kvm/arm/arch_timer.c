@@ -934,41 +934,39 @@ int kvm_timer_hyp_init(bool has_gic)
 		static_branch_enable(&has_gic_active_state);
 	}
 
+	kvm_debug("virtual timer IRQ%d\n", host_vtimer_irq);
+
 	/* Now let's do the physical EL1 timer irq */
 
-	if (info->physical_irq <= 0) {
-		kvm_err("kvm_arch_timer: invalid physical timer IRQ: %d\n",
-			info->physical_irq);
-		return -ENODEV;
-	}
-	host_ptimer_irq = info->physical_irq;
-	host_ptimer_irq_flags = irq_get_trigger_type(host_ptimer_irq);
-	if (host_ptimer_irq_flags != IRQF_TRIGGER_HIGH &&
-	    host_ptimer_irq_flags != IRQF_TRIGGER_LOW) {
-		kvm_err("Invalid trigger for ptimer IRQ%d, assuming level low\n",
-			host_ptimer_irq);
-		host_ptimer_irq_flags = IRQF_TRIGGER_LOW;
-	}
-
-	err = request_percpu_irq(host_ptimer_irq, kvm_arch_timer_handler,
-				 "kvm guest ptimer", kvm_get_running_vcpus());
-	if (err) {
-		kvm_err("kvm_arch_timer: can't request ptimer interrupt %d (%d)\n",
-			host_ptimer_irq, err);
-		return err;
-	}
-
-	if (has_gic) {
-		err = irq_set_vcpu_affinity(host_ptimer_irq,
-					    kvm_get_running_vcpus());
-		if (err) {
-			kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
-			goto out_free_irq;
+	if (info->physical_irq > 0) {
+		host_ptimer_irq = info->physical_irq;
+		host_ptimer_irq_flags = irq_get_trigger_type(host_ptimer_irq);
+		if (host_ptimer_irq_flags != IRQF_TRIGGER_HIGH &&
+		    host_ptimer_irq_flags != IRQF_TRIGGER_LOW) {
+			kvm_err("Invalid trigger for ptimer IRQ%d, assuming level low\n",
+				host_ptimer_irq);
+			host_ptimer_irq_flags = IRQF_TRIGGER_LOW;
 		}
-	}
 
-	kvm_debug("virtual timer IRQ%d\n", host_vtimer_irq);
-	kvm_debug("physical timer IRQ%d\n", host_ptimer_irq);
+		err = request_percpu_irq(host_ptimer_irq, kvm_arch_timer_handler,
+					 "kvm guest ptimer", kvm_get_running_vcpus());
+		if (err) {
+			kvm_err("kvm_arch_timer: can't request ptimer interrupt %d (%d)\n",
+				host_ptimer_irq, err);
+			return err;
+		}
+
+		if (has_gic) {
+			err = irq_set_vcpu_affinity(host_ptimer_irq,
+						    kvm_get_running_vcpus());
+			if (err) {
+				kvm_err("kvm_arch_timer: error setting vcpu affinity\n");
+				goto out_free_irq;
+			}
+		}
+
+		kvm_debug("physical timer IRQ%d\n", host_ptimer_irq);
+	}
 
 	cpuhp_setup_state(CPUHP_AP_KVM_ARM_TIMER_STARTING,
 			  "kvm/arm/timer:starting", kvm_timer_starting_cpu,

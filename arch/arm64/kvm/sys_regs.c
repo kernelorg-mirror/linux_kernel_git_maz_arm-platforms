@@ -213,7 +213,7 @@ u64 vcpu_read_sys_reg(struct kvm_vcpu *vcpu, int reg)
 	if (unlikely(sysreg_is_el2(reg))) {
 		const struct el2_sysreg_map *el2_reg;
 
-		if (!vcpu_mode_el2(vcpu))
+		if (!is_hyp_ctxt(vcpu))
 			goto immediate_read;
 
 		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
@@ -230,7 +230,7 @@ u64 vcpu_read_sys_reg(struct kvm_vcpu *vcpu, int reg)
 		}
 	} else {
 		/* EL1 register can't be on the CPU if the guest is in vEL2. */
-		if (unlikely(vcpu_mode_el2(vcpu)))
+		if (unlikely(is_hyp_ctxt(vcpu)))
 			goto immediate_read;
 	}
 
@@ -283,7 +283,7 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 	if (unlikely(sysreg_is_el2(reg))) {
 		const struct el2_sysreg_map *el2_reg;
 
-		if (!vcpu_mode_el2(vcpu))
+		if (!is_hyp_ctxt(vcpu))
 			goto immediate_write;
 
 		/* Store the EL2 version in the sysregs array. */
@@ -304,7 +304,7 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 		}
 	} else {
 		/* EL1 register can't be on the CPU if the guest is in vEL2. */
-		if (unlikely(vcpu_mode_el2(vcpu)))
+		if (unlikely(is_hyp_ctxt(vcpu)))
 			goto immediate_write;
 	}
 

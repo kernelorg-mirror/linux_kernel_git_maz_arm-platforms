@@ -2042,7 +2042,7 @@ static bool handle_alle2(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			 const struct sys_reg_desc *r)
 {
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(&mmu->el2_vmid, mmu);
+	u64 vttbr = kvm_get_vttbr(mmu);
 
 	/*
 	 * To emulate invalidating all EL2 regime stage 1 TLB entries,
@@ -2057,7 +2057,7 @@ static bool handle_alle2is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			   const struct sys_reg_desc *r)
 {
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(&mmu->el2_vmid, mmu);
+	u64 vttbr = kvm_get_vttbr(mmu);
 
 	/*
 	 * To emulate invalidating all EL2 regime stage 1 TLB entries for all
@@ -2073,7 +2073,7 @@ static bool handle_vae2(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		       const struct sys_reg_desc *r)
 {
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(&mmu->el2_vmid, mmu);
+	u64 vttbr = kvm_get_vttbr(mmu);
 	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
 
 	/*
@@ -2090,9 +2090,9 @@ static bool handle_alle1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			   const struct sys_reg_desc *r)
 {
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
+	u64 vttbr = kvm_get_vttbr(mmu);
 
-	if (vcpu->kvm->arch.mmu.vmid.vmid_gen) {
+	if (mmu->vmid.vmid_gen) {
 		/*
 		 * Invalidate the stage 1 and 2 TLB entries for the host OS
 		 * in a VM only if there is one.
@@ -2134,7 +2134,7 @@ static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		 * shadow stage 2 page tables for it.
 		 */
 		mmu = &vcpu->kvm->arch.mmu;
-		vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
+		vttbr = kvm_get_vttbr(mmu);
 		kvm_call_hyp(__kvm_tlb_flush_vmid, vttbr);
 	}
 	return true;
@@ -2163,7 +2163,7 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		 * shadow stage 2 page tables for it.
 		 */
 		mmu = &vcpu->kvm->arch.mmu;
-		vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
+		vttbr = kvm_get_vttbr(mmu);
 		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, vttbr, p->regval);
 	}
 
@@ -2174,29 +2174,34 @@ static bool handle_tlbi_el1(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			    const struct sys_reg_desc *r)
 {
 	u64 virtual_vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
-	u64 vttbr;
-	struct kvm_nested_s2_mmu *nested_mmu;
-	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
+	struct kvm_s2_mmu *mmu;
 	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
 
-	nested_mmu = lookup_nested_mmu(vcpu, virtual_vttbr);
-	if (!nested_mmu) {
-		/*
-		 * If we can't find a shadow VMID, it is either the virtual
-		 * VMID is for the host OS or the nested VM having the virtual
-		 * VMID is never executed. (Note that we create a showdow VMID
-		 * when entering a VM.) For the former, we can flush TLB
-		 * entries belonging to the host OS in a VM. For the latter, we
-		 * don't have to do anything. Since we can't differentiate
-		 * between those cases, just do what we can do for the former.
-		 */
-		mmu = &vcpu->kvm->arch.mmu;
-	} else {
-		mmu = &nested_mmu->mmu;
-	}
+	/*
+	 * TODO: Revisit this comment:
+	 *
+	 * If we can't find a shadow VMID, it is either the virtual
+	 * VMID is for the host OS or the nested VM having the virtual
+	 * VMID is never executed. (Note that we create a showdow VMID
+	 * when entering a VM.) For the former, we can flush TLB
+	 * entries belonging to the host OS in a VM. For the latter, we
+	 * don't have to do anything. Since we can't differentiate
+	 * between those cases, just do what we can do for the former.
+	 */
 
-	vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
-	kvm_call_hyp(__kvm_tlb_el1_instr, vttbr, p->regval, sys_encoding);
+	mutex_lock(&vcpu->kvm->lock);
+	mmu = lookup_s2_mmu(vcpu->kvm, virtual_vttbr, HCR_VM);
+	if (mmu)
+		kvm_call_hyp(__kvm_tlb_el1_instr,
+			     kvm_get_vttbr(mmu),
+			     p->regval, sys_encoding);
+
+	mmu = lookup_s2_mmu(vcpu->kvm, virtual_vttbr, 0);
+	if (mmu)
+		kvm_call_hyp(__kvm_tlb_el1_instr,
+			     kvm_get_vttbr(mmu),
+			     p->regval, sys_encoding);
+	mutex_unlock(&vcpu->kvm->lock);
 
 	return true;
 }

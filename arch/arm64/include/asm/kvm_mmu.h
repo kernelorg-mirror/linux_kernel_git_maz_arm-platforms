@@ -156,8 +156,7 @@ int create_hyp_exec_mappings(phys_addr_t phys_addr, size_t size,
 void free_hyp_pgds(void);
 
 void stage2_unmap_vm(struct kvm *kvm);
-int kvm_alloc_stage2_pgd(struct kvm *kvm);
-int __kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu);
+int kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu);
 void kvm_free_stage2_pgd(struct kvm *kvm);
 void __kvm_free_stage2_pgd(struct kvm *kvm, struct kvm_s2_mmu *mmu);
 int __kvm_phys_addr_ioremap(struct kvm *kvm, struct kvm_s2_mmu *mmu,
@@ -544,9 +543,9 @@ struct kvm_s2_trans {
 };
 
 struct kvm_nested_s2_mmu *get_nested_mmu(struct kvm_vcpu *vcpu, u64 vttbr);
-struct kvm_s2_mmu *vcpu_get_active_s2_mmu(struct kvm_vcpu *vcpu);
+struct kvm_s2_mmu *lookup_s2_mmu(struct kvm *kvm, u64 vttbr, u64 hcr);
+void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu);
 void update_nested_s2_mmu(struct kvm_vcpu *vcpu);
-void kvm_update_s2_vmid(struct kvm_vcpu *vcpu);
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 		       struct kvm_s2_trans *result);
 int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
@@ -563,13 +562,12 @@ struct kvm_nested_s2_mmu *lookup_nested_mmu(struct kvm_vcpu *vcpu, u64 vttbr);
 int kvm_nested_mmio_ondemand(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			     phys_addr_t ipa);
 
-static inline u64 kvm_get_vttbr(struct kvm_vmid *vmid,
-				struct kvm_s2_mmu *mmu)
+static inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)
 {
 	u64 vmid_field, baddr;
 
-	baddr = virt_to_phys(mmu->pgd);
-	vmid_field = ((u64)vmid->vmid << VTTBR_VMID_SHIFT) &
+	baddr = mmu->pgd_phys;
+	vmid_field = ((u64)mmu->vmid.vmid << VTTBR_VMID_SHIFT) &
 		VTTBR_VMID_MASK(get_kvm_vmid_bits());
 	return kvm_phys_to_vttbr(baddr) | vmid_field;
 }
@@ -578,16 +576,6 @@ static inline u64 get_vmid(u64 vttbr)
 {
 	return (vttbr & VTTBR_VMID_MASK(get_kvm_vmid_bits())) >>
 	       VTTBR_VMID_SHIFT;
-}
-
-static inline struct kvm_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
-{
-	struct kvm_s2_mmu *mmu = vcpu_get_active_s2_mmu(vcpu);
-
-	if (unlikely(is_hyp_ctxt(vcpu)))
-		return &mmu->el2_vmid;
-	else
-		return &mmu->vmid;
 }
 
 #endif /* __ASSEMBLY__ */

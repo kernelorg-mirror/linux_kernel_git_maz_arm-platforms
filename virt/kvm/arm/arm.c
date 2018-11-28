@@ -135,20 +135,23 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	for_each_possible_cpu(cpu)
 		*per_cpu_ptr(kvm->arch.last_vcpu_ran, cpu) = -1;
 
-	ret = kvm_alloc_stage2_pgd(kvm);
+	ret = kvm_alloc_stage2_pgd(&kvm->arch.mmu);
 	if (ret)
 		goto out_fail_alloc;
+
+	/* Mark the initial VMID generation invalid */
+	kvm->arch.mmu.vmid.vmid_gen = 0;
+	kvm->arch.mmu.vttbr = -1;
+	kvm->arch.mmu.nested_stage2_enabled = false;
+
+	kvm->arch.nested_mmus = NULL;
+	kvm->arch.nested_mmus_size = 0;
 
 	ret = create_hyp_mappings(kvm, kvm + 1, PAGE_HYP);
 	if (ret)
 		goto out_free_stage2_pgd;
 
 	kvm_vgic_early_init(kvm);
-
-	/* Mark the initial VMID generation invalid */
-	kvm->arch.mmu.vmid.vmid_gen = 0;
-	kvm->arch.mmu.el2_vmid.vmid_gen = 0;
-	INIT_LIST_HEAD(&kvm->arch.nested_mmu_list);
 
 	/* The maximum number of VCPUs is limited by the host's GIC model */
 	kvm->arch.max_vcpus = vgic_present ?
@@ -365,7 +368,6 @@ int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 	kvm_arm_reset_debug_ptr(vcpu);
 
 	vcpu->arch.hw_mmu = mmu;
-	vcpu->arch.vttbr_el2 = kvm_get_vttbr(&mmu->vmid, mmu);
 
 	return kvm_vgic_vcpu_init(vcpu);
 }
@@ -382,14 +384,19 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	 */
 	if (*last_ran != vcpu->vcpu_id) {
 		struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-		u64 vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
+		u64 vttbr = kvm_get_vttbr(mmu);
 
-		kvm_call_hyp(__kvm_tlb_flush_local_vmid, vttbr);
-
-		if (mmu->el2_vmid.vmid) {
-			vttbr = kvm_get_vttbr(&mmu->el2_vmid, mmu);
+		/*
+		 * TODO: We need to ask Rutland if we need an icache
+		 * invalidation similar to __kvm_flush_vm_context and we need
+		 * to optimize the nested case to only invalidate the
+		 * necessary VMIDs.
+		 */
+		if (nested_virt_in_use(vcpu))
+			kvm_call_hyp(__kvm_tlb_flush_local_all);
+		else
 			kvm_call_hyp(__kvm_tlb_flush_local_vmid, vttbr);
-		}
+
 		*last_ran = vcpu->vcpu_id;
 	}
 
@@ -508,23 +515,13 @@ static bool need_new_vmid_gen(struct kvm_vmid *vmid)
 }
 
 /**
- * update_vttbr - Update the VTTBR with a valid VMID before the guest runs
- * @kvm: The guest that we are about to run
+ * update_vmid - Update the vmid with a valid VMID for the current generation
+ * @kvm: The guest that struct vmid belongs to
  * @vmid: The stage-2 VMID information struct
- *
- * Called from kvm_arch_vcpu_ioctl_run before entering the guest to ensure the
- * VM has a valid VMID, otherwise assigns a new one and flushes corresponding
- * caches and TLBs.
  */
-static void update_vttbr(struct kvm *kvm, struct kvm_vmid *vmid)
+static void update_vmid(struct kvm_vmid *vmid)
 {
-	struct kvm_s2_mmu *mmu = &kvm->arch.mmu;
-	struct kvm_vcpu *vcpu;
-	bool new_gen;
-	u64 new_vttbr;
-	int i = 0;
-
-	if (!need_new_vmid_gen(kvm))
+	if (!need_new_vmid_gen(vmid))
 		return;
 
 	spin_lock(&kvm_vmid_lock);
@@ -534,7 +531,7 @@ static void update_vttbr(struct kvm *kvm, struct kvm_vmid *vmid)
 	 * already allocated a valid vmid for this vm, then this vcpu should
 	 * use the same vmid.
 	 */
-	if (!need_new_vmid_gen(kvm)) {
+	if (!need_new_vmid_gen(vmid)) {
 		spin_unlock(&kvm_vmid_lock);
 		return;
 	}
@@ -561,11 +558,6 @@ static void update_vttbr(struct kvm *kvm, struct kvm_vmid *vmid)
 	vmid->vmid = kvm_next_vmid;
 	kvm_next_vmid++;
 	kvm_next_vmid &= (1 << kvm_vmid_bits) - 1;
-
-	new_vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
-	kvm_for_each_vcpu(i, vcpu, kvm) {
-		vcpu->arch.vttbr_el2 = new_vttbr;
-	}
 
 	smp_wmb();
 	WRITE_ONCE(vmid->vmid_gen, atomic64_read(&kvm_vmid_gen));
@@ -713,7 +705,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 */
 		cond_resched();
 
-		update_vttbr(vcpu->kvm, vcpu_get_active_vmid(vcpu));
+		update_vmid(&vcpu->arch.hw_mmu->vmid);
 
 		check_vcpu_requests(vcpu);
 
@@ -762,7 +754,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		 */
 		smp_store_mb(vcpu->mode, IN_GUEST_MODE);
 
-		if (ret <= 0 || need_new_vmid_gen(vcpu_get_active_vmid(vcpu)) ||
+		if (ret <= 0 || need_new_vmid_gen(&vcpu->arch.hw_mmu->vmid) ||
 		    kvm_request_pending(vcpu)) {
 			vcpu->mode = OUTSIDE_GUEST_MODE;
 			isb(); /* Ensure work in x_flush_hwstate is committed */

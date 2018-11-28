@@ -64,37 +64,49 @@ struct kvm_vmid {
 
 struct kvm_s2_mmu {
 	struct kvm_vmid vmid;
-	struct kvm_vmid el2_vmid;
-
-	/* 1-level 2nd stage table, protected by kvm->mmu_lock */
-	pgd_t *pgd;
-};
-
-/* Per shadow VMID mmu structure */
-struct kvm_nested_s2_mmu {
-	struct kvm_s2_mmu mmu;
 
 	/*
-	 * virtual_vttbr contains vttbr_el2 value from the guest hypervisor.
-	 * We use vmid field as a key to search for this mmu object in the list,
-	 * and ignore baddr field.
+	 * 1-level 2nd stage table, protected by kvm->mmu_lock
 	 *
-	 * Note that we may use both of vmid field and baddr field respectively
-	 * to find a shadow VMID and a pointer to the shadow stage-2 page
-	 * table, then combine them to set up hw_vttbr. The only benefit of
-	 * doing that would be reusing shadow stage-2 page tables for different
-	 * VMIDs, which is not usual. So, we choose the current design for the
-	 * simplicity.
-	 *
+	 * Two kvm_s2_mmu structures in the same VM can point to the same pgd
+	 * here.  This happens when running a non-VHE guest hypervisor which
+	 * uses the canonical stage 2 page table for both vEL2 and for vEL1/0
+	 * with vHCR_EL2.VM == 0.
 	 */
-	u64 virtual_vttbr;
+	pgd_t		*pgd;
+	phys_addr_t	pgd_phys;
 
-	struct list_head list;
+	/*
+	 * For a shadow stage-2 MMU, the virtual vttbr programmed by the guest
+	 * hypervisor.  Unused for kvm_arch->mmu.
+	 */
+	u64	vttbr;
+
+	/* true when this represents a nested context where virtual HCR_EL2.VM == 1 */
+	bool	nested_stage2_enabled;
+
+	/*
+	 * -1: This is brand new
+	 *  0: Nobody is currently using this, but it holds valid data
+	 * >0: Somebody is actively using this.
+	 */
+	int usage_count;
 };
 
 struct kvm_arch {
-	/* Stage 2 paging state for the VM */
+	/* Stage 2 paging state for the VM, where no virtual VMID is used,
+	 * because either:
+	 *   - nested is not enabled for the VM, or
+	 *   - the VM is running in virtual EL2
+	 */
 	struct kvm_s2_mmu mmu;
+
+	/*
+	 * Stage 2 paging stage for VMs with nested virtual using a virtual
+	 * VMID.
+	 */
+	struct kvm_s2_mmu *nested_mmus;
+	size_t nested_mmus_size;
 
 	/* The last vcpu id that ran on each physical CPU */
 	int __percpu *last_vcpu_ran;
@@ -107,9 +119,6 @@ struct kvm_arch {
 
 	/* Mandated version of PSCI */
 	u32 psci_version;
-
-	/* Stage 2 shadow paging contexts for nested L2 VM */
-	struct list_head nested_mmu_list;
 };
 
 #define KVM_NR_MEM_OBJS     40
@@ -286,6 +295,9 @@ typedef struct kvm_cpu_context kvm_cpu_context_t;
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
 
+	/* Stage 2 paging state used by the hardware on next switch */
+	struct kvm_s2_mmu *hw_mmu;
+
 	/* HYP configuration */
 	u64 hcr_el2;
 	u32 mdcr_el2;
@@ -375,12 +387,6 @@ struct kvm_vcpu_arch {
 	/* True when deferrable sysregs are loaded on the physical CPU,
 	 * see kvm_vcpu_load_sysregs and kvm_vcpu_put_sysregs. */
 	bool sysregs_loaded_on_cpu;
-
-	/* Stage 2 paging state used by the hardware on next switch */
-	struct kvm_s2_mmu *hw_mmu;
-
-	/* VTTBR value used by the shadow paging MMU in vEL2. */
-	u64 vttbr_el2;
 };
 
 /* vcpu_arch flags field values: */
@@ -593,6 +599,7 @@ static inline int kvm_arm_have_ssbd(void)
 void kvm_vcpu_load_sysregs(struct kvm_vcpu *vcpu);
 void kvm_vcpu_put_sysregs(struct kvm_vcpu *vcpu);
 int init_nested_virt(void);
+int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu);
 bool nested_virt_in_use(struct kvm_vcpu *vcpu);
 int handle_wfx_nested(struct kvm_vcpu *vcpu, bool is_wfe);
 

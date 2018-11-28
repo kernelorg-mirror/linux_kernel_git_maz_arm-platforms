@@ -145,6 +145,13 @@ void __hyp_text __kvm_tlb_flush_local_vmid(u64 vttbr)
 	__tlb_switch_to_host()();
 }
 
+void __hyp_text __kvm_tlb_flush_local_all(void)
+{
+	__tlbi(alle1);
+	dsb(nsh);
+	isb();
+}
+
 void __hyp_text __kvm_flush_vm_context(void)
 {
 	dsb(ishst);

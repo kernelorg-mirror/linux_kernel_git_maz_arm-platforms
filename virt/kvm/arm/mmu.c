@@ -65,9 +65,10 @@ static bool memslot_is_logging(struct kvm_memory_slot *memslot)
 void kvm_flush_remote_tlbs(struct kvm *kvm)
 {
 	struct kvm_s2_mmu *mmu = &kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
 
-	if (!mmu->el2_vmid.vmid) {
+	if (mmu == &kvm->arch.mmu) {
+		u64 vttbr = kvm_get_vttbr(mmu);
+
 		/*
 		 * For a normal (i.e. non-nested) guest, flush entries for the
 		 * given VMID *
@@ -86,15 +87,8 @@ void kvm_flush_remote_tlbs(struct kvm *kvm)
 
 static void kvm_tlb_flush_vmid_ipa(struct kvm_s2_mmu *mmu, phys_addr_t ipa)
 {
-	u64 vttbr = kvm_get_vttbr(&mmu->vmid, mmu);
+	u64 vttbr = kvm_get_vttbr(mmu);
 
-	kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, vttbr, ipa);
-
-	if (!mmu->el2_vmid.vmid) {
-		/* Nothing to do more for a non-nested guest */
-		return;
-	}
-	vttbr = kvm_get_vttbr(&mmu->el2_vmid, mmu);
 	kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, vttbr, ipa);
 }
 
@@ -914,7 +908,18 @@ int create_hyp_exec_mappings(phys_addr_t phys_addr, size_t size,
 	return 0;
 }
 
-int __kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu)
+/**
+ * kvm_alloc_stage2_pgd - allocate level-1 table for stage-2 translation.
+ * @kvm:	The KVM struct pointer for the VM.
+ *
+ * Allocates only the stage-2 HW PGD level table(s) (can support either full
+ * 40-bit input addresses or limited to 32-bit input addresses). Clears the
+ * allocated pages.
+ *
+ * Note we don't need locking here as this is only called when the VM is
+ * created, which can only be done once.
+ */
+int kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu)
 {
 	pgd_t *pgd;
 
@@ -929,24 +934,9 @@ int __kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu)
 		return -ENOMEM;
 
 	mmu->pgd = pgd;
+	mmu->pgd_phys = virt_to_phys(pgd);
 
 	return 0;
-}
-
-/**
- * kvm_alloc_stage2_pgd - allocate level-1 table for stage-2 translation.
- * @kvm:	The KVM struct pointer for the VM.
- *
- * Allocates only the stage-2 HW PGD level table(s) (can support either full
- * 40-bit input addresses or limited to 32-bit input addresses). Clears the
- * allocated pages.
- *
- * Note we don't need locking here as this is only called when the VM is
- * created, which can only be done once.
- */
-int kvm_alloc_stage2_pgd(struct kvm *kvm)
-{
-	return __kvm_alloc_stage2_pgd(&kvm->arch.mmu);
 }
 
 static void stage2_unmap_memslot(struct kvm *kvm,

@@ -235,7 +235,9 @@ void deactivate_traps_vhe_put(void)
 
 static void __hyp_text __activate_vm(struct kvm_vcpu *vcpu)
 {
-	write_sysreg(vcpu->arch.vttbr_el2, vttbr_el2);
+	struct kvm_s2_mmu *mmu = kern_hyp_va(vcpu->arch.hw_mmu);
+
+	write_sysreg(kvm_get_vttbr(mmu), vttbr_el2);
 }
 
 static void __hyp_text __deactivate_vm(struct kvm_vcpu *vcpu)

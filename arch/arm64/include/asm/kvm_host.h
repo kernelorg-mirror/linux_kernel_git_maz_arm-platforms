@@ -56,15 +56,15 @@ int kvm_reset_vcpu(struct kvm_vcpu *vcpu);
 int kvm_arch_dev_ioctl_check_extension(struct kvm *kvm, long ext);
 void __extended_idmap_trampoline(phys_addr_t boot_pgd, phys_addr_t idmap_start);
 
-struct kvm_s2_vmid {
+struct kvm_vmid {
 	/* The VMID generation used for the virt. memory system */
 	u64    vmid_gen;
 	u32    vmid;
 };
 
 struct kvm_s2_mmu {
-	struct kvm_s2_vmid vmid;
-	struct kvm_s2_vmid el2_vmid;
+	struct kvm_vmid vmid;
+	struct kvm_vmid el2_vmid;
 
 	/* 1-level 2nd stage table, protected by kvm->mmu_lock */
 	pgd_t *pgd;

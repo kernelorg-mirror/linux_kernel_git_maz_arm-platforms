@@ -500,7 +500,7 @@ void force_vm_exit(const cpumask_t *mask)
  * first to use a VMID for the new generation, we must flush necessary caches
  * and TLBs on all CPUs.
  */
-static bool need_new_vmid_gen(struct kvm_s2_vmid *vmid)
+static bool need_new_vmid_gen(struct kvm_vmid *vmid)
 {
 	u64 current_vmid_gen = atomic64_read(&kvm_vmid_gen);
 	smp_rmb(); /* Orders read of kvm_vmid_gen and kvm->arch.vmid */
@@ -516,7 +516,7 @@ static bool need_new_vmid_gen(struct kvm_s2_vmid *vmid)
  * VM has a valid VMID, otherwise assigns a new one and flushes corresponding
  * caches and TLBs.
  */
-static void update_vttbr(struct kvm *kvm, struct kvm_s2_vmid *vmid)
+static void update_vttbr(struct kvm *kvm, struct kvm_vmid *vmid)
 {
 	struct kvm_s2_mmu *mmu = &kvm->arch.mmu;
 	struct kvm_vcpu *vcpu;

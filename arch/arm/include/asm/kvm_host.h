@@ -56,15 +56,15 @@ int __attribute_const__ kvm_target_cpu(void);
 int kvm_reset_vcpu(struct kvm_vcpu *vcpu);
 void kvm_reset_coprocs(struct kvm_vcpu *vcpu);
 
-struct kvm_s2_vmid {
+struct kvm_vmid {
 	/* The VMID generation used for the virt. memory system */
 	u64    vmid_gen;
 	u32    vmid;
 };
 
 struct kvm_s2_mmu {
-	struct kvm_s2_vmid vmid;
-	struct kvm_s2_vmid el2_vmid;
+	struct kvm_vmid vmid;
+	struct kvm_vmid el2_vmid;
 
 	/* Stage-2 page table */
 	pgd_t *pgd;

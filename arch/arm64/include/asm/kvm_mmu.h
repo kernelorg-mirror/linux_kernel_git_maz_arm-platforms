@@ -563,7 +563,7 @@ struct kvm_nested_s2_mmu *lookup_nested_mmu(struct kvm_vcpu *vcpu, u64 vttbr);
 int kvm_nested_mmio_ondemand(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			     phys_addr_t ipa);
 
-static inline u64 kvm_get_vttbr(struct kvm_s2_vmid *vmid,
+static inline u64 kvm_get_vttbr(struct kvm_vmid *vmid,
 				struct kvm_s2_mmu *mmu)
 {
 	u64 vmid_field, baddr;
@@ -580,7 +580,7 @@ static inline u64 get_vmid(u64 vttbr)
 	       VTTBR_VMID_SHIFT;
 }
 
-static inline struct kvm_s2_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
+static inline struct kvm_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
 {
 	struct kvm_s2_mmu *mmu = vcpu_get_active_s2_mmu(vcpu);
 

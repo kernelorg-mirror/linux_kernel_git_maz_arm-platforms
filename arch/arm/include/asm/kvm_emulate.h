@@ -368,7 +368,7 @@ static inline unsigned long vcpu_data_host_to_guest(struct kvm_vcpu *vcpu,
 	}
 }
 
-static inline struct kvm_s2_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
+static inline struct kvm_vmid *vcpu_get_active_vmid(struct kvm_vcpu *vcpu)
 {
 	return &vcpu->kvm->arch.mmu.vmid;
 }

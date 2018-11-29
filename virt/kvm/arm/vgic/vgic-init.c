@@ -247,8 +247,6 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 			irq->group = 0;
 	}
 
-	vgic_init_nested(vcpu);
-
 	if (!irqchip_in_kernel(vcpu->kvm))
 		return 0;
 
@@ -257,9 +255,12 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 	 * KVM io device for the redistributor that belongs to this VCPU.
 	 */
 	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+		vgic_v3_init_nested(vcpu);
 		mutex_lock(&vcpu->kvm->lock);
 		ret = vgic_register_redist_iodev(vcpu);
 		mutex_unlock(&vcpu->kvm->lock);
+	} else {
+		vgic_v2_init_nested(vcpu);
 	}
 
 	return ret;

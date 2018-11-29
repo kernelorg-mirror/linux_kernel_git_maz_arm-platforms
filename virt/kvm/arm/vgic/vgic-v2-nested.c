@@ -333,7 +333,7 @@ void vgic_v2_restore_shadow_state(struct kvm_vcpu *vcpu)
 	vgic_cpu->nested_vgic_v2 = vgic_cpu->shadow_vgic_v2;
 }
 
-void vgic_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
+void vgic_v2_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v2_cpu_if *cpu_if = vcpu_nested_if(vcpu);
 
@@ -352,7 +352,7 @@ void vgic_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 		kvm_inject_nested_irq(vcpu);
 }
 
-void vgic_init_nested(struct kvm_vcpu *vcpu)
+void vgic_v2_init_nested(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 

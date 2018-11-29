@@ -392,7 +392,14 @@ void kvm_vgic_put(struct kvm_vcpu *vcpu);
 
 void vgic_v2_setup_shadow_state(struct kvm_vcpu *vcpu);
 void vgic_v2_restore_shadow_state(struct kvm_vcpu *vcpu);
-void vgic_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
+void vgic_v2_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
+
+void vgic_v3_setup_shadow_state(struct kvm_vcpu *vcpu);
+void vgic_v3_restore_shadow_state(struct kvm_vcpu *vcpu);
+void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
+u16 vgic_v3_get_eisr(struct kvm_vcpu *vcpu);
+u16 vgic_v3_get_elrsr(struct kvm_vcpu *vcpu);
+u64 vgic_v3_get_misr(struct kvm_vcpu *vcpu);
 
 #define irqchip_in_kernel(k)	(!!((k)->arch.vgic.in_kernel))
 #define vgic_initialized(k)	((k)->arch.vgic.initialized)

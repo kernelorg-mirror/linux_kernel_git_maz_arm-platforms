@@ -56,8 +56,8 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	unsigned long elr;
 
 	/*
-	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
-	 * bit is set.
+	 * Forward this trap to the virtual EL2 if the virtual
+	 * HCR_EL2.NV bit is set and this is coming from !EL2.
 	 */
 	if (forward_nv_traps(vcpu)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));

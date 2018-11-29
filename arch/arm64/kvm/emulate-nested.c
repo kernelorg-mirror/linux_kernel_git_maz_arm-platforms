@@ -52,7 +52,7 @@ static u64 get_el2_except_vector(struct kvm_vcpu *vcpu,
 
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 {
-	unsigned long spsr = vcpu_read_spsr_el2(vcpu);
+	unsigned long spsr = vcpu_read_spsr(vcpu);
 	unsigned long elr = vcpu_read_sys_reg(vcpu, ELR_EL2);
 
 	trace_kvm_nested_eret(vcpu, elr, spsr);

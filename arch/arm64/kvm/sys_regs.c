@@ -262,6 +262,21 @@ u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 		case ELR_EL2:
 			return read_sysreg_el1(elr);
 		case SPSR_EL2:
+			/*
+			 * Should !E2H vEL2 have taken a local exception,
+			 * SPSR_EL1 will have been changed.
+			 */
+			if (!vcpu_el2_e2h_is_set(&vcpu->arch.ctxt)) {
+				val = read_sysreg_el1(spsr);
+				if (val & PSR_MODE_MASK) {
+					val &= ~0xc;
+					val |= CurrentEL_EL2;
+					return val;
+				}
+
+				return __vcpu_sys_reg(vcpu, SPSR_EL2);
+			}
+
 			return read_sysreg_el1(spsr);
 		}
 
@@ -359,6 +374,14 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 			write_sysreg_el1(val, elr);
 			return;
 		case SPSR_EL2:
+			/*
+			 * When running !E2H at vEL2, clear the full .M field
+			 * while writing SPSR to the CPU, so that we can
+			 * detect when the CPU clobbered the HW SPSR copy
+			 * during a local exception. We'll fix it up on read.
+			 */
+			if (!vcpu_el2_e2h_is_set(&vcpu->arch.ctxt))
+				val &= ~PSR_MODE_MASK;
 			write_sysreg_el1(val, spsr);
 			return;
 		}
@@ -1532,9 +1555,9 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
 	if (p->is_write)
-		vcpu_write_spsr_el2(vcpu, p->regval);
+		vcpu_write_spsr(vcpu, p->regval);
 	else
-		p->regval = vcpu_read_spsr_el2(vcpu);
+		p->regval = vcpu_read_spsr(vcpu);
 
 	return true;
 }

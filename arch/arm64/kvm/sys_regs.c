@@ -1437,12 +1437,14 @@ static int set_raz_id_reg(struct kvm_vcpu *vcpu, const struct sys_reg_desc *rd,
 }
 
 /* sys_reg_desc initialiser for known cpufeature ID registers */
-#define ID_SANITISED(name) {			\
+#define ID_SANITISED_FN(name, fn) {		\
 	SYS_DESC(SYS_##name),			\
-	.access	= access_id_reg,		\
+	.access	= fn,				\
 	.get_user = get_id_reg,			\
 	.set_user = set_id_reg,			\
 }
+
+#define ID_SANITISED(name) 	ID_SANITISED_FN(name, access_id_reg)
 
 /*
  * sys_reg_desc initialiser for architecturally unallocated cpufeature ID
@@ -1532,6 +1534,21 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 		vcpu_write_sys_reg(vcpu, p->regval, SPSR_EL2);
 	else
 		p->regval = vcpu_read_sys_reg(vcpu, SPSR_EL2);
+
+	return true;
+}
+
+static bool access_id_aa64pfr0_el1(struct kvm_vcpu *v,
+				   struct sys_reg_params *p,
+				   const struct sys_reg_desc *r)
+{
+	u64 val;
+
+	if (!nested_virt_in_use(v) || p->is_write)
+		return access_id_reg(v, p, r);
+
+	val = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
+	p->regval = val & ~(0xf << ID_AA64PFR0_RAS_SHIFT);
 
 	return true;
 }
@@ -1627,7 +1644,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	/* AArch64 ID registers */
 	/* CRm=4 */
-	ID_SANITISED(ID_AA64PFR0_EL1),
+	ID_SANITISED_FN(ID_AA64PFR0_EL1, access_id_aa64pfr0_el1),
 	ID_SANITISED(ID_AA64PFR1_EL1),
 	ID_UNALLOCATED(4,2),
 	ID_UNALLOCATED(4,3),
@@ -1858,6 +1875,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_VBAR_EL2), access_rw, reset_val, VBAR_EL2, 0 },
 	{ SYS_DESC(SYS_RVBAR_EL2), access_rw, reset_val, RVBAR_EL2, 0 },
 	{ SYS_DESC(SYS_RMR_EL2), access_rw, reset_val, RMR_EL2, 0 },
+	{ SYS_DESC(SYS_VDISR_EL2), trap_undef },
 
 	{ SYS_DESC(SYS_CONTEXTIDR_EL2), access_rw, reset_val, CONTEXTIDR_EL2, 0 },
 	{ SYS_DESC(SYS_TPIDR_EL2), access_rw, reset_val, TPIDR_EL2, 0 },

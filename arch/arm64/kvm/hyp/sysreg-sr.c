@@ -98,11 +98,14 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 		ctxt->sys_regs[TTBR1_EL2]	= read_sysreg_el1(ttbr1);
 		ctxt->sys_regs[TCR_EL2]		= read_sysreg_el1(tcr);
 		ctxt->sys_regs[CNTHCTL_EL2]	= read_sysreg_el1(cntkctl);
+		ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
+		ctxt->sys_regs[SPSR_EL2]	= read_sysreg_el1(spsr);
+	} else {
+		ctxt->sys_regs[ELR_EL1]		= read_sysreg_el1(elr);
+		ctxt->sys_regs[SPSR_EL1]	= read_sysreg_el1(spsr);
 	}
 
 	ctxt->sys_regs[SP_EL2]		= read_sysreg(sp_el1);
-	ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
-	ctxt->sys_regs[SPSR_EL2]	= read_sysreg_el1(spsr);
 }
 
 static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
@@ -122,12 +125,30 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 /* Read the guest's PSTATE from SPSR_EL2, but restore vEL2 if needed. */
 static u64 __hyp_text from_hw_pstate(const struct kvm_cpu_context *ctxt)
 {
+	u64 mode = ctxt->gp_regs.regs.pstate & PSR_MODE_MASK;
 	u64 reg = read_sysreg_el2(spsr);
+	u64 hwmode = reg & PSR_MODE_MASK;
 
-	if ((ctxt->gp_regs.regs.pstate & 0x0c) != PSR_MODE_EL2t)
-		return reg;
+	/*
+	 * If we *entered the guest* in virtual EL2, fix up the h/t setting
+	 * for the virtual mode.
+	 *
+	 * Also write back the remaining bits in pstate.
+	 */
+	switch (mode) {
+	case PSR_MODE_EL2t:
+		if (hwmode == PSR_MODE_EL1h)
+			mode = PSR_MODE_EL2h;
+		break;
+	case PSR_MODE_EL2h:
+		if (hwmode == PSR_MODE_EL1t)
+			mode = PSR_MODE_EL2t;
+		break;
+	default:
+		mode = hwmode;
+	}
 
-	return (reg & ~0x0c) | PSR_MODE_EL2t;
+	return (reg & ~PSR_MODE_MASK) | mode;
 }
 
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)
@@ -204,6 +225,8 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
 		write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
 		write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);
+		write_sysreg_el1(ctxt->sys_regs[SPSR_EL2],	spsr);
+		write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
 	} else {
 		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
 				 sctlr);
@@ -214,11 +237,11 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(translate_tcr(ctxt->sys_regs[TCR_EL2]), tcr);
 		write_sysreg_el1(translate_cnthctl(ctxt->sys_regs[CNTHCTL_EL2]),
 				 cntkctl);
+		write_sysreg_el1(ctxt->sys_regs[SPSR_EL1],	spsr);
+		write_sysreg_el1(ctxt->sys_regs[ELR_EL1],	elr);
 	}
 
 	write_sysreg(ctxt->sys_regs[SP_EL2],		sp_el1);
-	write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
-	write_sysreg_el1(ctxt->sys_regs[SPSR_EL2],	spsr);
 }
 
 static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)
@@ -261,12 +284,16 @@ static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 /* Read the VCPU state's PSTATE, but translate (v)EL2 to EL1. */
 static u64 __hyp_text to_hw_pstate(const struct kvm_cpu_context *ctxt)
 {
-	u64 reg = ctxt->gp_regs.regs.pstate;
+	u64 mode = ctxt->gp_regs.regs.pstate & PSR_MODE_MASK;
 
-	if ((reg & 0x0c) != PSR_MODE_EL2t)
-		return reg;
+	switch (mode) {
+	case PSR_MODE_EL2t:
+		mode = PSR_MODE_EL1t;
+	case PSR_MODE_EL2h:
+		mode = PSR_MODE_EL1h;
+	}
 
-	return (reg & ~0x0c) | PSR_MODE_EL1t;
+	return (ctxt->gp_regs.regs.pstate & ~PSR_MODE_MASK) | mode;
 }
 
 static void __hyp_text

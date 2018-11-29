@@ -98,13 +98,10 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 		ctxt->sys_regs[TTBR1_EL2]	= read_sysreg_el1(ttbr1);
 		ctxt->sys_regs[TCR_EL2]		= read_sysreg_el1(tcr);
 		ctxt->sys_regs[CNTHCTL_EL2]	= read_sysreg_el1(cntkctl);
-		ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
-		ctxt->sys_regs[SPSR_EL2]	= read_sysreg_el1(spsr);
-	} else {
-		ctxt->sys_regs[ELR_EL1]		= read_sysreg_el1(elr);
-		ctxt->sys_regs[SPSR_EL1]	= read_sysreg_el1(spsr);
 	}
 
+	ctxt->sys_regs[SPSR_EL2]	= read_sysreg_el1(spsr);
+	ctxt->sys_regs[ELR_EL2]		= read_sysreg_el1(elr);
 	ctxt->sys_regs[SP_EL2]		= read_sysreg(sp_el1);
 }
 
@@ -225,8 +222,6 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
 		write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
 		write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);
-		write_sysreg_el1(ctxt->sys_regs[SPSR_EL2],	spsr);
-		write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
 	} else {
 		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
 				 sctlr);
@@ -237,10 +232,10 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(translate_tcr(ctxt->sys_regs[TCR_EL2]), tcr);
 		write_sysreg_el1(translate_cnthctl(ctxt->sys_regs[CNTHCTL_EL2]),
 				 cntkctl);
-		write_sysreg_el1(ctxt->sys_regs[SPSR_EL1],	spsr);
-		write_sysreg_el1(ctxt->sys_regs[ELR_EL1],	elr);
 	}
 
+	write_sysreg_el1(ctxt->sys_regs[SPSR_EL2],	spsr);
+	write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
 	write_sysreg(ctxt->sys_regs[SP_EL2],		sp_el1);
 }
 

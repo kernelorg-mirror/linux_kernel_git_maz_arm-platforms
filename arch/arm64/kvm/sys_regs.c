@@ -182,43 +182,8 @@ const struct el2_sysreg_map *find_el2_sysreg(const struct el2_sysreg_map *map,
 	return entry;
 }
 
-u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
+static bool __vcpu_read_sys_reg_from_cpu(int reg, u64 *val)
 {
-	u64 val;
-
-	if (!vcpu->arch.sysregs_loaded_on_cpu)
-		goto immediate_read;
-
-	if (unlikely(sysreg_is_el2(reg))) {
-		const struct el2_sysreg_map *el2_reg;
-
-		if (!is_hyp_ctxt(vcpu))
-			goto immediate_read;
-
-		switch (reg) {
-		case SPSR_EL2:
-			val = read_sysreg_el1(spsr);
-			return __fixup_spsr_el2_read(&vcpu->arch.ctxt, val);
-		}
-
-		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
-		if (el2_reg) {
-			/*
-			 * If this register does not have an EL1 counterpart,
-			 * then read the stored EL2 version.
-			 */
-			if (el2_reg->mapping == __INVALID_SYSREG__)
-				goto immediate_read;
-
-			/* Get the current version of the EL1 counterpart. */
-			reg = el2_reg->mapping;
-		}
-	} else {
-		/* EL1 register can't be on the CPU if the guest is in vEL2. */
-		if (unlikely(is_hyp_ctxt(vcpu)))
-			goto immediate_read;
-	}
-
 	/*
 	 * System registers listed in the switch are not saved on every
 	 * exit from the guest but are only saved on vcpu_put.
@@ -229,77 +194,89 @@ u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 	 * thread when emulating cross-VCPU communication.
 	 */
 	switch (reg) {
-	case CSSELR_EL1:	return read_sysreg_s(SYS_CSSELR_EL1);
-	case SCTLR_EL1:		return read_sysreg_s(sctlr_EL12);
-	case ACTLR_EL1:		return read_sysreg_s(SYS_ACTLR_EL1);
-	case CPACR_EL1:		return read_sysreg_s(cpacr_EL12);
-	case TTBR0_EL1:		return read_sysreg_s(ttbr0_EL12);
-	case TTBR1_EL1:		return read_sysreg_s(ttbr1_EL12);
-	case TCR_EL1:		return read_sysreg_s(tcr_EL12);
-	case ESR_EL1:		return read_sysreg_s(esr_EL12);
-	case AFSR0_EL1:		return read_sysreg_s(afsr0_EL12);
-	case AFSR1_EL1:		return read_sysreg_s(afsr1_EL12);
-	case FAR_EL1:		return read_sysreg_s(far_EL12);
-	case MAIR_EL1:		return read_sysreg_s(mair_EL12);
-	case VBAR_EL1:		return read_sysreg_s(vbar_EL12);
-	case CONTEXTIDR_EL1:	return read_sysreg_s(contextidr_EL12);
-	case TPIDR_EL0:		return read_sysreg_s(SYS_TPIDR_EL0);
-	case TPIDRRO_EL0:	return read_sysreg_s(SYS_TPIDRRO_EL0);
-	case TPIDR_EL1:		return read_sysreg_s(SYS_TPIDR_EL1);
-	case AMAIR_EL1:		return read_sysreg_s(amair_EL12);
-	case CNTKCTL_EL1:	return read_sysreg_s(cntkctl_EL12);
-	case PAR_EL1:		return read_sysreg_s(SYS_PAR_EL1);
-	case DACR32_EL2:	return read_sysreg_s(SYS_DACR32_EL2);
-	case IFSR32_EL2:	return read_sysreg_s(SYS_IFSR32_EL2);
-	case DBGVCR32_EL2:	return read_sysreg_s(SYS_DBGVCR32_EL2);
-	case SP_EL2:		return read_sysreg(sp_el1);
-	case ELR_EL2:		return read_sysreg_el1(elr);
+	case CSSELR_EL1:	*val = read_sysreg_s(SYS_CSSELR_EL1);	break;
+	case SCTLR_EL1:		*val = read_sysreg_s(sctlr_EL12);	break;
+	case ACTLR_EL1:		*val = read_sysreg_s(SYS_ACTLR_EL1);	break;
+	case CPACR_EL1:		*val = read_sysreg_s(cpacr_EL12);	break;
+	case TTBR0_EL1:		*val = read_sysreg_s(ttbr0_EL12);	break;
+	case TTBR1_EL1:		*val = read_sysreg_s(ttbr1_EL12);	break;
+	case TCR_EL1:		*val = read_sysreg_s(tcr_EL12);		break;
+	case ESR_EL1:		*val = read_sysreg_s(esr_EL12);		break;
+	case AFSR0_EL1:		*val = read_sysreg_s(afsr0_EL12);	break;
+	case AFSR1_EL1:		*val = read_sysreg_s(afsr1_EL12);	break;
+	case FAR_EL1:		*val = read_sysreg_s(far_EL12);		break;
+	case MAIR_EL1:		*val = read_sysreg_s(mair_EL12);	break;
+	case VBAR_EL1:		*val = read_sysreg_s(vbar_EL12);	break;
+	case CONTEXTIDR_EL1:	*val = read_sysreg_s(contextidr_EL12);	break;
+	case TPIDR_EL0:		*val = read_sysreg_s(SYS_TPIDR_EL0);	break;
+	case TPIDRRO_EL0:	*val = read_sysreg_s(SYS_TPIDRRO_EL0);	break;
+	case TPIDR_EL1:		*val = read_sysreg_s(SYS_TPIDR_EL1);	break;
+	case AMAIR_EL1:		*val = read_sysreg_s(amair_EL12);	break;
+	case CNTKCTL_EL1:	*val = read_sysreg_s(cntkctl_EL12);	break;
+	case PAR_EL1:		*val = read_sysreg_s(SYS_PAR_EL1);	break;
+	case DACR32_EL2:	*val = read_sysreg_s(SYS_DACR32_EL2);	break;
+	case IFSR32_EL2:	*val = read_sysreg_s(SYS_IFSR32_EL2);	break;
+	case DBGVCR32_EL2:	*val = read_sysreg_s(SYS_DBGVCR32_EL2);	break;
+	default:		return false;
 	}
 
-immediate_read:
-	return __vcpu_sys_reg(vcpu, reg);
+	return true;
 }
 
-void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
+u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
+	u64 val = 0x8badf00d8badf00d;
+
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
-		goto immediate_write;
+		goto memory_read;
 
 	if (unlikely(sysreg_is_el2(reg))) {
 		const struct el2_sysreg_map *el2_reg;
 
 		if (!is_hyp_ctxt(vcpu))
-			goto immediate_write;
-
-		/* Store the EL2 version in the sysregs array. */
-		__vcpu_sys_reg(vcpu, reg) = val;
+			goto memory_read;
 
 		switch (reg) {
+		case ELR_EL2:
+			return read_sysreg_el1(elr);
 		case SPSR_EL2:
-			val = __fixup_spsr_el2_write(&vcpu->arch.ctxt, val);
-			write_sysreg_el1(val, spsr);
-			return;
+			val = read_sysreg_el1(spsr);
+			return __fixup_spsr_el2_read(&vcpu->arch.ctxt, val);
 		}
 
 		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
-		if (el2_reg) {
-			/* Does this register have an EL1 counterpart? */
-			if (el2_reg->mapping == __INVALID_SYSREG__)
-				return;
+		BUG_ON(!el2_reg);
 
-			if (!vcpu_el2_e2h_is_set(vcpu) &&
-			    el2_reg->translate)
-				val = el2_reg->translate(val);
+		/*
+		 * If this register does not have an EL1 counterpart,
+		 * then read the stored EL2 version.
+		 */
+		if (el2_reg->mapping == __INVALID_SYSREG__)
+			goto memory_read;
 
-			/* Redirect this to the EL1 version of the register. */
-			reg = el2_reg->mapping;
-		}
-	} else {
-		/* EL1 register can't be on the CPU if the guest is in vEL2. */
-		if (unlikely(is_hyp_ctxt(vcpu)))
-			goto immediate_write;
+		if (!vcpu_el2_e2h_is_set(vcpu) &&
+		    el2_reg->translate)
+			goto memory_read;
+
+		/* Get the current version of the EL1 counterpart. */
+		reg = el2_reg->mapping;
+		WARN_ON(!__vcpu_read_sys_reg_from_cpu(reg, &val));
+		return val;
 	}
 
+	/* EL1 register can't be on the CPU if the guest is in vEL2. */
+	if (unlikely(is_hyp_ctxt(vcpu)))
+		goto memory_read;
+
+	if (__vcpu_read_sys_reg_from_cpu(reg, &val))
+		return val;
+
+memory_read:
+	return __vcpu_sys_reg(vcpu, reg);
+}
+
+static bool __vcpu_write_sys_reg_to_cpu(u64 val, int reg)
+{
 	/*
 	 * System registers listed in the switch are not restored on every
 	 * entry to the guest but are only restored on vcpu_load.
@@ -309,34 +286,88 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 	 * set once, before running the VCPU, and never changed later.
 	 */
 	switch (reg) {
-	case CSSELR_EL1:	write_sysreg_s(val, SYS_CSSELR_EL1);	return;
-	case SCTLR_EL1:		write_sysreg_s(val, sctlr_EL12);	return;
-	case ACTLR_EL1:		write_sysreg_s(val, SYS_ACTLR_EL1);	return;
-	case CPACR_EL1:		write_sysreg_s(val, cpacr_EL12);	return;
-	case TTBR0_EL1:		write_sysreg_s(val, ttbr0_EL12);	return;
-	case TTBR1_EL1:		write_sysreg_s(val, ttbr1_EL12);	return;
-	case TCR_EL1:		write_sysreg_s(val, tcr_EL12);		return;
-	case ESR_EL1:		write_sysreg_s(val, esr_EL12);		return;
-	case AFSR0_EL1:		write_sysreg_s(val, afsr0_EL12);	return;
-	case AFSR1_EL1:		write_sysreg_s(val, afsr1_EL12);	return;
-	case FAR_EL1:		write_sysreg_s(val, far_EL12);		return;
-	case MAIR_EL1:		write_sysreg_s(val, mair_EL12);		return;
-	case VBAR_EL1:		write_sysreg_s(val, vbar_EL12);		return;
-	case CONTEXTIDR_EL1:	write_sysreg_s(val, contextidr_EL12);	return;
-	case TPIDR_EL0:		write_sysreg_s(val, SYS_TPIDR_EL0);	return;
-	case TPIDRRO_EL0:	write_sysreg_s(val, SYS_TPIDRRO_EL0);	return;
-	case TPIDR_EL1:		write_sysreg_s(val, SYS_TPIDR_EL1);	return;
-	case AMAIR_EL1:		write_sysreg_s(val, amair_EL12);	return;
-	case CNTKCTL_EL1:	write_sysreg_s(val, cntkctl_EL12);	return;
-	case PAR_EL1:		write_sysreg_s(val, SYS_PAR_EL1);	return;
-	case DACR32_EL2:	write_sysreg_s(val, SYS_DACR32_EL2);	return;
-	case IFSR32_EL2:	write_sysreg_s(val, SYS_IFSR32_EL2);	return;
-	case DBGVCR32_EL2:	write_sysreg_s(val, SYS_DBGVCR32_EL2);	return;
-	case SP_EL2:		write_sysreg(val, sp_el1);		return;
-	case ELR_EL2:		write_sysreg_el1(val, elr);		return;
+	case CSSELR_EL1:	write_sysreg_s(val, SYS_CSSELR_EL1);	break;
+	case SCTLR_EL1:		write_sysreg_s(val, sctlr_EL12);	break;
+	case ACTLR_EL1:		write_sysreg_s(val, SYS_ACTLR_EL1);	break;
+	case CPACR_EL1:		write_sysreg_s(val, cpacr_EL12);	break;
+	case TTBR0_EL1:		write_sysreg_s(val, ttbr0_EL12);	break;
+	case TTBR1_EL1:		write_sysreg_s(val, ttbr1_EL12);	break;
+	case TCR_EL1:		write_sysreg_s(val, tcr_EL12);		break;
+	case ESR_EL1:		write_sysreg_s(val, esr_EL12);		break;
+	case AFSR0_EL1:		write_sysreg_s(val, afsr0_EL12);	break;
+	case AFSR1_EL1:		write_sysreg_s(val, afsr1_EL12);	break;
+	case FAR_EL1:		write_sysreg_s(val, far_EL12);		break;
+	case MAIR_EL1:		write_sysreg_s(val, mair_EL12);		break;
+	case VBAR_EL1:		write_sysreg_s(val, vbar_EL12);		break;
+	case CONTEXTIDR_EL1:	write_sysreg_s(val, contextidr_EL12);	break;
+	case TPIDR_EL0:		write_sysreg_s(val, SYS_TPIDR_EL0);	break;
+	case TPIDRRO_EL0:	write_sysreg_s(val, SYS_TPIDRRO_EL0);	break;
+	case TPIDR_EL1:		write_sysreg_s(val, SYS_TPIDR_EL1);	break;
+	case AMAIR_EL1:		write_sysreg_s(val, amair_EL12);	break;
+	case CNTKCTL_EL1:	write_sysreg_s(val, cntkctl_EL12);	break;
+	case PAR_EL1:		write_sysreg_s(val, SYS_PAR_EL1);	break;
+	case DACR32_EL2:	write_sysreg_s(val, SYS_DACR32_EL2);	break;
+	case IFSR32_EL2:	write_sysreg_s(val, SYS_IFSR32_EL2);	break;
+	case DBGVCR32_EL2:	write_sysreg_s(val, SYS_DBGVCR32_EL2);	break;
+	default:		return false;
 	}
 
-immediate_write:
+	return true;
+}
+
+void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
+{
+	if (!vcpu->arch.sysregs_loaded_on_cpu)
+		goto memory_write;
+
+	if (unlikely(sysreg_is_el2(reg))) {
+		const struct el2_sysreg_map *el2_reg;
+
+		if (!is_hyp_ctxt(vcpu))
+			goto memory_write;
+
+		/*
+		 * Always store a copy of the write to memory to avoid having
+		 * to reverse-translate virtual EL2 system registers for a
+		 * non-VHE guest hypervisor.
+		 */
+		__vcpu_sys_reg(vcpu, reg) = val;
+
+		switch (reg) {
+		case ELR_EL2:
+			write_sysreg_el1(val, elr);
+			return;
+		case SPSR_EL2:
+			val = __fixup_spsr_el2_write(&vcpu->arch.ctxt, val);
+			write_sysreg_el1(val, spsr);
+			return;
+		}
+
+		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
+		WARN(!el2_reg, "reg: %d\n", reg);
+
+		/* Does this register have an EL1 counterpart? */
+		if (el2_reg->mapping == __INVALID_SYSREG__)
+			goto memory_write;
+
+		if (!vcpu_el2_e2h_is_set(vcpu) &&
+		    el2_reg->translate)
+			val = el2_reg->translate(val);
+
+		/* Redirect this to the EL1 version of the register. */
+		reg = el2_reg->mapping;
+		WARN_ON(!__vcpu_write_sys_reg_to_cpu(val, reg));
+		return;
+	}
+
+	/* EL1 register can't be on the CPU if the guest is in vEL2. */
+	if (unlikely(is_hyp_ctxt(vcpu)))
+		goto memory_write;
+
+	if (__vcpu_write_sys_reg_to_cpu(val, reg))
+		return;
+
+memory_write:
 	 __vcpu_sys_reg(vcpu, reg) = val;
 }
 

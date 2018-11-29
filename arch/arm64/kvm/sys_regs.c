@@ -204,7 +204,7 @@ const struct el2_sysreg_map *find_el2_sysreg(const struct el2_sysreg_map *map,
 	return entry;
 }
 
-u64 vcpu_read_sys_reg(struct kvm_vcpu *vcpu, int reg)
+u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)

@@ -52,10 +52,8 @@ static u64 get_el2_except_vector(struct kvm_vcpu *vcpu,
 
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 {
-	unsigned long spsr = vcpu_read_spsr(vcpu);
-	unsigned long elr = vcpu_read_sys_reg(vcpu, ELR_EL2);
-
-	trace_kvm_nested_eret(vcpu, elr, spsr);
+	unsigned long spsr;
+	unsigned long elr;
 
 	/*
 	 * Forward this trap to the virtual EL2 if the virtual HCR_EL2.NV
@@ -68,6 +66,11 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 
 	preempt_disable();
 	kvm_arch_vcpu_put(vcpu);
+
+	spsr = __vcpu_sys_reg(vcpu, SPSR_EL2);
+	elr = __vcpu_sys_reg(vcpu, ELR_EL2);
+
+	trace_kvm_nested_eret(vcpu, elr, spsr);
 
 	/*
 	 * Note that the current exception level is always the virtual EL2,

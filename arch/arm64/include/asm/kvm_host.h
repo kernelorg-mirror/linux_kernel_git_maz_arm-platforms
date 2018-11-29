@@ -194,8 +194,6 @@ enum vcpu_sysreg {
 	SPSR_EL1,	/* The CPU's SPSR_EL1 while running in vEL2 */
 	ELR_EL1,
 
-	SP_EL1,
-
 	/* EL2 registers sorted ascending by Op0, Op1, CRn, CRm, Op2 */
 	FIRST_EL2_SYSREG,
 	VPIDR_EL2 = FIRST_EL2_SYSREG,

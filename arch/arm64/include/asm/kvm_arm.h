@@ -232,9 +232,13 @@
 /* Hyp Prefetch Fault Address Register (HPFAR/HDFAR) */
 #define HPFAR_MASK	(~UL(0xf))
 
-#define kvm_arm_exception_type	\
-	{0, "IRQ" }, 		\
-	{1, "TRAP" }
+#define kvm_arm_exception_type			\
+	{0, 		"IRQ"		},	\
+	{1, 		"SERROR"	},	\
+	{2, 		"TRAP"		},	\
+	{(1 << 31) | 0, "IRQ+SERROR"	},	\
+	{(1 << 31) | 1, "SERROR+SERROR" },	\
+	{(1 << 31) | 2, "TRAP+SERROR"	}
 
 #define ECN(x) { ESR_ELx_EC_##x, #x }
 
@@ -246,7 +250,7 @@
 	ECN(SP_ALIGN), ECN(FP_EXC32), ECN(FP_EXC64), ECN(SERROR), \
 	ECN(BREAKPT_LOW), ECN(BREAKPT_CUR), ECN(SOFTSTP_LOW), \
 	ECN(SOFTSTP_CUR), ECN(WATCHPT_LOW), ECN(WATCHPT_CUR), \
-	ECN(BKPT32), ECN(VECTOR32), ECN(BRK64)
+	ECN(BKPT32), ECN(VECTOR32), ECN(BRK64), ECN(ERET)
 
 #define CPACR_EL1_FPEN		(3 << 20)
 #define CPACR_EL1_TTA		(1 << 28)

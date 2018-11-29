@@ -1555,9 +1555,9 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
 	if (p->is_write)
-		vcpu_write_spsr(vcpu, p->regval);
+		vcpu_write_sys_reg(vcpu, p->regval, SPSR_EL2);
 	else
-		p->regval = vcpu_read_spsr(vcpu);
+		p->regval = vcpu_read_sys_reg(vcpu, SPSR_EL2);
 
 	return true;
 }

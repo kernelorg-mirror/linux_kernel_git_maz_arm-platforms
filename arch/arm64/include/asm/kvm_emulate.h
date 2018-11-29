@@ -365,7 +365,7 @@ static inline bool vcpu_el2_format_used(const struct kvm_vcpu *vcpu)
 
 static inline bool vcpu_nested_stage2_enabled(const struct kvm_vcpu *vcpu)
 {
-	return (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_VM);
+	return (vcpu_read_sys_reg(vcpu, HCR_EL2) & HCR_VM);
 }
 
 static inline u32 kvm_vcpu_get_hsr(const struct kvm_vcpu *vcpu)

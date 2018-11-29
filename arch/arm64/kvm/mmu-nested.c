@@ -392,9 +392,7 @@ static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 
 	if (s2_mmu->usage_count == 0) {
 		/* Clear the old state */
-		spin_lock(&kvm->mmu_lock);
 		kvm_unmap_stage2_range(kvm, s2_mmu, 0, KVM_PHYS_SIZE);
-		spin_unlock(&kvm->mmu_lock);
 		if (s2_mmu->vmid.vmid_gen)
 			kvm_call_hyp(__kvm_tlb_flush_vmid, kvm_get_vttbr(s2_mmu));
 	} else {
@@ -415,7 +413,7 @@ out:
 
 void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu)
 {
-	mutex_lock(&vcpu->kvm->lock);
+	spin_lock(&vcpu->kvm->mmu_lock);
 	if (vcpu->arch.hw_mmu != &vcpu->kvm->arch.mmu)
 		vcpu->arch.hw_mmu->usage_count--;
 
@@ -423,7 +421,7 @@ void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu)
 		vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 	else
 		vcpu->arch.hw_mmu = get_s2_mmu_nested(vcpu);
-	mutex_unlock(&vcpu->kvm->lock);
+	spin_unlock(&vcpu->kvm->mmu_lock);
 }
 
 /*

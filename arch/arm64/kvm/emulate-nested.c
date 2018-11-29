@@ -76,9 +76,10 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	*vcpu_pc(vcpu) = elr;
 	*vcpu_cpsr(vcpu) = spsr;
 
+	vcpu_set_hw_mmu(vcpu);
+
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
-	vcpu_set_hw_mmu(vcpu);
 }
 
 /*
@@ -110,9 +111,10 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 
 	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
 
+	vcpu_set_hw_mmu(vcpu);
+
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
-	vcpu_set_hw_mmu(vcpu);
 
 	return ret;
 }

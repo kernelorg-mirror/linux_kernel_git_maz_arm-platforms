@@ -25,7 +25,7 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_s2_mmu *tmp;
-	int num_mmus, i;
+	int num_mmus;
 	int ret = -ENOMEM;
 
 	mutex_lock(&kvm->lock);

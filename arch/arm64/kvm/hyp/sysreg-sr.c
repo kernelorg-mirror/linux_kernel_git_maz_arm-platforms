@@ -119,33 +119,26 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 		__sysreg_save_vel1_state(ctxt);
 }
 
-/* Read the guest's PSTATE from SPSR_EL2, but restore vEL2 if needed. */
 static u64 __hyp_text from_hw_pstate(const struct kvm_cpu_context *ctxt)
 {
-	u64 mode = ctxt->gp_regs.regs.pstate & PSR_MODE_MASK;
 	u64 reg = read_sysreg_el2(spsr);
-	u64 hwmode = reg & PSR_MODE_MASK;
 
-	/*
-	 * If we *entered the guest* in virtual EL2, fix up the h/t setting
-	 * for the virtual mode.
-	 *
-	 * Also write back the remaining bits in pstate.
-	 */
-	switch (mode) {
-	case PSR_MODE_EL2t:
-		if (hwmode == PSR_MODE_EL1h)
-			mode = PSR_MODE_EL2h;
-		break;
-	case PSR_MODE_EL2h:
-		if (hwmode == PSR_MODE_EL1t)
+	if (__is_hyp_ctxt(ctxt)) {
+		u64 mode = reg & PSR_MODE_MASK;
+
+		switch (mode) {
+		case PSR_MODE_EL1t:
 			mode = PSR_MODE_EL2t;
-		break;
-	default:
-		mode = hwmode;
+			break;
+		case PSR_MODE_EL1h:
+			mode = PSR_MODE_EL2h;
+			break;
+		}
+
+		return (reg & ~PSR_MODE_MASK) | mode;
 	}
 
-	return (reg & ~PSR_MODE_MASK) | mode;
+	return reg;
 }
 
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)

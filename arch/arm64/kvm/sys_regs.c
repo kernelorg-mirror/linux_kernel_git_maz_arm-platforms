@@ -126,28 +126,6 @@ u64 translate_cnthctl(u64 cnthctl)
 	return ((cnthctl & 0x3) << 10) | (cnthctl & 0xfc);
 }
 
-u64 translate_spsr(struct kvm_vcpu *vcpu, u64 spsr)
-{
-	u64 reg = read_sysreg_el1(spsr);
-
-	/*
-	 * SPSR.M == 0 isn't really possible, so if the CPU's copy of
-	 * SPSR_EL1 has this "tag", we know that the CPU hasn't touched
-	 * it, so the currently stored EL2 copy is the proper value.
-	 */
-	if ((reg & 0xf) == 0)
-		return spsr;
-
-	/*
-	 * Otherwise there was a "local" exception on the CPU, which from
-	 * the guest's point of view was being taken from EL2 to EL2, although
-	 * it actually happened to be from EL1 to EL1.
-	 * So we need to fix the .M field in SPSR, to make it look like EL2,
-	 * which is what the guest would expect.
-	 */
-	return (reg & ~0x0c) | CurrentEL_EL2;
-}
-
 #define EL2_SYSREG(el2, el1, translate)	\
 	[el2 - FIRST_EL2_SYSREG] = { el2, el1, translate }
 #define PURE_EL2_SYSREG(el2) \

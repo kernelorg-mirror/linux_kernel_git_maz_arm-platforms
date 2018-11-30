@@ -109,12 +109,15 @@ int kvm_reset_vcpu(struct kvm_vcpu *vcpu)
 {
 	const struct kvm_regs *cpu_reset;
 	bool nested = false;
+	int ret;
 
 	if (test_bit(KVM_ARM_VCPU_NESTED_VIRT, vcpu->arch.features)) {
 		if (!cpus_have_const_cap(ARM64_HAS_NESTED_VIRT))
 			return -EINVAL;
 
-		kvm_vcpu_init_nested(vcpu);
+		ret = kvm_vcpu_init_nested(vcpu);
+		if (ret)
+			return ret;
 		nested = true;
 	}
 

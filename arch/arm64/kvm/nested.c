@@ -33,7 +33,7 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	num_mmus = atomic_read(&kvm->online_vcpus) * 2;
 	tmp = __krealloc(kvm->arch.nested_mmus,
 			 num_mmus * sizeof(*kvm->arch.nested_mmus),
-			 GFP_KERNEL);
+			 GFP_KERNEL | __GFP_ZERO);
 
 	if (tmp) {
 		kfree(kvm->arch.nested_mmus);

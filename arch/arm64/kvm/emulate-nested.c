@@ -113,12 +113,35 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 			     enum exception_type type)
 {
-	int ret = 1;
+	u64 pstate, mode;
+	bool direct_inject;
 
 	if (!nested_virt_in_use(vcpu)) {
 		kvm_err("Unexpected call to %s for the non-nesting configuration\n",
 				__func__);
 		return -EINVAL;
+	}
+
+	/*
+	 * As for ERET, we can avoid doing too much on the injection path by
+	 * checking that we either took the exception from a VHE host
+	 * userspace or from vEL2. In these cases, there is no change in
+	 * translation regime (or anything else), so let's do as little as
+	 * possible.
+	 */
+	pstate = *vcpu_cpsr(vcpu);
+	mode = pstate & (PSR_MODE_MASK | PSR_MODE32_BIT);
+
+	direct_inject  = (mode == PSR_MODE_EL0t &&
+			  vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) &&
+			  vcpu_el2_tge_is_set(&vcpu->arch.ctxt));
+	direct_inject |= (mode == PSR_MODE_EL2h || mode == PSR_MODE_EL2t);
+
+	if (direct_inject) {
+		vcpu_write_sys_reg(vcpu, pstate, SPSR_EL2);
+		vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
+		vcpu_write_sys_reg(vcpu, esr_el2, ESR_EL2);
+		return 1;
 	}
 
 	preempt_disable();
@@ -140,7 +163,7 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
 	preempt_enable();
 
-	return ret;
+	return 1;
 }
 
 int kvm_inject_nested_sync(struct kvm_vcpu *vcpu, u64 esr_el2)

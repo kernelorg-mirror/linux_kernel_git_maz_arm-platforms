@@ -833,23 +833,6 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 	for (i = count ; i < kvm_vgic_global_state.nr_lr; i++)
 		vgic_clear_lr(vcpu, i);
 
-	/*
-	 * If we have any pending IRQ for the guest and the guest expects IRQs
-	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
-	 * and it is not already running in virtual EL2 mode, then we have to
-	 * emulate an IRQ exception to virtual IRQ. Note that a pending IRQ
-	 * means an irq of which state is pending but not active.
-	 */
-	if (vgic_state_is_nested(vcpu)) {
-		for (i = 0; i < count; i++) {
-			u32 vgic_lr = vgic_get_lr(vcpu, i);
-			if ((GICH_LR_PENDING_BIT & vgic_lr) && (!(GICH_LR_ACTIVE_BIT & vgic_lr))) {
-				kvm_inject_nested_irq(vcpu);
-				break;
-			}
-		}
-	}
-
 	if (!static_branch_unlikely(&kvm_vgic_global_state.gicv3_cpuif))
 		vcpu->arch.vgic_cpu.vgic_v2.used_lrs = count;
 	else
@@ -922,6 +905,22 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 	 */
 	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head))
 		return;
+
+	/*
+	 * If we have any pending IRQ for the guest and the guest expects IRQs
+	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
+	 * and it is not already running in virtual EL2 mode, then we have to
+	 * emulate an IRQ exception to virtual EL2.
+	 *
+	 * We do that by placing a requet to ourselves which will abort the
+	 * antry procedure and inject the exception at the beginning of the
+	 * run loop.
+	 */
+	if (vgic_state_is_nested(vcpu) &&
+	    kvm_vgic_vcpu_pending_irq(vcpu)) {
+		kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
+		return;
+	}
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 

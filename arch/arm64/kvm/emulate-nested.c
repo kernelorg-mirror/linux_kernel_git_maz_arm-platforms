@@ -52,8 +52,8 @@ static u64 get_el2_except_vector(struct kvm_vcpu *vcpu,
 
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 {
-	unsigned long spsr;
-	unsigned long elr;
+	u64 spsr, elr, mode;
+	bool direct_eret;
 
 	/*
 	 * Forward this trap to the virtual EL2 if the virtual
@@ -61,6 +61,27 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	 */
 	if (forward_nv_traps(vcpu)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return;
+	}
+
+	/*
+	 * Going through the whole put/load motions is a waste of time
+	 * if this is a VHE guest hypervisor returning to its own
+	 * userspace, or the hypervisor performing a local exception
+	 * return. No need to save/restore registers, no need to
+	 * switch S2 MMU. Just do the canonical ERET.
+	 */
+	spsr = vcpu_read_sys_reg(vcpu, SPSR_EL2);
+	mode = spsr & (PSR_MODE_MASK | PSR_MODE32_BIT);
+
+	direct_eret  = (mode == PSR_MODE_EL0t &&
+			vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) &&
+			vcpu_el2_tge_is_set(&vcpu->arch.ctxt));
+	direct_eret |= (mode == PSR_MODE_EL2h || mode == PSR_MODE_EL2t);
+
+	if (direct_eret) {
+		*vcpu_pc(vcpu) = vcpu_read_sys_reg(vcpu, ELR_EL2);
+		*vcpu_cpsr(vcpu) = spsr;
 		return;
 	}
 

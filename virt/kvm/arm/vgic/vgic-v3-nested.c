@@ -118,13 +118,15 @@ static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu)
 next:
 		s_cpu_if->vgic_lr[i] = lr;
 	}
+
+	s_cpu_if->used_lrs = kvm_vgic_global_state.nr_lr;
 }
 
 /*
  * Change the shadow HWIRQ field back to the virtual value before copying over
  * the entire shadow struct to the nested state.
  */
-static void vgic_v3_restore_shadow_lr(struct kvm_vcpu *vcpu)
+static void vgic_v3_fixup_shadow_lr_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = vcpu_nested_if(vcpu);
 	struct vgic_v3_cpu_if *s_cpu_if = vcpu_shadow_if(vcpu);
@@ -136,45 +138,39 @@ static void vgic_v3_restore_shadow_lr(struct kvm_vcpu *vcpu)
 	}
 }
 
-void vgic_v3_setup_shadow_state(struct kvm_vcpu *vcpu)
+void vgic_v3_load_nested(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
-	if (vgic_state_is_nested(vcpu)) {
-		vgic_cpu->hw_v3_cpu_if = &vgic_cpu->vgic_v3;
+	if (!vgic_state_is_nested(vcpu))
 		return;
-	}
 
 	vgic_cpu->shadow_vgic_v3 = vgic_cpu->nested_vgic_v3;
 	vgic_v3_create_shadow_lr(vcpu);
-	vgic_cpu->hw_v3_cpu_if = vcpu_shadow_if(vcpu);
+	__vgic_v3_restore_state(vcpu_shadow_if(vcpu));
 }
 
-void vgic_v3_restore_shadow_state(struct kvm_vcpu *vcpu)
+void vgic_v3_put_nested(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
-	if (!nested_virt_in_use(vcpu))
+
+	if (!vgic_state_is_nested(vcpu))
 		return;
 
-	/* Not using shadow state: Nothing to do... */
-	if (vgic_cpu->hw_v3_cpu_if == &vgic_cpu->vgic_v3)
-		return;
+	__vgic_v3_save_state(vcpu_shadow_if(vcpu));
 
 	/*
 	 * Translate the shadow state HW fields back to the virtual ones
 	 * before copying the shadow struct back to the nested one.
 	 */
-	vgic_v3_restore_shadow_lr(vcpu);
+	vgic_v3_fixup_shadow_lr_state(vcpu);
 	vgic_cpu->nested_vgic_v3 = vgic_cpu->shadow_vgic_v3;
 }
 
 void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = vcpu_nested_if(vcpu);
-
-	if (!nested_virt_in_use(vcpu))
-		return;
 
 	/*
 	 * If we exit a nested VM with a pending maintenance interrupt from the
@@ -186,16 +182,4 @@ void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 	    (cpu_if->vgic_hcr & ICH_HCR_EN) &&
 	    vgic_v3_get_misr(vcpu))
 		kvm_inject_nested_irq(vcpu);
-}
-
-void vgic_v3_init_nested(struct kvm_vcpu *vcpu)
-{
-	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-
-	if (!nested_virt_in_use(vcpu)) {
-		vgic_cpu->hw_v3_cpu_if = &vgic_cpu->vgic_v3;
-		return;
-	}
-
-	vgic_v3_setup_shadow_state(vcpu);
 }

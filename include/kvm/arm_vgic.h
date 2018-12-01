@@ -334,7 +334,6 @@ struct vgic_cpu {
 
 	union {
 		struct vgic_v2_cpu_if	*hw_v2_cpu_if;
-		struct vgic_v3_cpu_if	*hw_v3_cpu_if;
 	};
 
 	spinlock_t ap_list_lock;	/* Protects the ap_list */
@@ -397,8 +396,8 @@ void vgic_v2_setup_shadow_state(struct kvm_vcpu *vcpu);
 void vgic_v2_restore_shadow_state(struct kvm_vcpu *vcpu);
 void vgic_v2_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
 
-void vgic_v3_setup_shadow_state(struct kvm_vcpu *vcpu);
-void vgic_v3_restore_shadow_state(struct kvm_vcpu *vcpu);
+void vgic_v3_load_nested(struct kvm_vcpu *vcpu);
+void vgic_v3_put_nested(struct kvm_vcpu *vcpu);
 void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
 u16 vgic_v3_get_eisr(struct kvm_vcpu *vcpu);
 u16 vgic_v3_get_elrsr(struct kvm_vcpu *vcpu);

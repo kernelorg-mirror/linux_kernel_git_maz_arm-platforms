@@ -326,7 +326,6 @@ int vgic_v4_flush_hwstate(struct kvm_vcpu *vcpu);
 
 int vgic_register_gich_iodev(struct kvm *kvm, struct vgic_dist *dist);
 void vgic_v2_init_nested(struct kvm_vcpu *vcpu);
-void vgic_v3_init_nested(struct kvm_vcpu *vcpu);
 
 static inline bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
 {

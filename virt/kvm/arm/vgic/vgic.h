@@ -17,6 +17,7 @@
 #define __KVM_ARM_VGIC_NEW_H__
 
 #include <linux/irqchip/arm-gic-common.h>
+#include <asm/kvm_emulate.h>
 
 #define PRODUCT_ID_KVM		0x4b	/* ASCII code K */
 #define IMPLEMENTER_ARM		0x43b
@@ -326,5 +327,15 @@ int vgic_v4_flush_hwstate(struct kvm_vcpu *vcpu);
 int vgic_register_gich_iodev(struct kvm *kvm, struct vgic_dist *dist);
 void vgic_v2_init_nested(struct kvm_vcpu *vcpu);
 void vgic_v3_init_nested(struct kvm_vcpu *vcpu);
+
+static inline bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
+{
+	bool imo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO;
+	bool fmo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_FMO;
+
+	WARN(imo != fmo, "Separate virtual IRQ/FIQ settings not supported\n");
+
+	return nested_virt_in_use(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
+}
 
 #endif

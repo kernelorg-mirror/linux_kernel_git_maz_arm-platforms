@@ -140,9 +140,7 @@ void vgic_v3_setup_shadow_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
-	/* FIXME: mode_el2? or hyp context */
-	if (!nested_virt_in_use(vcpu) ||
-	    (vcpu_el2_imo_is_set(vcpu) && !vcpu_mode_el2(vcpu))) {
+	if (vgic_state_is_nested(vcpu)) {
 		vgic_cpu->hw_v3_cpu_if = &vgic_cpu->vgic_v3;
 		return;
 	}
@@ -184,8 +182,7 @@ void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 	 * can re-sync the appropriate LRs and sample level triggered interrupts
 	 * again.
 	 */
-	/* FIXME: mode_el2? */
-	if (vcpu_el2_imo_is_set(vcpu) && !vcpu_mode_el2(vcpu) &&
+	if (vgic_state_is_nested(vcpu) &&
 	    (cpu_if->vgic_hcr & ICH_HCR_EN) &&
 	    vgic_v3_get_misr(vcpu))
 		kvm_inject_nested_irq(vcpu);

@@ -842,7 +842,7 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 	 * emulate an IRQ exception to virtual IRQ. Note that a pending IRQ
 	 * means an irq of which state is pending but not active.
 	 */
-	if (vcpu_el2_imo_is_set(vcpu) && !vcpu_mode_el2(vcpu)) {
+	if (vgic_state_is_nested(vcpu)) {
 		for (i = 0; i < vcpu->arch.vgic_cpu.used_lrs; i++) {
 			u32 vgic_lr = vgic_get_lr(vcpu, i);
 			if ((GICH_LR_PENDING_BIT & vgic_lr) && (!(GICH_LR_ACTIVE_BIT & vgic_lr))) {

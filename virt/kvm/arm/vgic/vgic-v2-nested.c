@@ -303,7 +303,7 @@ void vgic_v2_setup_shadow_state(struct kvm_vcpu *vcpu)
 		return;
 	}
 
-	if (vcpu_el2_imo_is_set(vcpu) && !vcpu_mode_el2(vcpu)) {
+	if (vgic_state_is_nested(vcpu)) {
 		vgic_cpu->shadow_vgic_v2 = vgic_cpu->nested_vgic_v2;
 		vgic_v2_create_shadow_lr(vcpu);
 		cpu_if = vcpu_shadow_if(vcpu);
@@ -346,7 +346,7 @@ void vgic_v2_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 	 * can re-sync the appropriate LRs and sample level triggered interrupts
 	 * again.
 	 */
-	if (vcpu_el2_imo_is_set(vcpu) && !vcpu_mode_el2(vcpu) &&
+	if (vgic_state_is_nested(vcpu) &&
 	    (cpu_if->vgic_hcr & GICH_HCR_EN) &&
 	    vgic_mmio_read_v2_misr(vcpu, 0, 0))
 		kvm_inject_nested_irq(vcpu);

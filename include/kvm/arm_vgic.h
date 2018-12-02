@@ -449,4 +449,6 @@ int kvm_vgic_v4_unset_forwarding(struct kvm *kvm, int irq,
 void kvm_vgic_v4_enable_doorbell(struct kvm_vcpu *vcpu);
 void kvm_vgic_v4_disable_doorbell(struct kvm_vcpu *vcpu);
 
+bool vgic_state_is_nested(struct kvm_vcpu *vcpu);
+
 #endif /* __KVM_ARM_VGIC_H */

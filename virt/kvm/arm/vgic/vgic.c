@@ -912,8 +912,8 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 	 * and it is not already running in virtual EL2 mode, then we have to
 	 * emulate an IRQ exception to virtual EL2.
 	 *
-	 * We do that by placing a requet to ourselves which will abort the
-	 * antry procedure and inject the exception at the beginning of the
+	 * We do that by placing a request to ourselves which will abort the
+	 * entry procedure and inject the exception at the beginning of the
 	 * run loop.
 	 */
 	if (vgic_state_is_nested(vcpu) &&

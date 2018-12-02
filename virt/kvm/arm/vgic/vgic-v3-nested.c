@@ -142,9 +142,6 @@ void vgic_v3_load_nested(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
-	if (!vgic_state_is_nested(vcpu))
-		return;
-
 	vgic_cpu->shadow_vgic_v3 = vgic_cpu->nested_vgic_v3;
 	vgic_v3_create_shadow_lr(vcpu);
 	__vgic_v3_restore_state(vcpu_shadow_if(vcpu));
@@ -153,10 +150,6 @@ void vgic_v3_load_nested(struct kvm_vcpu *vcpu)
 void vgic_v3_put_nested(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-
-
-	if (!vgic_state_is_nested(vcpu))
-		return;
 
 	__vgic_v3_save_state(vcpu_shadow_if(vcpu));
 

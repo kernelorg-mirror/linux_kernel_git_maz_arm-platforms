@@ -563,11 +563,15 @@ static bool access_gic_sre(struct kvm_vcpu *vcpu,
 	if (p->is_write)
 		return ignore_write(vcpu, p);
 
-	if (p->Op1 == 4)	/* ICC_SRE_EL2 */
+	if (p->Op1 == 4) {	/* ICC_SRE_EL2 */
 		p->regval = (ICC_SRE_EL2_ENABLE | ICC_SRE_EL2_SRE |
 			     ICC_SRE_EL1_DIB | ICC_SRE_EL1_DFB);
-	else			/* ICC_SRE_EL1 */
-		p->regval = vcpu->arch.vgic_cpu.vgic_v3.vgic_sre;
+	} else {		/* ICC_SRE_EL1 */
+		if (vgic_state_is_nested(vcpu))
+			p->regval = vcpu->arch.vgic_cpu.nested_vgic_v3.vgic_sre;
+		else
+			p->regval = vcpu->arch.vgic_cpu.vgic_v3.vgic_sre;
+	}
 
 	return true;
 }

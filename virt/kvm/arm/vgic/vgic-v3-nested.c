@@ -9,11 +9,9 @@
 
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_arm.h>
-#include <asm/kvm_mmu.h>
 #include <kvm/arm_vgic.h>
 
 #include "vgic.h"
-#include "vgic-mmio.h"
 
 static inline struct vgic_v3_cpu_if *vcpu_nested_if(struct kvm_vcpu *vcpu)
 {

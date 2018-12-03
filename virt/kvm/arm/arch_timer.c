@@ -873,6 +873,129 @@ u64 kvm_arm_timer_get_reg(struct kvm_vcpu *vcpu, u64 regid)
 	return (u64)-1;
 }
 
+static struct arch_timer_context *get_timer_from_sysreg(struct kvm_vcpu *vcpu,
+							u32 sr)
+{
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_CNTP_CTL_EL0:
+	case SYS_CNTP_CVAL_EL0:
+		if (vcpu_mode_el2(vcpu) &&
+		    vcpu_el2_e2h_is_set(&vcpu->arch.ctxt))
+			return vcpu_hptimer(vcpu);
+		/* fall through */
+
+	case cntp_tval_EL02:
+	case cntp_ctl_EL02:
+	case cntp_cval_EL02:
+		return vcpu_ptimer(vcpu);
+
+	case cntv_tval_EL02:
+	case cntv_ctl_EL02:
+	case cntv_cval_EL02:
+		return vcpu_vtimer(vcpu);
+
+	case SYS_CNTHP_TVAL_EL2:
+	case SYS_CNTHP_CTL_EL2:
+	case SYS_CNTHP_CVAL_EL2:
+		return vcpu_hptimer(vcpu);
+
+	case SYS_CNTHV_TVAL_EL2:
+	case SYS_CNTHV_CTL_EL2:
+	case SYS_CNTHV_CVAL_EL2:
+		return vcpu_hvtimer(vcpu);
+	default:
+		BUG();
+	}
+}
+
+u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr)
+{
+	struct arch_timer_context *timer;
+	u64 val;
+
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
+	timer = get_timer_from_sysreg(vcpu, sr);
+
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case cntp_tval_EL02:
+	case cntv_tval_EL02:
+	case SYS_CNTHP_TVAL_EL2:
+	case SYS_CNTHV_TVAL_EL2:
+		val = kvm_phys_timer_read() - timer->cntvoff - timer->cnt_cval;
+		break;
+
+	case SYS_CNTP_CTL_EL0:
+	case cntp_ctl_EL02:
+	case cntv_ctl_EL02:
+	case SYS_CNTHP_CTL_EL2:
+	case SYS_CNTHV_CTL_EL2:
+		val = read_timer_ctl(timer);
+		break;
+
+	case SYS_CNTP_CVAL_EL0:
+	case cntp_cval_EL02:
+	case cntv_cval_EL02:
+	case SYS_CNTHP_CVAL_EL2:
+	case SYS_CNTHV_CVAL_EL2:
+		val = timer->cnt_cval;
+		break;
+
+	default:
+		BUG();
+	}
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
+
+	return val;
+}
+
+void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val)
+{
+	struct arch_timer_context *timer;
+
+	preempt_disable();
+	kvm_timer_vcpu_put(vcpu);
+
+	timer = get_timer_from_sysreg(vcpu, sr);
+
+	switch (sr) {
+	case SYS_CNTP_TVAL_EL0:
+	case cntp_tval_EL02:
+	case cntv_tval_EL02:
+	case SYS_CNTHP_TVAL_EL2:
+	case SYS_CNTHV_TVAL_EL2:
+		timer->cnt_cval = val - kvm_phys_timer_read() - timer->cntvoff;
+		break;
+
+	case SYS_CNTP_CTL_EL0:
+	case cntp_ctl_EL02:
+	case cntv_ctl_EL02:
+	case SYS_CNTHP_CTL_EL2:
+	case SYS_CNTHV_CTL_EL2:
+		timer->cnt_ctl = val & ~ARCH_TIMER_CTRL_IT_STAT;
+		break;
+
+	case SYS_CNTP_CVAL_EL0:
+	case cntp_cval_EL02:
+	case cntv_cval_EL02:
+	case SYS_CNTHP_CVAL_EL2:
+	case SYS_CNTHV_CVAL_EL2:
+		timer->cnt_cval = val;
+		break;
+
+	default:
+		BUG();
+	}
+
+	kvm_timer_vcpu_load(vcpu);
+	preempt_enable();
+}
+
 static int kvm_timer_starting_cpu(unsigned int cpu)
 {
 	kvm_timer_init_interrupt(NULL);

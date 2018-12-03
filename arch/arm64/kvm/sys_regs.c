@@ -404,8 +404,10 @@ static bool access_rw(struct kvm_vcpu *vcpu,
 		      struct sys_reg_params *p,
 		      const struct sys_reg_desc *r)
 {
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (el12_reg(p) && forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (p->is_write)
 		vcpu_write_sys_reg(vcpu, p->regval, r->reg);
@@ -472,8 +474,10 @@ static bool access_vm_reg(struct kvm_vcpu *vcpu,
 	u64 val;
 	int reg = r->reg;
 
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (el12_reg(p) && forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (!el12_reg(p) && forward_vm_traps(vcpu, p)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
@@ -1477,8 +1481,10 @@ static bool access_elr(struct kvm_vcpu *vcpu,
 		       struct sys_reg_params *p,
 		       const struct sys_reg_desc *r)
 {
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (el12_reg(p) && forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
@@ -1497,8 +1503,10 @@ static bool access_spsr(struct kvm_vcpu *vcpu,
 			struct sys_reg_params *p,
 			const struct sys_reg_desc *r)
 {
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (el12_reg(p) && forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
@@ -1517,8 +1525,10 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 			    struct sys_reg_params *p,
 			    const struct sys_reg_desc *r)
 {
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (el12_reg(p) && forward_nv_traps(vcpu)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));

@@ -475,8 +475,10 @@ static bool access_vm_reg(struct kvm_vcpu *vcpu,
 	if (el12_reg(p) && forward_nv_traps(vcpu))
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
-	if (!el12_reg(p) && forward_vm_traps(vcpu, p))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (!el12_reg(p) && forward_vm_traps(vcpu, p)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	BUG_ON(!vcpu_mode_el2(vcpu) && !p->is_write);
 
@@ -1478,8 +1480,10 @@ static bool access_elr(struct kvm_vcpu *vcpu,
 	if (el12_reg(p) && forward_nv_traps(vcpu))
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
-	if (!el12_reg(p) && forward_nv1_traps(vcpu, p))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (p->is_write)
 		vcpu->arch.ctxt.gp_regs.elr_el1 = p->regval;
@@ -1496,8 +1500,10 @@ static bool access_spsr(struct kvm_vcpu *vcpu,
 	if (el12_reg(p) && forward_nv_traps(vcpu))
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
-	if (!el12_reg(p) && forward_nv1_traps(vcpu, p))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (p->is_write)
 		vcpu->arch.ctxt.gp_regs.spsr[KVM_SPSR_EL1] = p->regval;
@@ -1514,8 +1520,10 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 	if (el12_reg(p) && forward_nv_traps(vcpu))
 		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 
-	if (!el12_reg(p) && forward_nv1_traps(vcpu, p))
-		return kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+	if (!el12_reg(p) && forward_nv1_traps(vcpu, p)) {
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
+		return false;
+	}
 
 	if (p->is_write)
 		vcpu_write_sys_reg(vcpu, p->regval, SPSR_EL2);

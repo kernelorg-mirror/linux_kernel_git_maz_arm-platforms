@@ -1207,6 +1207,10 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		return -EINVAL;
 	}
 
+	/* Nested virtualization requires zero offset for virtual EL2 */
+	if (nested_virt_in_use(vcpu))
+		vcpu_vtimer(vcpu)->cntvoff = 0;
+
 	get_timer_map(vcpu, &map);
 
 	ret = kvm_vgic_map_phys_irq(vcpu,

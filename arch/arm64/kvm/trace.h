@@ -3,6 +3,7 @@
 #define _TRACE_ARM64_KVM_H
 
 #include <linux/tracepoint.h>
+#include "sys_regs.h"
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM kvm
@@ -150,6 +151,29 @@ TRACE_EVENT(kvm_handle_sys,
 	),
 
 	TP_printk("HSR 0x%08lx", __entry->hsr)
+);
+
+TRACE_EVENT(kvm_sys_access,
+	TP_PROTO(unsigned long vcpu_pc, struct sys_reg_params *params, const struct sys_reg_desc *reg),
+	TP_ARGS(vcpu_pc, params, reg),
+
+	TP_STRUCT__entry(
+		__field(unsigned long,			vcpu_pc)
+		__field(struct sys_reg_params *,	params)
+		__field(const struct sys_reg_desc *,	reg)
+	),
+
+	TP_fast_assign(
+		__entry->vcpu_pc = vcpu_pc;
+		__entry->params = params;
+		__entry->reg = reg;
+	),
+
+	TP_printk("PC: %lx %s (%d,%d,%d,%d,%d) %s",
+		  __entry->vcpu_pc, __entry->reg->name ?: "UNKN",
+		  __entry->reg->Op0, __entry->reg->Op1, __entry->reg->CRn,
+		  __entry->reg->CRm, __entry->reg->Op2,
+		  __entry->params->is_write ? "write" : "read")
 );
 
 TRACE_EVENT(kvm_set_guest_debug,

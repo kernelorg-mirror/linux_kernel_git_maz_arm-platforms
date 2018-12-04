@@ -898,6 +898,7 @@ static struct arch_timer_context *get_timer_from_sysreg(struct kvm_vcpu *vcpu,
 	case cntp_cval_EL02:
 		return vcpu_ptimer(vcpu);
 
+	case SYS_CNTVOFF_EL2:
 	case cntv_tval_EL02:
 	case cntv_ctl_EL02:
 	case cntv_cval_EL02:
@@ -952,6 +953,10 @@ u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr)
 		val = timer->cnt_cval;
 		break;
 
+	case SYS_CNTVOFF_EL2:
+		val = timer->cntvoff;
+		break;
+
 	default:
 		BUG();
 	}
@@ -994,6 +999,10 @@ void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val)
 	case SYS_CNTHP_CVAL_EL2:
 	case SYS_CNTHV_CVAL_EL2:
 		timer->cnt_cval = val;
+		break;
+
+	case SYS_CNTVOFF_EL2:
+		timer->cntvoff = val;
 		break;
 
 	default:

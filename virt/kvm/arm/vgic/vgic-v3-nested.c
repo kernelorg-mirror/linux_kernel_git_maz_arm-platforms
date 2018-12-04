@@ -90,7 +90,7 @@ static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu)
 	int i;
 
 	for (i = 0; i < kvm_vgic_global_state.nr_lr; i++) {
-		u32 lr = cpu_if->vgic_lr[i];
+		u64 lr = cpu_if->vgic_lr[i];
 		int l1_irq;
 
 		if (!(lr & ICH_LR_HW))
@@ -100,10 +100,11 @@ static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu)
 		l1_irq = (lr & ICH_LR_PHYS_ID_MASK) >> ICH_LR_PHYS_ID_SHIFT;
 		irq = vgic_get_irq(vcpu->kvm, vcpu, l1_irq);
 
-		if (!irq->hw) {
+		if (!irq || !irq->hw) {
 			/* There was no real mapping, so nuke the HW bit */
 			lr &= ~ICH_LR_HW;
-			vgic_put_irq(vcpu->kvm, irq);
+			if (irq)
+				vgic_put_irq(vcpu->kvm, irq);
 			goto next;
 		}
 

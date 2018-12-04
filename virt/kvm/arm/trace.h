@@ -294,6 +294,80 @@ TRACE_EVENT(kvm_get_timer_map,
 		  __entry->emul_ptimer)
 );
 
+TRACE_EVENT(kvm_timer_save_state,
+	TP_PROTO(struct arch_timer_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,		ctl		)
+		__field(	unsigned long long,	cval		)
+		__field(	int,			timer_idx	)
+	),
+
+	TP_fast_assign(
+		__entry->ctl			= ctx->cnt_ctl;
+		__entry->cval			= ctx->cnt_cval;
+		__entry->timer_idx		= arch_timer_ctx_index(ctx);
+	),
+
+	TP_printk("   CTL: %#08lx CVAL: %#16llx arch_timer_ctx_index: %d",
+		  __entry->ctl,
+		  __entry->cval,
+		  __entry->timer_idx)
+);
+
+TRACE_EVENT(kvm_timer_restore_state,
+	TP_PROTO(struct arch_timer_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+		__field(	unsigned long,		ctl		)
+		__field(	unsigned long long,	cval		)
+		__field(	int,			timer_idx	)
+	),
+
+	TP_fast_assign(
+		__entry->ctl			= ctx->cnt_ctl;
+		__entry->cval			= ctx->cnt_cval;
+		__entry->timer_idx		= arch_timer_ctx_index(ctx);
+	),
+
+	TP_printk("CTL: %#08lx CVAL: %#16llx arch_timer_ctx_index: %d",
+		  __entry->ctl,
+		  __entry->cval,
+		  __entry->timer_idx)
+);
+
+TRACE_EVENT(kvm_timer_hrtimer_expire,
+	TP_PROTO(struct arch_timer_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+		__field(	int,			timer_idx	)
+	),
+
+	TP_fast_assign(
+		__entry->timer_idx		= arch_timer_ctx_index(ctx);
+	),
+
+	TP_printk("arch_timer_ctx_index: %d", __entry->timer_idx)
+);
+
+TRACE_EVENT(kvm_timer_emulate,
+	TP_PROTO(struct arch_timer_context *ctx),
+	TP_ARGS(ctx),
+
+	TP_STRUCT__entry(
+		__field(	int,			timer_idx	)
+	),
+
+	TP_fast_assign(
+		__entry->timer_idx		= arch_timer_ctx_index(ctx);
+	),
+
+	TP_printk("arch_timer_ctx_index: %d", __entry->timer_idx)
+);
+
 #endif /* _TRACE_KVM_H */
 
 #undef TRACE_INCLUDE_PATH

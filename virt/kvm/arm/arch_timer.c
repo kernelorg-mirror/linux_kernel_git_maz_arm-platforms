@@ -234,6 +234,8 @@ static enum hrtimer_restart kvm_hrtimer_expire(struct hrtimer *hrt)
 	ctx = container_of(hrt, struct arch_timer_context, hrtimer);
 	vcpu = ctx->vcpu;
 
+	trace_kvm_timer_hrtimer_expire(ctx);
+
 	/*
 	 * Check that the timer has really expired from the guest's
 	 * PoV (NTP on the host may have forced it to expire
@@ -353,6 +355,8 @@ static void timer_emulate(struct arch_timer_context *ctx)
 		return;
 	}
 
+	trace_kvm_timer_emulate(ctx);
+
 	soft_timer_start(&ctx->hrtimer, kvm_timer_compute_delta(ctx));
 
 	if (kvm_timer_should_fire(ctx) != ctx->irq.level)
@@ -397,6 +401,8 @@ static void timer_save_state(struct arch_timer_context *ctx)
 	case NR_KVM_TIMERS:
 		BUG();
 	}
+
+	trace_kvm_timer_save_state(ctx);
 
 	ctx->loaded = false;
 out:
@@ -469,6 +475,8 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 	case NR_KVM_TIMERS:
 		BUG();
 	}
+
+	trace_kvm_timer_restore_state(ctx);
 
 	ctx->loaded = true;
 out:

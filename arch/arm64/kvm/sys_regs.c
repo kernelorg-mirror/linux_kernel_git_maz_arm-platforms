@@ -1633,9 +1633,9 @@ static bool access_gic_hcr(struct kvm_vcpu *vcpu,
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.nested_vgic_v3;
 
 	if (p->is_write)
-		p->regval = cpu_if->vgic_hcr;
-	else
 		cpu_if->vgic_hcr = p->regval;
+	else
+		p->regval = cpu_if->vgic_hcr;
 
 	return true;
 }
@@ -1695,9 +1695,9 @@ static bool access_gic_vmcr(struct kvm_vcpu *vcpu,
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.nested_vgic_v3;
 
 	if (p->is_write)
-		p->regval = cpu_if->vgic_vmcr;
-	else
 		cpu_if->vgic_vmcr = p->regval;
+	else
+		p->regval = cpu_if->vgic_vmcr;
 
 	return true;
 }
@@ -1714,9 +1714,9 @@ static bool access_gic_lr(struct kvm_vcpu *vcpu,
 		index += 8;
 
 	if (p->is_write)
-		p->regval = cpu_if->vgic_lr[index];
-	else
 		cpu_if->vgic_lr[index] = p->regval;
+	else
+		p->regval = cpu_if->vgic_lr[index];
 
 	return true;
 }

@@ -896,6 +896,20 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 /* Flush our emulation state into the GIC hardware before entering the guest. */
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
+	WARN_ON(vgic_v4_flush_hwstate(vcpu));
+
+	/*
+	 * If there are no virtual interrupts active or pending for this
+	 * VCPU, then there is no work to do and we can bail out without
+	 * taking any lock.  There is a potential race with someone injecting
+	 * interrupts to the VCPU, but it is a benign race as the VCPU will
+	 * either observe the new interrupt before or after doing this check,
+	 * and introducing additional synchronization mechanism doesn't change
+	 * this.
+	 */
+	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head))
+		return;
+
 	/*
 	 * If we have any pending IRQ for the guest and the guest expects IRQs
 	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
@@ -911,20 +925,6 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 		kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
 		return;
 	}
-
-	WARN_ON(vgic_v4_flush_hwstate(vcpu));
-
-	/*
-	 * If there are no virtual interrupts active or pending for this
-	 * VCPU, then there is no work to do and we can bail out without
-	 * taking any lock.  There is a potential race with someone injecting
-	 * interrupts to the VCPU, but it is a benign race as the VCPU will
-	 * either observe the new interrupt before or after doing this check,
-	 * and introducing additional synchronization mechanism doesn't change
-	 * this.
-	 */
-	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head))
-		return;
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 

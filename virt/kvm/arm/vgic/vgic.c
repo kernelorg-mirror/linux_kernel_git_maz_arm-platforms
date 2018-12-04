@@ -862,6 +862,10 @@ void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	int used_lrs;
 
+	/* If nesting, this is a load/put affair, not flush/sync. */
+	if (vgic_state_is_nested(vcpu))
+		return;
+
 	WARN_ON(vgic_v4_sync_hwstate(vcpu));
 
 	/* An empty ap_list_head implies used_lrs == 0 */
@@ -892,6 +896,22 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 /* Flush our emulation state into the GIC hardware before entering the guest. */
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
+	/*
+	 * If we have any pending IRQ for the guest and the guest expects IRQs
+	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
+	 * and it is not already running in virtual EL2 mode, then we have to
+	 * emulate an IRQ exception to virtual EL2.
+	 *
+	 * We do that by placing a request to ourselves which will abort the
+	 * entry procedure and inject the exception at the beginning of the
+	 * run loop. Do this before even trying to evaluate the host's queue.
+	 */
+	if (vgic_state_is_nested(vcpu) &&
+	    kvm_vgic_vcpu_pending_irq(vcpu)) {
+		kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
+		return;
+	}
+
 	WARN_ON(vgic_v4_flush_hwstate(vcpu));
 
 	/*
@@ -905,22 +925,6 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 	 */
 	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head))
 		return;
-
-	/*
-	 * If we have any pending IRQ for the guest and the guest expects IRQs
-	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
-	 * and it is not already running in virtual EL2 mode, then we have to
-	 * emulate an IRQ exception to virtual EL2.
-	 *
-	 * We do that by placing a request to ourselves which will abort the
-	 * entry procedure and inject the exception at the beginning of the
-	 * run loop.
-	 */
-	if (vgic_state_is_nested(vcpu) &&
-	    kvm_vgic_vcpu_pending_irq(vcpu)) {
-		kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
-		return;
-	}
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 

@@ -913,18 +913,25 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 		return;
 
 	/*
-	 * If we have any pending IRQ for the guest and the guest expects IRQs
-	 * to be handled in its virtual EL2 mode (the virtual IMO bit is set)
-	 * and it is not already running in virtual EL2 mode, then we have to
-	 * emulate an IRQ exception to virtual EL2.
+	 * If in a nested state, we must return early. Two possibilities:
 	 *
-	 * We do that by placing a request to ourselves which will abort the
-	 * entry procedure and inject the exception at the beginning of the
-	 * run loop. Do this before even trying to evaluate the host's queue.
+	 * - If we have any pending IRQ for the guest and the guest
+	 *   expects IRQs to be handled in its virtual EL2 mode (the
+	 *   virtual IMO bit is set) and it is not already running in
+	 *   virtual EL2 mode, then we have to emulate an IRQ
+	 *   exception to virtual EL2.
+	 *
+	 *   We do that by placing a request to ourselves which will
+	 *   abort the entry procedure and inject the exception at the
+	 *   beginning of the run loop.
+	 *
+	 * - Otherwise, do exactly *NOTHING*. The guest state is
+	 *   already loaded, and we can carry on with running it.
 	 */
-	if (vgic_state_is_nested(vcpu) &&
-	    kvm_vgic_vcpu_pending_irq(vcpu)) {
-		kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
+	if (vgic_state_is_nested(vcpu)) {
+		if (kvm_vgic_vcpu_pending_irq(vcpu))
+			kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
+
 		return;
 	}
 

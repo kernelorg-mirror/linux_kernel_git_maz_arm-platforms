@@ -345,22 +345,26 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,
 
 static void timer_emulate(struct arch_timer_context *ctx)
 {
+	bool should_fire = kvm_timer_should_fire(ctx);
+
+	trace_kvm_timer_emulate(ctx, should_fire);
+
+	if (should_fire) {
+		kvm_timer_update_irq(ctx->vcpu, true, ctx);
+		return;
+	}
+
 	/*
 	 * If the timer can fire now, we don't need to have a soft timer
 	 * scheduled for the future.  If the timer cannot fire at all,
 	 * then we also don't need a soft timer.
 	 */
-	if (kvm_timer_should_fire(ctx) || !kvm_timer_irq_can_fire(ctx)) {
+	if (!kvm_timer_irq_can_fire(ctx)) {
 		soft_timer_cancel(&ctx->hrtimer);
 		return;
 	}
 
-	trace_kvm_timer_emulate(ctx);
-
 	soft_timer_start(&ctx->hrtimer, kvm_timer_compute_delta(ctx));
-
-	if (kvm_timer_should_fire(ctx) != ctx->irq.level)
-		kvm_timer_update_irq(ctx->vcpu, !ctx->irq.level, ctx);
 }
 
 static void timer_save_state(struct arch_timer_context *ctx)

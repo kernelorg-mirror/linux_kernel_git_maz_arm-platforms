@@ -354,18 +354,21 @@ TRACE_EVENT(kvm_timer_hrtimer_expire,
 );
 
 TRACE_EVENT(kvm_timer_emulate,
-	TP_PROTO(struct arch_timer_context *ctx),
-	TP_ARGS(ctx),
+	TP_PROTO(struct arch_timer_context *ctx, bool should_fire),
+	TP_ARGS(ctx, should_fire),
 
 	TP_STRUCT__entry(
 		__field(	int,			timer_idx	)
+		__field(	bool,			should_fire	)
 	),
 
 	TP_fast_assign(
 		__entry->timer_idx		= arch_timer_ctx_index(ctx);
+		__entry->should_fire		= should_fire;
 	),
 
-	TP_printk("arch_timer_ctx_index: %d", __entry->timer_idx)
+	TP_printk("arch_timer_ctx_index: %d (should_fire: %d)",
+		  __entry->timer_idx, __entry->should_fire)
 );
 
 #endif /* _TRACE_KVM_H */

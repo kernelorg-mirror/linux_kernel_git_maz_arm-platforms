@@ -677,6 +677,10 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 			return ret;
 	}
 
+	ret = kvm_vgic_vcpu_nv_init(vcpu);
+	if (ret)
+		return ret;
+
 	ret = kvm_timer_enable(vcpu);
 	if (ret)
 		return ret;

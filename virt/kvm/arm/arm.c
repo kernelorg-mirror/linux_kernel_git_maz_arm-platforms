@@ -992,6 +992,17 @@ static int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
 	vcpu->arch.target = phys_target;
 
 	/* Now we know what it is, we can reset it. */
+	if (test_bit(KVM_ARM_VCPU_NESTED_VIRT, vcpu->arch.features)) {
+		int ret;
+
+		if (!cpus_have_const_cap(ARM64_HAS_NESTED_VIRT))
+			return -EINVAL;
+
+		ret = kvm_vcpu_init_nested(vcpu);
+		if (ret)
+			return ret;
+	}
+
 	return kvm_reset_vcpu(vcpu);
 }
 

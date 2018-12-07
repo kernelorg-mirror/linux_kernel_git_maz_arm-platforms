@@ -511,6 +511,18 @@ static bool access_vm_reg(struct kvm_vcpu *vcpu,
 }
 
 /*
+ * The architecture says that non-secure write accesses to this register from
+ * EL1 are trapped to EL2, if either:
+ *  - HCR_EL2.FMO==1, or
+ *  - HCR_EL2.IMO==1
+ */
+static bool sgi_traps_to_vel2(struct kvm_vcpu *vcpu)
+{
+	return !vcpu_mode_el2(vcpu) &&
+		!!(__vcpu_sys_reg(vcpu, HCR_EL2) & (HCR_IMO | HCR_FMO));
+}
+
+/*
  * Trap handler for the GICv3 SGI generation system register.
  * Forward the request to the VGIC emulation.
  * The cp15_64 code makes sure this automatically works
@@ -525,7 +537,7 @@ static bool access_gic_sgi(struct kvm_vcpu *vcpu,
 	if (!p->is_write)
 		return read_from_write_only(vcpu, p, r);
 
-	if (vgic_state_is_nested(vcpu)) {
+	if (sgi_traps_to_vel2(vcpu)) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
 		return false;
 	}

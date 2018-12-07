@@ -314,20 +314,13 @@ struct vgic_cpu {
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 
 	/* CPU vif control registers for the virtual GICH interface */
-	union {
-		struct vgic_v2_cpu_if	nested_vgic_v2;
-		struct vgic_v3_cpu_if	nested_vgic_v3;
-	};
+	struct vgic_v3_cpu_if	nested_vgic_v3;
 
 	/*
 	 * The shadow vif control register loaded to the hardware when
 	 * running a nested L2 guest with the virtual IMO/FMO bit set.
 	 */
 	struct vgic_v3_cpu_if	shadow_vgic_v3;
-
-	union {
-		struct vgic_v2_cpu_if	*hw_v2_cpu_if;
-	};
 
 	spinlock_t ap_list_lock;	/* Protects the ap_list */
 

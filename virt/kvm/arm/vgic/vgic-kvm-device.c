@@ -140,16 +140,6 @@ int kvm_vgic_addr(struct kvm *kvm, unsigned long type, u64 *addr, bool write)
 		*addr |= (u64)rdreg->count << KVM_VGIC_V3_RDIST_COUNT_SHIFT;
 		goto out;
 	}
-	case KVM_VGIC_V2_ADDR_TYPE_GICH:
-		r = vgic_check_type(kvm, KVM_DEV_TYPE_ARM_VGIC_V2);
-		addr_ptr = &vgic->vgic_hyp_base;
-		alignment = SZ_4K;
-		break;
-	case KVM_VGIC_V2_ADDR_TYPE_GICV:
-		r = vgic_check_type(kvm, KVM_DEV_TYPE_ARM_VGIC_V2);
-		addr_ptr = &vgic->vgic_vcpu_base;
-		alignment = SZ_4K;
-		break;
 	default:
 		r = -ENODEV;
 	}

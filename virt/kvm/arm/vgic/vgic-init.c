@@ -129,13 +129,10 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 
 	kvm->arch.vgic.vgic_dist_base = VGIC_ADDR_UNDEF;
 
-	if (type == KVM_DEV_TYPE_ARM_VGIC_V2) {
+	if (type == KVM_DEV_TYPE_ARM_VGIC_V2)
 		kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
-		kvm->arch.vgic.vgic_hyp_base = VGIC_ADDR_UNDEF;
-		kvm->arch.vgic.vgic_vcpu_base = VGIC_ADDR_UNDEF;
-	} else {
+	else
 		INIT_LIST_HEAD(&kvm->arch.vgic.rd_regions);
-	}
 
 out_unlock:
 	for (; vcpu_lock_idx >= 0; vcpu_lock_idx--) {
@@ -269,10 +266,7 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 		mutex_lock(&vcpu->kvm->lock);
 		ret = vgic_register_redist_iodev(vcpu);
 		mutex_unlock(&vcpu->kvm->lock);
-	} else {
-		vgic_v2_init_nested(vcpu);
 	}
-
 	return ret;
 }
 

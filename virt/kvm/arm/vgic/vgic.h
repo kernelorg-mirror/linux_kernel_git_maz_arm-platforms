@@ -186,7 +186,6 @@ int vgic_check_ioaddr(struct kvm *kvm, phys_addr_t *ioaddr,
 
 void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu);
 void vgic_v2_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr);
-u32 vgic_v2_get_lr(struct kvm_vcpu *vcpu, int lr);
 void vgic_v2_clear_lr(struct kvm_vcpu *vcpu, int lr);
 void vgic_v2_set_underflow(struct kvm_vcpu *vcpu);
 void vgic_v2_set_npie(struct kvm_vcpu *vcpu);
@@ -323,8 +322,5 @@ int vgic_v4_init(struct kvm *kvm);
 void vgic_v4_teardown(struct kvm *kvm);
 int vgic_v4_sync_hwstate(struct kvm_vcpu *vcpu);
 int vgic_v4_flush_hwstate(struct kvm_vcpu *vcpu);
-
-int vgic_register_gich_iodev(struct kvm *kvm, struct vgic_dist *dist);
-void vgic_v2_init_nested(struct kvm_vcpu *vcpu);
 
 #endif

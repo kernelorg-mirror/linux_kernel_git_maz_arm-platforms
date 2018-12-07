@@ -134,10 +134,6 @@ void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu)
 	cpuif->used_lrs = 0;
 }
 
-u32 vgic_v2_get_lr(struct kvm_vcpu *vcpu, int lr)
-{
-	return vcpu->arch.vgic_cpu.vgic_v2.vgic_lr[lr];
-}
 /*
  * Populates the particular LR with the state of a given IRQ:
  * - for an edge sensitive IRQ the pending state is cleared in struct vgic_irq
@@ -350,13 +346,6 @@ int vgic_v2_map_resources(struct kvm *kvm)
 		goto out;
 	}
 
-	/* Register virtual GICH interface to kvm io bus */
-	ret = vgic_register_gich_iodev(kvm, dist);
-	if (ret) {
-		kvm_err("Unable to register VGIC GICH regions\n");
-		goto out;
-	}
-
 	if (!static_branch_unlikely(&vgic_v2_cpuif_trap)) {
 		ret = kvm_phys_addr_ioremap(kvm, dist->vgic_cpu_base,
 					    kvm_vgic_global_state.vcpu_base,
@@ -444,13 +433,10 @@ out:
 
 static void save_lrs(struct kvm_vcpu *vcpu, void __iomem *base)
 {
-	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
+	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
 	u64 used_lrs = cpu_if->used_lrs;
 	u64 elrsr;
 	int i;
-
-	if (nested_virt_in_use(vcpu))
-		used_lrs = kvm_vgic_global_state.nr_lr;
 
 	elrsr = readl_relaxed(base + GICH_ELRSR0);
 	if (unlikely(used_lrs > 32))
@@ -474,7 +460,7 @@ void vgic_v2_save_state(struct kvm_vcpu *vcpu)
 	if (!base)
 		return;
 
-	if (used_lrs || nested_virt_in_use(vcpu)) {
+	if (used_lrs) {
 		save_lrs(vcpu, base);
 		writel_relaxed(0, base + GICH_HCR);
 	}
@@ -482,16 +468,13 @@ void vgic_v2_save_state(struct kvm_vcpu *vcpu)
 
 void vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
+	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
 	void __iomem *base = kvm_vgic_global_state.vctrl_base;
 	u64 used_lrs = cpu_if->used_lrs;
 	int i;
 
 	if (!base)
 		return;
-
-	if (nested_virt_in_use(vcpu))
-		used_lrs = kvm_vgic_global_state.nr_lr;
 
 	if (used_lrs) {
 		writel_relaxed(cpu_if->vgic_hcr, base + GICH_HCR);
@@ -504,7 +487,7 @@ void vgic_v2_restore_state(struct kvm_vcpu *vcpu)
 
 void vgic_v2_load(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
+	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
 
 	writel_relaxed(cpu_if->vgic_vmcr,
 		       kvm_vgic_global_state.vctrl_base + GICH_VMCR);
@@ -514,14 +497,8 @@ void vgic_v2_load(struct kvm_vcpu *vcpu)
 
 void vgic_v2_put(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v2_cpu_if *cpu_if = vcpu->arch.vgic_cpu.hw_v2_cpu_if;
+	struct vgic_v2_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v2;
 
 	cpu_if->vgic_vmcr = readl_relaxed(kvm_vgic_global_state.vctrl_base + GICH_VMCR);
 	cpu_if->vgic_apr = readl_relaxed(kvm_vgic_global_state.vctrl_base + GICH_APR);
-}
-
-/* Return physical address of vgic virtual cpu interface */
-phys_addr_t vgic_vcpu_base(void)
-{
-	return kvm_vgic_global_state.vcpu_base;
 }

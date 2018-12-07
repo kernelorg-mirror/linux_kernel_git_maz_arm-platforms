@@ -447,27 +447,3 @@ bool kvm_nested_s2_clear_curr_vmid(struct kvm_vcpu *vcpu, phys_addr_t start,
 	kvm_unmap_stage2_range(vcpu->kvm, mmu, start, size);
 	return true;
 }
-
-int kvm_nested_mmio_ondemand(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
-			     phys_addr_t ipa)
-{
-	int ret = 0;
-	phys_addr_t vcpu_base = vgic_vcpu_base();
-
-	if (!nested_virt_in_use(vcpu))
-		return 0;
-
-	/* Return if this fault is not from a nested VM */
-	if (vcpu->arch.hw_mmu == &vcpu->kvm->arch.mmu)
-		return ret;
-
-	if (ipa == vcpu->kvm->arch.vgic.vgic_vcpu_base)  {
-		ret = __kvm_phys_addr_ioremap(vcpu->kvm, vcpu->arch.hw_mmu,
-					      fault_ipa, vcpu_base,
-					      KVM_VGIC_V2_VCPU_SIZE, true);
-		if (!ret)
-			ret = 1;
-	}
-
-	return ret;
-}

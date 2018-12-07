@@ -158,8 +158,7 @@ enum iodev_type {
 	IODEV_CPUIF,
 	IODEV_DIST,
 	IODEV_REDIST,
-	IODEV_ITS,
-	IODEV_GICH,
+	IODEV_ITS
 };
 
 struct vgic_io_device {
@@ -237,11 +236,7 @@ struct vgic_dist {
 	gpa_t			vgic_dist_base;		/* distributor */
 	union {
 		/* either a GICv2 CPU interface */
-		struct {
-			gpa_t		vgic_cpu_base;
-			gpa_t		vgic_hyp_base;
-			gpa_t		vgic_vcpu_base;
-		};
+		gpa_t			vgic_cpu_base;
 		/* or a number of GICv3 redistributor regions */
 		struct list_head rd_regions;
 	};
@@ -252,8 +247,6 @@ struct vgic_dist {
 	struct vgic_irq		*spis;
 
 	struct vgic_io_device	dist_iodev;
-
-	struct vgic_io_device	hyp_iodev;
 
 	bool			has_its;
 
@@ -328,12 +321,9 @@ struct vgic_cpu {
 
 	/*
 	 * The shadow vif control register loaded to the hardware when
-	 * running a sted L2 guest with the virtual IMO bit set.
+	 * running a nested L2 guest with the virtual IMO/FMO bit set.
 	 */
-	union {
-		struct vgic_v2_cpu_if	shadow_vgic_v2;
-		struct vgic_v3_cpu_if	shadow_vgic_v3;
-	};
+	struct vgic_v3_cpu_if	shadow_vgic_v3;
 
 	union {
 		struct vgic_v2_cpu_if	*hw_v2_cpu_if;
@@ -395,10 +385,6 @@ int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu);
 void kvm_vgic_load(struct kvm_vcpu *vcpu);
 void kvm_vgic_put(struct kvm_vcpu *vcpu);
 
-void vgic_v2_setup_shadow_state(struct kvm_vcpu *vcpu);
-void vgic_v2_restore_shadow_state(struct kvm_vcpu *vcpu);
-void vgic_v2_handle_nested_maint_irq(struct kvm_vcpu *vcpu);
-
 void vgic_v3_sync_nested(struct kvm_vcpu *vcpu);
 void vgic_v3_load_nested(struct kvm_vcpu *vcpu);
 void vgic_v3_put_nested(struct kvm_vcpu *vcpu);
@@ -413,7 +399,6 @@ u64 vgic_v3_get_misr(struct kvm_vcpu *vcpu);
 #define vgic_valid_spi(k, i)	(((i) >= VGIC_NR_PRIVATE_IRQS) && \
 			((i) < (k)->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS))
 
-phys_addr_t vgic_vcpu_base(void);
 bool kvm_vcpu_has_pending_irqs(struct kvm_vcpu *vcpu);
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu);
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu);

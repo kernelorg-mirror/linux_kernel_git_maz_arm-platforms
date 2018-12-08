@@ -162,27 +162,29 @@ void __hyp_text __kvm_flush_vm_context(void)
 
 void __hyp_text __kvm_tlb_vae2(u64 vttbr, u64 va, u64 sys_encoding)
 {
+	dsb(ishst);
+
 	/* Switch to requested VMID */
 	__tlb_switch_to_guest()(vttbr);
 
-	/* Execute the EL1 version of TLBI VAE2* instruction */
+	/*
+	 * Execute the EL1 version of TLBI VAE2* instruction, forcing
+	 * an upgrade to the Inner Shareable domain in order to
+	 * perform the invalidation on all CPUs.
+	 */
 	switch (sys_encoding) {
+	case TLBI_VAE2:
 	case TLBI_VAE2IS:
 		__tlbi(vae1is, va);
 		break;
+	case TLBI_VALE2:
 	case TLBI_VALE2IS:
 		__tlbi(vale1is, va);
-		break;
-	case TLBI_VAE2:
-		__tlbi(vae1, va);
-		break;
-	case TLBI_VALE2:
-		__tlbi(vale1, va);
 		break;
 	default:
 		break;
 	}
-	dsb(nsh);
+	dsb(ish);
 	isb();
 
 	__tlb_switch_to_host()();
@@ -190,51 +192,46 @@ void __hyp_text __kvm_tlb_vae2(u64 vttbr, u64 va, u64 sys_encoding)
 
 void __hyp_text __kvm_tlb_el1_instr(u64 vttbr, u64 val, u64 sys_encoding)
 {
+	dsb(ishst);
+
 	/* Switch to requested VMID */
 	__tlb_switch_to_guest()(vttbr);
 
-	/* Execute the same instruction as the guest hypervisor did */
+	/*
+	 * Execute the same instruction as the guest hypervisor did,
+	 * expanding the scope of local TLB invalidations to the Inner
+	 * Shareable domain so that it takes place on all CPUs. This
+	 * is equivalent to having HCR_EL2.FB set.
+	 */
 	switch (sys_encoding) {
+	case TLBI_VMALLE1:
 	case TLBI_VMALLE1IS:
 		__tlbi(vmalle1is);
 		break;
+	case TLBI_VAE1:
 	case TLBI_VAE1IS:
 		__tlbi(vae1is, val);
 		break;
+	case TLBI_ASIDE1:
 	case TLBI_ASIDE1IS:
 		__tlbi(aside1is, val);
 		break;
+	case TLBI_VAAE1:
 	case TLBI_VAAE1IS:
 		__tlbi(vaae1is, val);
 		break;
+	case TLBI_VALE1:
 	case TLBI_VALE1IS:
 		__tlbi(vale1is, val);
 		break;
+	case TLBI_VAALE1:
 	case TLBI_VAALE1IS:
 		__tlbi(vaale1is, val);
-		break;
-	case TLBI_VMALLE1:
-		__tlbi(vmalle1);
-		break;
-	case TLBI_VAE1:
-		__tlbi(vae1, val);
-		break;
-	case TLBI_ASIDE1:
-		__tlbi(aside1, val);
-		break;
-	case TLBI_VAAE1:
-		__tlbi(vaae1, val);
-		break;
-	case TLBI_VALE1:
-		__tlbi(vale1, val);
-		break;
-	case TLBI_VAALE1:
-		__tlbi(vaale1, val);
 		break;
 	default:
 		break;
 	}
-	dsb(nsh);
+	dsb(ish);
 	isb();
 
 	__tlb_switch_to_host()();

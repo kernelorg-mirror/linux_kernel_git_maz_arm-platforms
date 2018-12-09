@@ -2262,21 +2262,6 @@ static bool handle_s12w(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	return handle_s12(vcpu, p, r, true);
 }
 
-static bool handle_alle2(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
-			 const struct sys_reg_desc *r)
-{
-	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-	u64 vttbr = kvm_get_vttbr(mmu);
-
-	/*
-	 * To emulate invalidating all EL2 regime stage 1 TLB entries,
-	 * invalidate EL1&0 regime stage 1 TLB entries with the virtual EL2's
-	 * VMID.
-	 */
-	kvm_call_hyp(__kvm_tlb_flush_local_vmid, vttbr);
-	return true;
-}
-
 static bool handle_alle2is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			   const struct sys_reg_desc *r)
 {
@@ -2534,7 +2519,7 @@ static struct sys_reg_desc sys_insn_descs[] = {
 	SYS_INSN_TO_DESC(TLBI_VMALLS12E1IS, handle_vmalls12e1is, forward_nv_traps),
 	SYS_INSN_TO_DESC(TLBI_IPAS2E1, handle_ipas2e1is, forward_nv_traps),
 	SYS_INSN_TO_DESC(TLBI_IPAS2LE1, handle_ipas2e1is, forward_nv_traps),
-	SYS_INSN_TO_DESC(TLBI_ALLE2, handle_alle2, forward_nv_traps),
+	SYS_INSN_TO_DESC(TLBI_ALLE2, handle_alle2is, forward_nv_traps),
 	SYS_INSN_TO_DESC(TLBI_VAE2, handle_vae2, forward_nv_traps),
 	SYS_INSN_TO_DESC(TLBI_ALLE1, handle_alle1is, forward_nv_traps),
 	SYS_INSN_TO_DESC(TLBI_VALE2, handle_vae2, forward_nv_traps),

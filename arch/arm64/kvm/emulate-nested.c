@@ -174,13 +174,17 @@ int kvm_inject_nested_sync(struct kvm_vcpu *vcpu, u64 esr_el2)
 int kvm_inject_nested_irq(struct kvm_vcpu *vcpu)
 {
 	/*
-	 * Do not inject an irq if the current exception level is EL2 and
-	 * virtual HCR_EL2.IMO is set and IRQ mask is set.
-	 * See Table D1-16 Physical interrupt masking when EL3 is not
-	 * implemented and EL2 is implemented.
+	 * Do not inject an irq if the:
+	 *  - Current exception level is EL2, and
+	 *  - virtual HCR_EL2.TGE == 0
+	 *  - virtual HCR_EL2.IMO == 0
+	 *
+	 * See Table D1-17 "Physical interrupt target and masking when EL3 is
+	 * not implemented and EL2 is implemented" in ARM DDI 0487C.a.
 	 */
-	if ((__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO) && vcpu_mode_el2(vcpu)
-	    && (*vcpu_cpsr(vcpu) & PSR_I_BIT))
+
+	if (vcpu_mode_el2(vcpu) && !vcpu_el2_tge_is_set(&vcpu->arch.ctxt) &&
+	    !(__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO))
 		return 1;
 
 	/* esr_el2 value doesn't matter for exits due to irqs. */

@@ -179,7 +179,6 @@ void vgic_v3_load_nested(struct kvm_vcpu *vcpu)
 	vgic_v3_create_shadow_lr(vcpu);
 	__vgic_v3_restore_state(vcpu_shadow_if(vcpu));
 
-	
 	irq = vgic_get_irq(vcpu->kvm, vcpu, vcpu->kvm->arch.vgic.maint_irq);
 	spin_lock_irqsave(&irq->irq_lock, flags);
 	if (irq->line_level || irq->active)
@@ -224,6 +223,4 @@ void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 
 	kvm_vgic_inject_irq(vcpu->kvm, vcpu->vcpu_id,
 			    vcpu->kvm->arch.vgic.maint_irq, state, vcpu);
-	if (state)
-		kvm_inject_nested_irq(vcpu);
 }

@@ -2301,6 +2301,14 @@ static bool handle_alle1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
 	u64 vttbr = kvm_get_vttbr(mmu);
 
+	spin_lock(&vcpu->kvm->mmu_lock);
+
+	/*
+	 * Clear all mappings in the shadow page tables and invalidate the stage
+	 * 1 and 2 TLB entries via kvm_tlb_flush_vmid_ipa().
+	 */
+	kvm_nested_s2_clear(vcpu->kvm);
+
 	if (mmu->vmid.vmid_gen) {
 		/*
 		 * Invalidate the stage 1 and 2 TLB entries for the host OS
@@ -2309,12 +2317,6 @@ static bool handle_alle1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		kvm_call_hyp(__kvm_tlb_flush_vmid, vttbr);
 	}
 
-	spin_lock(&vcpu->kvm->mmu_lock);
-	/*
-	 * Clear all mappings in the shadow page tables and invalidate the stage
-	 * 1 and 2 TLB entries via kvm_tlb_flush_vmid_ipa().
-	 */
-	kvm_nested_s2_clear(vcpu->kvm);
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	return true;
@@ -2334,7 +2336,6 @@ static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	 * VMID.
 	 */
 	ret = kvm_nested_s2_clear_curr_vmid(vcpu, 0, KVM_PHYS_SIZE);
-	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	if (!ret) {
 		/*
@@ -2346,6 +2347,8 @@ static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		vttbr = kvm_get_vttbr(mmu);
 		kvm_call_hyp(__kvm_tlb_flush_vmid, vttbr);
 	}
+	spin_unlock(&vcpu->kvm->mmu_lock);
+
 	return true;
 }
 

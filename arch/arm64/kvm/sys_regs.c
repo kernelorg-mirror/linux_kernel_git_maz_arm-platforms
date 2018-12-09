@@ -2366,7 +2366,6 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	 * VMID and the given ipa.
 	 */
 	ret = kvm_nested_s2_clear_curr_vmid(vcpu, p->regval, PAGE_SIZE);
-	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	if (!ret) {
 		/*
@@ -2378,6 +2377,7 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 		vttbr = kvm_get_vttbr(mmu);
 		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, vttbr, p->regval);
 	}
+	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	return true;
 }

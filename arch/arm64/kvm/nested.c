@@ -36,8 +36,8 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 			 GFP_KERNEL | __GFP_ZERO);
 
 	if (tmp) {
-		kfree(kvm->arch.nested_mmus);
-
+		if (tmp != kvm->arch.nested_mmus)
+			kfree(kvm->arch.nested_mmus);
 
 		tmp[num_mmus - 1].usage_count = -1;
 		ret = kvm_alloc_stage2_pgd(&tmp[num_mmus - 1]);

@@ -107,7 +107,6 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 
 static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 {
-	ctxt->sys_regs[MPIDR_EL1]	= read_sysreg(vmpidr_el2);
 	ctxt->sys_regs[CSSELR_EL1]	= read_sysreg(csselr_el1);
 	ctxt->sys_regs[ACTLR_EL1]	= read_sysreg(actlr_el1);
 	ctxt->sys_regs[PAR_EL1]		= read_sysreg(par_el1);
@@ -190,6 +189,8 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 {
 	u64 val;
 
+	write_sysreg(read_cpuid_id(),			vpidr_el2);
+	write_sysreg(ctxt->sys_regs[MPIDR_EL1],		vmpidr_el2);
 	write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
 	write_sysreg_el1(ctxt->sys_regs[MAIR_EL2],	mair);
 	write_sysreg_el1(ctxt->sys_regs[VBAR_EL2],	vbar);
@@ -238,6 +239,8 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 
 static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)
 {
+	write_sysreg(ctxt->sys_regs[VPIDR_EL2],		vpidr_el2);
+	write_sysreg(ctxt->sys_regs[VMPIDR_EL2],	vmpidr_el2);
 	write_sysreg_el1(ctxt->sys_regs[SCTLR_EL1],	sctlr);
 	write_sysreg(ctxt->sys_regs[ACTLR_EL1],	  	actlr_el1);
 	write_sysreg_el1(ctxt->sys_regs[CPACR_EL1],	cpacr);
@@ -261,7 +264,6 @@ static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)
 
 static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 {
-	write_sysreg(ctxt->sys_regs[MPIDR_EL1],		vmpidr_el2);
 	write_sysreg(ctxt->sys_regs[CSSELR_EL1],	csselr_el1);
 	write_sysreg(ctxt->sys_regs[ACTLR_EL1],	  	actlr_el1);
 	write_sysreg(ctxt->sys_regs[PAR_EL1],		par_el1);

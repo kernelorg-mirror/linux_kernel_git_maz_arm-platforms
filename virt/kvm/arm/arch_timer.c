@@ -1123,16 +1123,9 @@ out_free_irq:
 
 void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
-	struct timer_map map;
-
-	get_timer_map(vcpu, &map);
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 
 	soft_timer_cancel(&timer->bg_timer);
-	if (map.emul_vtimer)
-		soft_timer_cancel(&map.emul_vtimer->hrtimer);
-	if (map.emul_ptimer)
-		soft_timer_cancel(&map.emul_ptimer->hrtimer);
 }
 
 static bool timer_irqs_are_valid(struct kvm_vcpu *vcpu)

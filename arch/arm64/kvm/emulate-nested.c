@@ -106,6 +106,21 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	preempt_enable();
 }
 
+static void enter_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
+				enum exception_type type)
+{
+	vcpu_write_sys_reg(vcpu, *vcpu_cpsr(vcpu), SPSR_EL2);
+	vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
+	vcpu_write_sys_reg(vcpu, esr_el2, ESR_EL2);
+
+	*vcpu_pc(vcpu) = get_el2_except_vector(vcpu, type);
+	/* On an exception, PSTATE.SP becomes 1 */
+	*vcpu_cpsr(vcpu) = PSR_MODE_EL2h;
+	*vcpu_cpsr(vcpu) |= PSR_A_BIT | PSR_F_BIT | PSR_I_BIT | PSR_D_BIT;
+
+	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
+}
+
 /*
  * Emulate taking an exception to EL2.
  * See ARM ARM J8.1.2 AArch64.TakeException()
@@ -138,25 +153,14 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 	direct_inject |= (mode == PSR_MODE_EL2h || mode == PSR_MODE_EL2t);
 
 	if (direct_inject) {
-		vcpu_write_sys_reg(vcpu, pstate, SPSR_EL2);
-		vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
-		vcpu_write_sys_reg(vcpu, esr_el2, ESR_EL2);
+		enter_el2_exception(vcpu, esr_el2, type);
 		return 1;
 	}
 
 	preempt_disable();
 	kvm_arch_vcpu_put(vcpu);
 
-	__vcpu_sys_reg(vcpu, SPSR_EL2) = *vcpu_cpsr(vcpu);
-	__vcpu_sys_reg(vcpu, ELR_EL2) = *vcpu_pc(vcpu);
-	__vcpu_sys_reg(vcpu, ESR_EL2) = esr_el2;
-
-	*vcpu_pc(vcpu) = get_el2_except_vector(vcpu, type);
-	/* On an exception, PSTATE.SP becomes 1 */
-	*vcpu_cpsr(vcpu) = PSR_MODE_EL2h;
-	*vcpu_cpsr(vcpu) |= PSR_A_BIT | PSR_F_BIT | PSR_I_BIT | PSR_D_BIT;
-
-	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
+	enter_el2_exception(vcpu, esr_el2, type);
 
 	vcpu_set_hw_mmu(vcpu);
 

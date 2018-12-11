@@ -420,7 +420,7 @@ out:
  */
 static void kvm_timer_blocking(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct timer_map map;
 
 	get_timer_map(vcpu, &map);
@@ -577,7 +577,7 @@ static void kvm_timer_vcpu_load_nested_switch(struct kvm_vcpu *vcpu,
 
 void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct timer_map map;
 
 	if (unlikely(!timer->enabled))
@@ -688,7 +688,7 @@ static void unmask_vtimer_irq_user(struct kvm_vcpu *vcpu)
 
 void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 
 	if (unlikely(!timer->enabled))
 		return;
@@ -699,7 +699,7 @@ void kvm_timer_sync_hwstate(struct kvm_vcpu *vcpu)
 
 int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct timer_map map;
 
 	get_timer_map(vcpu, &map);
@@ -757,7 +757,7 @@ static void update_vtimer_cntvoff(struct kvm_vcpu *vcpu, u64 cntvoff)
 
 void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
 	struct arch_timer_context *ptimer = vcpu_ptimer(vcpu);
 	struct arch_timer_context *hvtimer = vcpu_hvtimer(vcpu);
@@ -1185,7 +1185,7 @@ bool kvm_arch_timer_get_input_level(int vintid)
 
 int kvm_timer_enable(struct kvm_vcpu *vcpu)
 {
-	struct arch_timer_cpu *timer = &vcpu->arch.timer_cpu;
+	struct arch_timer_cpu *timer = vcpu_timer(vcpu);
 	struct timer_map map;
 	int ret;
 

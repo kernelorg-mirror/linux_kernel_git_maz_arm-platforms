@@ -2546,69 +2546,6 @@ static struct sys_reg_desc sys_insn_descs[] = {
 	SYS_INSN_TO_DESC(TLBI_VMALLS12E1, handle_vmalls12e1is, forward_nv_traps),
 };
 
-static int match_sys_reg(const void *key, const void *elt)
-{
-	const unsigned long pval = (unsigned long)key;
-	const struct sys_reg_desc *r = elt;
-
-	return pval - reg_to_encoding(r);
-}
-
-static const struct sys_reg_desc *find_reg(const struct sys_reg_params *params,
-					 const struct sys_reg_desc table[],
-					 unsigned int num)
-{
-	unsigned long pval = reg_to_encoding(params);
-
-	return bsearch((void *)pval, table, num, sizeof(table[0]),
-		       match_sys_reg);
-}
-
-static void perform_access(struct kvm_vcpu *vcpu,
-			   struct sys_reg_params *params,
-			   const struct sys_reg_desc *r)
-{
-	trace_kvm_sys_access(*vcpu_pc(vcpu), params, r);
-
-	/*
-	 * Not having an accessor means that we have configured a trap
-	 * that we don't know how to handle. This certainly qualifies
-	 * as a gross bug that should be fixed right away.
-	 */
-	BUG_ON(!r->access);
-
-	/*
-	 * Forward this trap to the virtual EL2 if the guest hypervisor has
-	 * configured to trap the current instruction.
-	 */
-	if (nested_virt_in_use(vcpu) && r->forward_trap
-	    && unlikely(r->forward_trap(vcpu)))
-		return;
-
-	/* Skip instruction if instructed so */
-	if (likely(r->access(vcpu, params, r)))
-		kvm_skip_instr(vcpu, kvm_vcpu_trap_il_is32bit(vcpu));
-}
-
-static int emulate_sys_instr(struct kvm_vcpu *vcpu, struct sys_reg_params *p)
-{
-
-	const struct sys_reg_desc *r;
-
-	/* Search from the system instruction table. */
-	r = find_reg(p, sys_insn_descs, ARRAY_SIZE(sys_insn_descs));
-
-	if (likely(r)) {
-		perform_access(vcpu, p, r);
-	} else {
-		kvm_err("Unsupported guest sys instruction at: %lx\n",
-			*vcpu_pc(vcpu));
-		print_sys_reg_instr(p);
-		kvm_inject_undefined(vcpu);
-	}
-	return 1;
-}
-
 static bool trap_dbgidr(struct kvm_vcpu *vcpu,
 			struct sys_reg_params *p,
 			const struct sys_reg_desc *r)
@@ -2962,10 +2899,53 @@ static const struct sys_reg_desc *get_target_table(unsigned target,
 	}
 }
 
+static int match_sys_reg(const void *key, const void *elt)
+{
+	const unsigned long pval = (unsigned long)key;
+	const struct sys_reg_desc *r = elt;
+
+	return pval - reg_to_encoding(r);
+}
+
+static const struct sys_reg_desc *find_reg(const struct sys_reg_params *params,
+					 const struct sys_reg_desc table[],
+					 unsigned int num)
+{
+	unsigned long pval = reg_to_encoding(params);
+
+	return bsearch((void *)pval, table, num, sizeof(table[0]), match_sys_reg);
+}
+
 int kvm_handle_cp14_load_store(struct kvm_vcpu *vcpu, struct kvm_run *run)
 {
 	kvm_inject_undefined(vcpu);
 	return 1;
+}
+
+static void perform_access(struct kvm_vcpu *vcpu,
+			   struct sys_reg_params *params,
+			   const struct sys_reg_desc *r)
+{
+	trace_kvm_sys_access(*vcpu_pc(vcpu), params, r);
+
+	/*
+	 * Not having an accessor means that we have configured a trap
+	 * that we don't know how to handle. This certainly qualifies
+	 * as a gross bug that should be fixed right away.
+	 */
+	BUG_ON(!r->access);
+
+	/*
+	 * Forward this trap to the virtual EL2 if the guest hypervisor has
+	 * configured to trap the current instruction.
+	 */
+	if (nested_virt_in_use(vcpu) && r->forward_trap
+	    && unlikely(r->forward_trap(vcpu)))
+		return;
+
+	/* Skip instruction if instructed so */
+	if (likely(r->access(vcpu, params, r)))
+		kvm_skip_instr(vcpu, kvm_vcpu_trap_il_is32bit(vcpu));
 }
 
 /*
@@ -3172,6 +3152,25 @@ static int emulate_sys_reg(struct kvm_vcpu *vcpu,
 		kvm_err("Unsupported guest sys_reg access at: %lx\n",
 			*vcpu_pc(vcpu));
 		print_sys_reg_instr(params);
+		kvm_inject_undefined(vcpu);
+	}
+	return 1;
+}
+
+static int emulate_sys_instr(struct kvm_vcpu *vcpu, struct sys_reg_params *p)
+{
+
+	const struct sys_reg_desc *r;
+
+	/* Search from the system instruction table. */
+	r = find_reg(p, sys_insn_descs, ARRAY_SIZE(sys_insn_descs));
+
+	if (likely(r)) {
+		perform_access(vcpu, p, r);
+	} else {
+		kvm_err("Unsupported guest sys instruction at: %lx\n",
+			*vcpu_pc(vcpu));
+		print_sys_reg_instr(p);
 		kvm_inject_undefined(vcpu);
 	}
 	return 1;

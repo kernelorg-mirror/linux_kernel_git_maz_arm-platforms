@@ -89,6 +89,9 @@ void kvm_timer_vcpu_terminate(struct kvm_vcpu *vcpu);
 u64 kvm_arm_timer_get_reg(struct kvm_vcpu *, u64 regid);
 int kvm_arm_timer_set_reg(struct kvm_vcpu *, u64 regid, u64 value);
 
+u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr);
+void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val);
+
 int kvm_arm_timer_set_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr);
 int kvm_arm_timer_get_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr);
 int kvm_arm_timer_has_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr);
@@ -111,8 +114,5 @@ bool kvm_arch_timer_get_input_level(int vintid);
 #define vcpu_hptimer(v)	(&(v)->arch.timer_cpu.timers[TIMER_HPTIMER])
 
 #define arch_timer_ctx_index(ctx)	((ctx) - vcpu_vtimer((ctx)->vcpu))
-
-u64 kvm_arm_timer_read_sysreg(struct kvm_vcpu *vcpu, u32 sr);
-void kvm_arm_timer_write_sysreg(struct kvm_vcpu *vcpu, u32 sr, u64 val);
 
 #endif

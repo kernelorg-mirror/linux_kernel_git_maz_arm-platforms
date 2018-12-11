@@ -287,7 +287,6 @@ static inline u64 __fixup_spsr_el2_read(const struct kvm_cpu_context *ctxt, u64 
 
 static inline unsigned long vcpu_read_spsr(const struct kvm_vcpu *vcpu)
 {
-
 	if (vcpu_mode_is_32bit(vcpu))
 		return vcpu_read_spsr32(vcpu);
 

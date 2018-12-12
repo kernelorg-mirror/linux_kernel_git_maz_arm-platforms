@@ -417,7 +417,7 @@ void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu)
 	if (vcpu->arch.hw_mmu != &vcpu->kvm->arch.mmu)
 		vcpu->arch.hw_mmu->usage_count--;
 
-	if (is_hyp_ctxt(vcpu) || !vcpu_nested_stage2_enabled(vcpu))
+	if (is_hyp_ctxt(vcpu))
 		vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 	else
 		vcpu->arch.hw_mmu = get_s2_mmu_nested(vcpu);

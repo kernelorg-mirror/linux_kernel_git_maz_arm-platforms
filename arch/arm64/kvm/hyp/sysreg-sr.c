@@ -191,7 +191,6 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 
 	write_sysreg(read_cpuid_id(),			vpidr_el2);
 	write_sysreg(ctxt->sys_regs[MPIDR_EL1],		vmpidr_el2);
-	write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
 	write_sysreg_el1(ctxt->sys_regs[MAIR_EL2],	mair);
 	write_sysreg_el1(ctxt->sys_regs[VBAR_EL2],	vbar);
 	write_sysreg_el1(ctxt->sys_regs[CONTEXTIDR_EL2],contextidr);
@@ -208,16 +207,6 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(ctxt->sys_regs[TTBR1_EL2],	ttbr1);
 		write_sysreg_el1(ctxt->sys_regs[TCR_EL2],	tcr);
 		write_sysreg_el1(ctxt->sys_regs[CNTHCTL_EL2],	cntkctl);
-
-		/*
-		 * Although we trap sysreg accesses using their EL2 encoding,
-		 * a VHE guest expects to access those using their EL1 encoding
-		 * as well, which does not trap. So we need to sync those back
-		 * here.
-		 */
-		write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
-		write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
-		write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);
 	} else {
 		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
 				 sctlr);
@@ -230,6 +219,14 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 				 cntkctl);
 	}
 
+	/*
+	 * These registers can be modified behind our back by a fault
+	 * taken inside vEL2. Save them, always.
+	 */
+	write_sysreg_el1(ctxt->sys_regs[ESR_EL2],	esr);
+	write_sysreg_el1(ctxt->sys_regs[AFSR0_EL2],	afsr0);
+	write_sysreg_el1(ctxt->sys_regs[AFSR1_EL2],	afsr1);
+	write_sysreg_el1(ctxt->sys_regs[FAR_EL2],	far);
 	write_sysreg(ctxt->sys_regs[SP_EL2],		sp_el1);
 	write_sysreg_el1(ctxt->sys_regs[ELR_EL2],	elr);
 

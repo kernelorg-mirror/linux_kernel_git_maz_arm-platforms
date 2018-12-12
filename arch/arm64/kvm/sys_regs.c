@@ -2342,28 +2342,19 @@ static bool handle_alle1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 				const struct sys_reg_desc *r)
 {
-	u64 vttbr;
+	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	struct kvm_s2_mmu *mmu;
-	bool ret;
 
 	spin_lock(&vcpu->kvm->mmu_lock);
-	/*
-	 * Clear mappings in the shadow page tables and invalidate the stage
-	 * 1 and 2 TLB entries via kvm_tlb_flush_vmid_ipa() for the current
-	 * VMID.
-	 */
-	ret = kvm_nested_s2_clear_curr_vmid(vcpu, 0, KVM_PHYS_SIZE);
 
-	if (!ret) {
-		/*
-		 * Invalidate TLB entries explicitly for the case that the
-		 * current VMID is for the host OS in the VM; we don't manage
-		 * shadow stage 2 page tables for it.
-		 */
-		mmu = &vcpu->kvm->arch.mmu;
-		vttbr = kvm_get_vttbr(mmu);
-		kvm_call_hyp(__kvm_tlb_flush_vmid, vttbr);
-	}
+	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, HCR_VM);
+	if (mmu)
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, 0, KVM_PHYS_SIZE);
+
+	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, 0);
+	if (mmu)
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, 0, KVM_PHYS_SIZE);
+
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	return true;
@@ -2372,28 +2363,19 @@ static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			     const struct sys_reg_desc *r)
 {
-	u64 vttbr;
+	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	struct kvm_s2_mmu *mmu;
-	bool ret;
 
 	spin_lock(&vcpu->kvm->mmu_lock);
-	/*
-	 * Clear a mapping in the shadow page tables and invalidate the stage
-	 * 2 TLB entries via kvm_tlb_flush_vmid_ipa() for the current
-	 * VMID and the given ipa.
-	 */
-	ret = kvm_nested_s2_clear_curr_vmid(vcpu, p->regval, PAGE_SIZE);
 
-	if (!ret) {
-		/*
-		 * Invalidate TLB entries explicitly for the case that the
-		 * current VMID is for the host OS in the VM; we don't manage
-		 * shadow stage 2 page tables for it.
-		 */
-		mmu = &vcpu->kvm->arch.mmu;
-		vttbr = kvm_get_vttbr(mmu);
-		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, vttbr, p->regval);
-	}
+	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, HCR_VM);
+	if (mmu)
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, p->regval, PAGE_SIZE);
+
+	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, 0);
+	if (mmu)
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, p->regval, PAGE_SIZE);
+
 	spin_unlock(&vcpu->kvm->mmu_lock);
 
 	return true;

@@ -279,13 +279,21 @@ int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			     struct kvm_s2_trans *trans)
 {
 	unsigned long fault_status = kvm_vcpu_trap_get_fault_type(vcpu);
-	bool write_fault = kvm_is_write_fault(vcpu);
+	bool forward_fault = false;
 
 	if (fault_status != FSC_PERM)
 		return 0;
 
-	if ((write_fault && !trans->writable) ||
-	    (!write_fault && !trans->readable)) {
+	if (kvm_vcpu_trap_is_iabt(vcpu)) {
+		forward_fault = (trans->upper_attr & PTE_S2_XN);
+	} else {
+		bool write_fault = kvm_is_write_fault(vcpu);
+
+		forward_fault = ((write_fault && !trans->writable) ||
+				 (!write_fault && !trans->readable));
+	}
+
+	if (forward_fault) {
 		trans->esr = esr_s2_fault(vcpu, trans->level, ESR_ELx_FSC_PERM);
 		return 1;
 	}

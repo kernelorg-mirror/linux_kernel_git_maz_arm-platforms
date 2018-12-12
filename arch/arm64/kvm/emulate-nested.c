@@ -82,6 +82,7 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 	if (direct_eret) {
 		*vcpu_pc(vcpu) = vcpu_read_sys_reg(vcpu, ELR_EL2);
 		*vcpu_cpsr(vcpu) = spsr;
+		trace_kvm_nested_eret(vcpu, *vcpu_pc(vcpu), *vcpu_cpsr(vcpu));
 		return;
 	}
 
@@ -109,6 +110,8 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 static void enter_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
 				enum exception_type type)
 {
+	trace_kvm_inject_nested_exception(vcpu, esr_el2, type);
+
 	vcpu_write_sys_reg(vcpu, *vcpu_cpsr(vcpu), SPSR_EL2);
 	vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
 	vcpu_write_sys_reg(vcpu, esr_el2, ESR_EL2);
@@ -117,8 +120,6 @@ static void enter_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
 	/* On an exception, PSTATE.SP becomes 1 */
 	*vcpu_cpsr(vcpu) = PSR_MODE_EL2h;
 	*vcpu_cpsr(vcpu) |= PSR_A_BIT | PSR_F_BIT | PSR_I_BIT | PSR_D_BIT;
-
-	trace_kvm_inject_nested_exception(vcpu, esr_el2, *vcpu_pc(vcpu));
 }
 
 /*

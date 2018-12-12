@@ -2501,8 +2501,9 @@ static bool handle_tlbi_el1(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
  * NV and NV1 bits.
  */
 
-#define SYS_INSN_TO_DESC(insn, access_fn, forward_fn)	\
-	{ SYS_DESC((insn)), (access_fn), NULL, 0, 0, NULL, NULL, (forward_fn) }
+#define SYS_INSN_TO_DESC(insn, access_fn, forward_fn)			\
+	{ SYS_DESC(OP_##insn), (access_fn), NULL, 0, 0,			\
+	  NULL, NULL, (forward_fn) }
 static struct sys_reg_desc sys_insn_descs[] = {
 	SYS_INSN_TO_DESC(AT_S1E1R, handle_s1e01, forward_at_traps),
 	SYS_INSN_TO_DESC(AT_S1E1W, handle_s1e01, forward_at_traps),

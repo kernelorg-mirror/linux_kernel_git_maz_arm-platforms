@@ -173,12 +173,12 @@ void __hyp_text __kvm_tlb_vae2(u64 vttbr, u64 va, u64 sys_encoding)
 	 * perform the invalidation on all CPUs.
 	 */
 	switch (sys_encoding) {
-	case TLBI_VAE2:
-	case TLBI_VAE2IS:
+	case OP_TLBI_VAE2:
+	case OP_TLBI_VAE2IS:
 		__tlbi(vae1is, va);
 		break;
-	case TLBI_VALE2:
-	case TLBI_VALE2IS:
+	case OP_TLBI_VALE2:
+	case OP_TLBI_VALE2IS:
 		__tlbi(vale1is, va);
 		break;
 	default:
@@ -204,28 +204,28 @@ void __hyp_text __kvm_tlb_el1_instr(u64 vttbr, u64 val, u64 sys_encoding)
 	 * is equivalent to having HCR_EL2.FB set.
 	 */
 	switch (sys_encoding) {
-	case TLBI_VMALLE1:
-	case TLBI_VMALLE1IS:
+	case OP_TLBI_VMALLE1:
+	case OP_TLBI_VMALLE1IS:
 		__tlbi(vmalle1is);
 		break;
-	case TLBI_VAE1:
-	case TLBI_VAE1IS:
+	case OP_TLBI_VAE1:
+	case OP_TLBI_VAE1IS:
 		__tlbi(vae1is, val);
 		break;
-	case TLBI_ASIDE1:
-	case TLBI_ASIDE1IS:
+	case OP_TLBI_ASIDE1:
+	case OP_TLBI_ASIDE1IS:
 		__tlbi(aside1is, val);
 		break;
-	case TLBI_VAAE1:
-	case TLBI_VAAE1IS:
+	case OP_TLBI_VAAE1:
+	case OP_TLBI_VAAE1IS:
 		__tlbi(vaae1is, val);
 		break;
-	case TLBI_VALE1:
-	case TLBI_VALE1IS:
+	case OP_TLBI_VALE1:
+	case OP_TLBI_VALE1IS:
 		__tlbi(vale1is, val);
 		break;
-	case TLBI_VAALE1:
-	case TLBI_VAALE1IS:
+	case OP_TLBI_VAALE1:
+	case OP_TLBI_VAALE1IS:
 		__tlbi(vaale1is, val);
 		break;
 	default:

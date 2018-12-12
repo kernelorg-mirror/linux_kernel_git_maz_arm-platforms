@@ -96,24 +96,24 @@ void __hyp_text __kvm_at_insn(struct kvm_vcpu *vcpu, unsigned long vaddr,
 	__at_switch_to_guest()(vcpu, el2_regime);
 
 	switch (sys_encoding) {
-	case AT_S1E1R:
-	case AT_S1E2R:
+	case OP_AT_S1E1R:
+	case OP_AT_S1E2R:
 		asm volatile("at s1e1r, %0" : : "r" (vaddr));
 		break;
-	case AT_S1E1W:
-	case AT_S1E2W:
+	case OP_AT_S1E1W:
+	case OP_AT_S1E2W:
 		asm volatile("at s1e1w, %0" : : "r" (vaddr));
 		break;
-	case AT_S1E0R:
+	case OP_AT_S1E0R:
 		asm volatile("at s1e0r, %0" : : "r" (vaddr));
 		break;
-	case AT_S1E0W:
+	case OP_AT_S1E0W:
 		asm volatile("at s1e0w, %0" : : "r" (vaddr));
 		break;
-	case AT_S1E1RP:
+	case OP_AT_S1E1RP:
 		asm volatile("sys #0, c7, c9, #0, %0" : : "r" (vaddr));
 		break;
-	case AT_S1E1WP:
+	case OP_AT_S1E1WP:
 		asm volatile("sys #0, c7, c9, #1, %0" : : "r" (vaddr));
 		break;
 	default:

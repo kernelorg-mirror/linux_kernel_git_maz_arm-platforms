@@ -156,7 +156,7 @@ int create_hyp_exec_mappings(phys_addr_t phys_addr, size_t size,
 void free_hyp_pgds(void);
 
 void stage2_unmap_vm(struct kvm *kvm);
-int kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu);
+int kvm_init_stage2_mmu(struct kvm_s2_mmu *mmu);
 void kvm_free_stage2_pgd(struct kvm *kvm);
 void __kvm_free_stage2_pgd(struct kvm *kvm, struct kvm_s2_mmu *mmu);
 int __kvm_phys_addr_ioremap(struct kvm *kvm, struct kvm_s2_mmu *mmu,

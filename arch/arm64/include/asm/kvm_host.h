@@ -92,6 +92,9 @@ struct kvm_s2_mmu {
 	 * >0: Somebody is actively using this.
 	 */
 	int usage_count;
+
+	/* The last vcpu id that ran on each physical CPU */
+	int __percpu *last_vcpu_ran;
 };
 
 struct kvm_arch {
@@ -108,9 +111,6 @@ struct kvm_arch {
 	 */
 	struct kvm_s2_mmu *nested_mmus;
 	size_t nested_mmus_size;
-
-	/* The last vcpu id that ran on each physical CPU */
-	int __percpu *last_vcpu_ran;
 
 	/* The maximum number of vCPUs depends on the used GIC model */
 	int max_vcpus;

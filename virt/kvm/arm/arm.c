@@ -116,33 +116,20 @@ void kvm_arch_check_processor_compat(void *rtn)
 	*(int *)rtn = 0;
 }
 
-
 /**
  * kvm_arch_init_vm - initializes a VM data structure
  * @kvm:	pointer to the KVM struct
  */
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
-	int ret, cpu;
+	int ret;
 
 	if (type)
 		return -EINVAL;
 
-	kvm->arch.last_vcpu_ran = alloc_percpu(typeof(*kvm->arch.last_vcpu_ran));
-	if (!kvm->arch.last_vcpu_ran)
-		return -ENOMEM;
-
-	for_each_possible_cpu(cpu)
-		*per_cpu_ptr(kvm->arch.last_vcpu_ran, cpu) = -1;
-
-	ret = kvm_alloc_stage2_pgd(&kvm->arch.mmu);
+	ret = kvm_init_stage2_mmu(&kvm->arch.mmu);
 	if (ret)
-		goto out_fail_alloc;
-
-	/* Mark the initial VMID generation invalid */
-	kvm->arch.mmu.vmid.vmid_gen = 0;
-	kvm->arch.mmu.vttbr = -1;
-	kvm->arch.mmu.nested_stage2_enabled = false;
+		return ret;
 
 	kvm->arch.nested_mmus = NULL;
 	kvm->arch.nested_mmus_size = 0;
@@ -160,9 +147,6 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	return ret;
 out_free_stage2_pgd:
 	kvm_free_stage2_pgd(kvm);
-out_fail_alloc:
-	free_percpu(kvm->arch.last_vcpu_ran);
-	kvm->arch.last_vcpu_ran = NULL;
 	return ret;
 }
 
@@ -192,10 +176,8 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 
 	kvm_vgic_destroy(kvm);
 
-	free_percpu(kvm->arch.last_vcpu_ran);
-	kvm->arch.last_vcpu_ran = NULL;
-
 	kvm_nested_s2_free(kvm);
+	kvm_free_stage2_pgd(kvm);
 
 	for (i = 0; i < KVM_MAX_VCPUS; ++i) {
 		if (kvm->vcpus[i]) {
@@ -376,15 +358,14 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	int *last_ran;
 
-	last_ran = this_cpu_ptr(vcpu->kvm->arch.last_vcpu_ran);
+	last_ran = this_cpu_ptr(vcpu->arch.hw_mmu->last_vcpu_ran);
 
 	/*
 	 * We might get preempted before the vCPU actually runs, but
 	 * over-invalidation doesn't affect correctness.
 	 */
 	if (*last_ran != vcpu->vcpu_id) {
-		struct kvm_s2_mmu *mmu = &vcpu->kvm->arch.mmu;
-		u64 vttbr = kvm_get_vttbr(mmu);
+		u64 vttbr = kvm_get_vttbr(vcpu->arch.hw_mmu);
 
 		/*
 		 * TODO: We need to ask Rutland if we need an icache
@@ -392,10 +373,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 		 * to optimize the nested case to only invalidate the
 		 * necessary VMIDs.
 		 */
-		if (nested_virt_in_use(vcpu))
-			kvm_call_hyp(__kvm_tlb_flush_local_all);
-		else
-			kvm_call_hyp(__kvm_tlb_flush_local_vmid, vttbr);
+		kvm_call_hyp(__kvm_tlb_flush_local_vmid, vttbr);
 
 		*last_ran = vcpu->vcpu_id;
 	}

@@ -909,32 +909,44 @@ int create_hyp_exec_mappings(phys_addr_t phys_addr, size_t size,
 }
 
 /**
- * kvm_alloc_stage2_pgd - allocate level-1 table for stage-2 translation.
- * @kvm:	The KVM struct pointer for the VM.
+ * kvm_init_stage2_mmu - Initialise a S2 MMU strucrure
+ * @mmu:	The pointer to the s2 MMU structure
  *
  * Allocates only the stage-2 HW PGD level table(s) (can support either full
  * 40-bit input addresses or limited to 32-bit input addresses). Clears the
- * allocated pages.
+ * allocated pages and initialize the various other fields.
  *
  * Note we don't need locking here as this is only called when the VM is
  * created, which can only be done once.
  */
-int kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu)
+int kvm_init_stage2_mmu(struct kvm_s2_mmu *mmu)
 {
 	pgd_t *pgd;
+	int cpu;
 
 	if (mmu->pgd != NULL) {
 		kvm_err("kvm_arch already initialized?\n");
 		return -EINVAL;
 	}
 
-	/* Allocate the HW PGD, making sure that each page gets its own refcount */
 	pgd = alloc_pages_exact(S2_PGD_SIZE, GFP_KERNEL | __GFP_ZERO);
 	if (!pgd)
 		return -ENOMEM;
 
+	mmu->last_vcpu_ran = alloc_percpu(typeof(*mmu->last_vcpu_ran));
+	if (!mmu->last_vcpu_ran) {
+		free_pages_exact(pgd, S2_PGD_SIZE);
+		return -ENOMEM;
+	}
+
 	mmu->pgd = pgd;
 	mmu->pgd_phys = virt_to_phys(pgd);
+	mmu->vmid.vmid_gen = 0;
+	mmu->vttbr = -1;
+	mmu->nested_stage2_enabled = false;
+	mmu->usage_count = -1;
+	for_each_possible_cpu(cpu)
+		*per_cpu_ptr(mmu->last_vcpu_ran, cpu) = -1;
 
 	return 0;
 }
@@ -1020,9 +1032,12 @@ void __kvm_free_stage2_pgd(struct kvm *kvm, struct kvm_s2_mmu *mmu)
 	spin_unlock(&kvm->mmu_lock);
 
 	/* Free the HW pgd, one page at a time */
-	if (pgd)
+	if (pgd) {
 		free_pages_exact(pgd, S2_PGD_SIZE);
+		free_percpu(mmu->last_vcpu_ran);
+	}
 }
+
 /**
  * kvm_free_stage2_pgd - free all stage-2 tables
  * @kvm:	The KVM struct pointer for the VM.
@@ -1033,7 +1048,14 @@ void __kvm_free_stage2_pgd(struct kvm *kvm, struct kvm_s2_mmu *mmu)
  */
 void kvm_free_stage2_pgd(struct kvm *kvm)
 {
+	int i;
+
 	__kvm_free_stage2_pgd(kvm, &kvm->arch.mmu);
+
+	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
+		WARN_ON(kvm->arch.nested_mmus[i].usage_count > 0);
+		__kvm_free_stage2_pgd(kvm, &kvm->arch.nested_mmus[i]);
+	}
 }
 
 static pud_t *stage2_get_pud(struct kvm_s2_mmu *mmu,

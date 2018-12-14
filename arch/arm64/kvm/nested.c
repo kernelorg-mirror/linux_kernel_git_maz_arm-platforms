@@ -36,16 +36,17 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 			 GFP_KERNEL | __GFP_ZERO);
 
 	if (tmp) {
-		if (tmp != kvm->arch.nested_mmus)
+		if (tmp != kvm->arch.nested_mmus) {
 			kfree(kvm->arch.nested_mmus);
+			kvm->arch.nested_mmus = NULL;
+			kvm->arch.nested_mmus_size = 0;
+		}
 
-		tmp[num_mmus - 1].usage_count = -1;
-		ret = kvm_alloc_stage2_pgd(&tmp[num_mmus - 1]);
+		ret = kvm_init_stage2_mmu(&tmp[num_mmus - 1]);
 		if (ret)
 			goto out;
 
-		tmp[num_mmus - 2].usage_count = -1;
-		ret = kvm_alloc_stage2_pgd(&tmp[num_mmus - 2]);
+		ret = kvm_init_stage2_mmu(&tmp[num_mmus - 2]);
 		if (ret) {
 			__kvm_free_stage2_pgd(kvm, &tmp[num_mmus - 1]);
 			goto out;

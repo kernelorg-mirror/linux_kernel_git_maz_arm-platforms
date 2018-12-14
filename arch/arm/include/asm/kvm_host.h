@@ -63,14 +63,14 @@ struct kvm_s2_mmu {
 	pgd_t *pgd;
 	phys_addr_t pgd_phys;
 
+	/* The last vcpu id that ran on each physical CPU */
+	int __percpu *last_vcpu_ran;
+
 	struct kvm *kvm;
 };
 
 struct kvm_arch {
 	struct kvm_s2_mmu mmu;
-
-	/* The last vcpu id that ran on each physical CPU */
-	int __percpu *last_vcpu_ran;
 
 	/* Stage-2 page table */
 	pgd_t *pgd;

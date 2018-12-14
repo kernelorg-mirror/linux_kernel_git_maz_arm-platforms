@@ -52,7 +52,7 @@ int create_hyp_exec_mappings(phys_addr_t phys_addr, size_t size,
 void free_hyp_pgds(void);
 
 void stage2_unmap_vm(struct kvm *kvm);
-int kvm_alloc_stage2_pgd(struct kvm_s2_mmu *mmu);
+int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu);
 void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu);
 int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 			  phys_addr_t pa, unsigned long size, bool writable);
@@ -420,7 +420,7 @@ static inline int hyp_map_aux_data(void)
 
 static inline void kvm_set_ipa_limit(void) {}
 
-static inline void kvm_init_s2_mmu(struct kvm_s2_mmu *mmu) {}
+static inline void kvm_init_nested_s2_mmu(struct kvm_s2_mmu *mmu) {}
 static inline void kvm_init_nested(struct kvm *kvm) {}
 
 struct kvm_s2_trans {};

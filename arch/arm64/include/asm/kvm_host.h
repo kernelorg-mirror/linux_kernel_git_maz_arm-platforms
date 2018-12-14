@@ -104,6 +104,9 @@ struct kvm_s2_mmu {
 	 * >0: Somebody is actively using this.
 	 */
 	atomic_t refcnt;
+
+	/* The last vcpu id that ran on each physical CPU */
+	int __percpu *last_vcpu_ran;
 };
 
 static inline bool kvm_s2_mmu_valid(struct kvm_s2_mmu *mmu)
@@ -123,9 +126,6 @@ struct kvm_arch {
 
 	/* VTCR_EL2 value for this VM */
 	u64    vtcr;
-
-	/* The last vcpu id that ran on each physical CPU */
-	int __percpu *last_vcpu_ran;
 
 	/* The maximum number of vCPUs depends on the used GIC model */
 	int max_vcpus;

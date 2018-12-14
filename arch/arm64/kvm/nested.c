@@ -52,18 +52,17 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 			 GFP_KERNEL | __GFP_ZERO);
 
 	if (tmp) {
-		if (tmp != kvm->arch.nested_mmus)
+		if (tmp != kvm->arch.nested_mmus) {
 			kfree(kvm->arch.nested_mmus);
+			kvm->arch.nested_mmus = NULL;
+			kvm->arch.nested_mmus_size = 0;
+		}
 
-		tmp[num_mmus - 1].kvm = kvm;
-		atomic_set(&tmp[num_mmus - 1].refcnt, 0);
-		ret = kvm_alloc_stage2_pgd(&tmp[num_mmus - 1]);
+		ret = kvm_init_stage2_mmu(kvm, &tmp[num_mmus - 1]);
 		if (ret)
 			goto out;
 
-		tmp[num_mmus - 2].kvm = kvm;
-		atomic_set(&tmp[num_mmus - 2].refcnt, 0);
-		ret = kvm_alloc_stage2_pgd(&tmp[num_mmus - 2]);
+		ret = kvm_init_stage2_mmu(kvm, &tmp[num_mmus - 2]);
 		if (ret) {
 			kvm_free_stage2_pgd(&tmp[num_mmus - 1]);
 			goto out;

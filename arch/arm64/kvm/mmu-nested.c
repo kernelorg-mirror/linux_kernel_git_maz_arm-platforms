@@ -390,13 +390,24 @@ static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 	if (s2_mmu)
 		goto out;
 
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		s2_mmu = &kvm->arch.nested_mmus[i];
+	/*
+	 * Make sure we don't always search from the same point, or we
+	 * will always reuse a potentially active context, leaving
+	 * free contexts unused.
+	 */
+	for (i = kvm->arch.nested_mmus_next;
+	     i < (kvm->arch.nested_mmus_size + kvm->arch.nested_mmus_next);
+	     i++) {
+		s2_mmu = &kvm->arch.nested_mmus[i % kvm->arch.nested_mmus_size];
 
 		if (s2_mmu->usage_count <= 0)
 			break;
 	}
 	BUG_ON(s2_mmu->usage_count > 0); /* We have struct MMUs to spare */
+
+	/* Set the scene for the next search */
+	kvm->arch.nested_mmus_next  = i + 1;
+	kvm->arch.nested_mmus_next %= kvm->arch.nested_mmus_next;
 
 	if (s2_mmu->usage_count == 0) {
 		/* Clear the old state */

@@ -111,6 +111,7 @@ struct kvm_arch {
 	 */
 	struct kvm_s2_mmu *nested_mmus;
 	size_t nested_mmus_size;
+	int nested_mmus_next;
 
 	/* The maximum number of vCPUs depends on the used GIC model */
 	int max_vcpus;

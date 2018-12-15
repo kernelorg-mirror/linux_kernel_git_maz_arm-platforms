@@ -123,6 +123,7 @@ struct kvm_arch {
 	 */
 	struct kvm_s2_mmu *nested_mmus;
 	size_t nested_mmus_size;
+	int nested_mmus_next;
 
 	/* VTCR_EL2 value for this VM */
 	u64    vtcr;

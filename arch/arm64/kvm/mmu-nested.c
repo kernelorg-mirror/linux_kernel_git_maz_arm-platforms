@@ -406,8 +406,7 @@ static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 	BUG_ON(s2_mmu->usage_count > 0); /* We have struct MMUs to spare */
 
 	/* Set the scene for the next search */
-	kvm->arch.nested_mmus_next  = i + 1;
-	kvm->arch.nested_mmus_next %= kvm->arch.nested_mmus_next;
+	kvm->arch.nested_mmus_next = (i + 1) % kvm->arch.nested_mmus_size;
 
 	if (s2_mmu->usage_count == 0) {
 		/* Clear the old state */

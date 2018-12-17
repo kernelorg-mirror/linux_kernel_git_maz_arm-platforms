@@ -167,7 +167,7 @@ void vgic_v3_sync_nested(struct kvm_vcpu *vcpu)
 			continue; /* oh well, the guest hyp is broken */
 
 		lr = __gic_v3_get_lr(i);
-		if (!(lr & ICH_LR_ACTIVE_BIT)) {
+		if (!(lr & ICH_LR_STATE)) {
 			trace_vgic_nested_hw_emulate(i, lr, l1_irq);
 			irq->active = false;
 		}

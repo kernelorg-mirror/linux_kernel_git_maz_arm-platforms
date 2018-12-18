@@ -18,90 +18,82 @@
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
 
-/* TODO: change these two functions to mimic the vcpu_put/load() routines.
- * These should differentiate between vEL2 and (v)EL1 to write the right
- * registers into the CPU.
- * Do we need to consider sysregs_loaded_on_cpu for this?
- */
+struct mmu_config {
+	u64	ttbr0;
+	u64	ttbr1;
+	u64	tcr;
+	u64	sctlr;
+	u64	vttbr;
+	u64	vtcr;
+	u64	hcr;
+};
 
-static void __hyp_text __save_vmregs(struct kvm_cpu_context *ctxt)
+static void __mmu_config_save(struct mmu_config *config)
 {
-	ctxt->sys_regs[TTBR0_EL1]	= read_sysreg_el1(ttbr0);
-	ctxt->sys_regs[TTBR1_EL1]	= read_sysreg_el1(ttbr1);
-	ctxt->sys_regs[TCR_EL1]		= read_sysreg_el1(tcr);
-	ctxt->sys_regs[SCTLR_EL1]	= read_sysreg_el1(sctlr);
+	config->ttbr0	= read_sysreg_el1(ttbr0);
+	config->ttbr1	= read_sysreg_el1(ttbr1);
+	config->tcr	= read_sysreg_el1(tcr);
+	config->sctlr	= read_sysreg_el1(sctlr);
+	config->vttbr	= read_sysreg(vttbr_el2);
+	config->vtcr	= read_sysreg(vtcr_el2);
+	config->hcr	= read_sysreg(hcr_el2);
 }
 
-static void __hyp_text __restore_vmregs(struct kvm_cpu_context *ctxt)
+static void __mmu_config_restore(struct mmu_config *config)
 {
+	write_sysreg_el1(config->ttbr0,	ttbr0);
+	write_sysreg_el1(config->ttbr1,	ttbr1);
+	write_sysreg_el1(config->tcr,	tcr);
+	write_sysreg_el1(config->sctlr,	sctlr);
+	write_sysreg(config->vttbr,	vttbr_el2);
+	write_sysreg(config->vtcr,	vttbr_el2);
+	write_sysreg(config->hcr,	hcr_el2);
+
+	isb();
+}
+
+void __kvm_at_s1e01(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
+{
+	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
+	struct mmu_config config;
+	struct kvm_s2_mmu *mmu;
+
+	/*
+	 * We can only get here when trapping from vEL2, so we're
+	 * translating a guest guest VA.
+	 *
+	 * FIXME: Obtaining the S2 MMU for a a guest guest is horribly
+	 * racy, and we may not find it.
+	 */
+	spin_lock(&vcpu->kvm->mmu_lock);
+
+	mmu = lookup_s2_mmu(vcpu->kvm,
+			    vcpu_read_sys_reg(vcpu, VTTBR_EL2),
+			    vcpu_read_sys_reg(vcpu, HCR_EL2));
+
+	if (WARN_ON(!mmu))
+		goto out;
+
+	/* We've trapped, so everything is live on the CPU. */
+	__mmu_config_save(&config);
+
 	write_sysreg_el1(ctxt->sys_regs[TTBR0_EL1],	ttbr0);
 	write_sysreg_el1(ctxt->sys_regs[TTBR1_EL1],	ttbr1);
 	write_sysreg_el1(ctxt->sys_regs[TCR_EL1],	tcr);
 	write_sysreg_el1(ctxt->sys_regs[SCTLR_EL1],	sctlr);
-}
+	write_sysreg(kvm_get_vttbr(mmu),		vttbr_el2);
+	/* FIXME: write S2 MMU VTCR_EL2 */
+	write_sysreg(config.hcr & ~HCR_TGE,		hcr_el2);
 
-void __hyp_text __at_switch_to_guest_nvhe(struct kvm_vcpu *vcpu,
-					  bool el2_regime)
-{
-	struct kvm_cpu_context *host_ctxt;
-	struct kvm_cpu_context *guest_ctxt;
-	u64 val;
+	isb();
 
-	host_ctxt = kern_hyp_va(vcpu->arch.host_cpu_context);
-	guest_ctxt = &vcpu->arch.ctxt;
-
-	__save_vmregs(host_ctxt);
-	__restore_vmregs(guest_ctxt);
-
-	val = read_sysreg(hcr_el2);
-	if (el2_regime)
-		val |= (HCR_NV | HCR_NV1);
-	write_sysreg(val, hcr_el2);
-}
-
-void __hyp_text __at_switch_to_guest_vhe(struct kvm_vcpu *vcpu, bool el2_regime)
-{
-	struct kvm_cpu_context *guest_ctxt = &vcpu->arch.ctxt;
-	u64 val;
-
-	__restore_vmregs(guest_ctxt);
-
-	val = read_sysreg(hcr_el2);
-	val &= ~HCR_TGE;
-	if (el2_regime)
-		val |= (HCR_NV | HCR_NV1);
-	write_sysreg(val, hcr_el2);
-}
-
-/*
- * Switching to guest.
- *
- * 1. [nvhe] Save host vm regs
- * 2. [both] Restore guest vm regs
- * 3. [both] Set HCR_EL2.NV/NV1 bit if necessary
- * 4. [vhe]  Clear HCR_EL2.TGE
- */
-static hyp_alternate_select(__at_switch_to_guest,
-			    __at_switch_to_guest_nvhe, __at_switch_to_guest_vhe,
-			    ARM64_HAS_VIRT_HOST_EXTN);
-
-void __hyp_text __kvm_at_insn(struct kvm_vcpu *vcpu, unsigned long vaddr,
-			      bool el2_regime, int sys_encoding)
-{
-	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
-	struct kvm_cpu_context *host_ctxt;
-
-	host_ctxt = kern_hyp_va(vcpu->arch.host_cpu_context);
-
-	__at_switch_to_guest()(vcpu, el2_regime);
-
-	switch (sys_encoding) {
+	switch (op) {
 	case OP_AT_S1E1R:
-	case OP_AT_S1E2R:
+	case OP_AT_S1E1RP:
 		asm volatile("at s1e1r, %0" : : "r" (vaddr));
 		break;
 	case OP_AT_S1E1W:
-	case OP_AT_S1E2W:
+	case OP_AT_S1E1WP:
 		asm volatile("at s1e1w, %0" : : "r" (vaddr));
 		break;
 	case OP_AT_S1E0R:
@@ -110,25 +102,116 @@ void __hyp_text __kvm_at_insn(struct kvm_vcpu *vcpu, unsigned long vaddr,
 	case OP_AT_S1E0W:
 		asm volatile("at s1e0w, %0" : : "r" (vaddr));
 		break;
-	case OP_AT_S1E1RP:
-		asm volatile("sys #0, c7, c9, #0, %0" : : "r" (vaddr));
-		break;
-	case OP_AT_S1E1WP:
-		asm volatile("sys #0, c7, c9, #1, %0" : : "r" (vaddr));
-		break;
 	default:
+		WARN_ON(1);
 		break;
 	}
 
-	/* Save the translation result to the virtual machine's context */
+	isb();
+
 	ctxt->sys_regs[PAR_EL1] = read_sysreg(par_el1);
 
-	/* Switch to the host */
-	if (has_vhe()) {
-		write_sysreg(HCR_HOST_VHE_FLAGS, hcr_el2);
-	} else {
-		/* We don't save guest vm regs; we didn't make any changes */
-		__restore_vmregs(host_ctxt);
-		write_sysreg(HCR_RW, hcr_el2);
+	/*
+	 * Failed? let's leave the building now.
+	 *
+	 * FIXME: how about a failed translation because the shadow S2
+	 * wasn't populated? We may need to perform a SW PTW,
+	 * populating our shadow S2 and retry the instruction.
+	 */
+	if (ctxt->sys_regs[PAR_EL1] & 1)
+		goto nopan;
+
+	/* No PAN? No problem. */
+	if (!(*vcpu_cpsr(vcpu) & PSR_PAN_BIT))
+		goto nopan;
+
+	/*
+	 * For PAN-involved AT operations, perform the same
+	 * translation, using EL0 this time.
+	 */
+	switch (op) {
+	case OP_AT_S1E1RP:
+		asm volatile("at s1e0r, %0" : : "r" (vaddr));
+		break;
+	case OP_AT_S1E1WP:
+		asm volatile("at s1e0w, %0" : : "r" (vaddr));
+		break;
+	default:
+		goto nopan;
 	}
+
+	/*
+	 * If the EL0 translation has succeeded, we need to pretend
+	 * the AT operation has failed, as the PAN setting forbids
+	 * such a translation.
+	 *
+	 * FIXME: we hardcode a Level-3 permission fault. We really
+	 * should return the real fault level.
+	 */
+	if (!(read_sysreg(par_el1) & 1))
+		ctxt->sys_regs[PAR_EL1] = 0x1f;
+
+nopan:
+	__mmu_config_restore(&config);
+
+out:
+	spin_unlock(&vcpu->kvm->mmu_lock);
+}
+
+void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
+{
+	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
+	struct mmu_config config;
+	struct kvm_s2_mmu *mmu;
+	u64 val;
+
+	spin_lock(&vcpu->kvm->mmu_lock);
+
+	mmu = &vcpu->kvm->arch.mmu;
+
+	/* We've trapped, so everything is live on the CPU. */
+	__mmu_config_save(&config);
+
+	if (vcpu_el2_e2h_is_set(ctxt)) {
+		write_sysreg_el1(ctxt->sys_regs[TTBR0_EL2],	ttbr0);
+		write_sysreg_el1(ctxt->sys_regs[TTBR1_EL2],	ttbr1);
+		write_sysreg_el1(ctxt->sys_regs[TCR_EL2],	tcr);
+		write_sysreg_el1(ctxt->sys_regs[SCTLR_EL2],	sctlr);
+
+		val = config.hcr;
+	} else {
+		write_sysreg_el1(ctxt->sys_regs[TTBR0_EL2],	ttbr0);
+		write_sysreg_el1(translate_tcr(ctxt->sys_regs[TCR_EL2]),
+				 tcr);
+		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
+				 sctlr);
+
+		val = config.hcr | HCR_NV | HCR_NV1;
+	}
+
+	write_sysreg(kvm_get_vttbr(mmu),		vttbr_el2);
+	/* FIXME: write S2 MMU VTCR_EL2 */
+	write_sysreg(val & ~HCR_TGE,			hcr_el2);
+
+	isb();
+
+	switch (op) {
+	case OP_AT_S1E2R:
+		asm volatile("at s1e1r, %0" : : "r" (vaddr));
+		break;
+	case OP_AT_S1E2W:
+		asm volatile("at s1e1w, %0" : : "r" (vaddr));
+		break;
+	default:
+		WARN_ON(1);
+		break;
+	}
+
+	isb();
+
+	/* FIXME: handle failed translation due to shadow S2 */
+	ctxt->sys_regs[PAR_EL1] = read_sysreg(par_el1);
+
+	__mmu_config_restore(&config);
+	spin_unlock(&vcpu->kvm->mmu_lock);
 }

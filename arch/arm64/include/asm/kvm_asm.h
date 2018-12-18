@@ -70,8 +70,8 @@ extern void __kvm_tlb_vae2(u64 vttbr, u64 va, u64 sys_encoding);
 extern void __kvm_tlb_el1_instr(u64 vttbr, u64 val, u64 sys_encoding);
 
 extern void __kvm_timer_set_cntvoff(u32 cntvoff_low, u32 cntvoff_high);
-extern void __kvm_at_insn(struct kvm_vcpu *vcpu, unsigned long vaddr,
-			  bool el2_regime, int sys_encoding);
+extern void __kvm_at_s1e01(struct kvm_vcpu *vcpu, u32 op, u64 vaddr);
+extern void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr);
 
 extern int kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu);
 

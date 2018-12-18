@@ -2150,22 +2150,9 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 static bool handle_s1e01(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			 const struct sys_reg_desc *r)
 {
-//	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
-	bool el2_format;
 	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
 
-	/* See '2. EL0/EL1 AT instructions: S1E[01]x, S12E1x' table. */
-	/* TODO: Do a vcpu_put()/vcpu_load() here?
-	 * Was:
-	if (vcpu_el2_e2h_is_set(&vcpu->arch.ctxt) && vcpu_el2_tge_is_set(vcpu))
-		ctxt->hw_sys_regs = ctxt->shadow_sys_regs;
-	else
-		ctxt->hw_sys_regs = ctxt->sys_regs;
-	*/
-
-	el2_format = vcpu_el2_format_used(vcpu);
-
-	kvm_call_hyp(__kvm_at_insn, vcpu, p->regval, el2_format, sys_encoding);
+	__kvm_at_s1e01(vcpu, sys_encoding, p->regval);
 
 	return true;
 }
@@ -2173,18 +2160,10 @@ static bool handle_s1e01(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static bool handle_s1e2(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			const struct sys_reg_desc *r)
 {
-//	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
-	bool el2_format;
 	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
 
-	/* See the '1. EL2 AT instructions: S1E2x' table */
-	/* TODO: Do a vcpu_put()/vcpu_load() here?
-	 * Was:
-	ctxt->hw_sys_regs = ctxt->shadow_sys_regs;
-	*/
-	el2_format = !vcpu_el2_e2h_is_set(&vcpu->arch.ctxt);
+	__kvm_at_s1e2(vcpu, sys_encoding, p->regval);
 
-	kvm_call_hyp(__kvm_at_insn, vcpu, p->regval, el2_format, sys_encoding);
 	return true;
 }
 

@@ -429,15 +429,22 @@ out:
 	return s2_mmu;
 }
 
-void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu)
+void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu)
 {
 	spin_lock(&vcpu->kvm->mmu_lock);
-	if (vcpu->arch.hw_mmu != &vcpu->kvm->arch.mmu)
-		vcpu->arch.hw_mmu->usage_count--;
-
 	if (is_hyp_ctxt(vcpu))
 		vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 	else
 		vcpu->arch.hw_mmu = get_s2_mmu_nested(vcpu);
+	spin_unlock(&vcpu->kvm->mmu_lock);
+}
+
+void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu)
+{
+	spin_lock(&vcpu->kvm->mmu_lock);
+	if (vcpu->arch.hw_mmu != &vcpu->kvm->arch.mmu) {
+		vcpu->arch.hw_mmu->usage_count--;
+		vcpu->arch.hw_mmu = NULL;
+	}
 	spin_unlock(&vcpu->kvm->mmu_lock);
 }

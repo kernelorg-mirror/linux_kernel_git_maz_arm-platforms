@@ -544,7 +544,8 @@ struct kvm_s2_trans {
 
 struct kvm_nested_s2_mmu *get_nested_mmu(struct kvm_vcpu *vcpu, u64 vttbr);
 struct kvm_s2_mmu *lookup_s2_mmu(struct kvm *kvm, u64 vttbr, u64 hcr);
-void vcpu_set_hw_mmu(struct kvm_vcpu *vcpu);
+void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu);
+void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu);
 void update_nested_s2_mmu(struct kvm_vcpu *vcpu);
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 		       struct kvm_s2_trans *result);

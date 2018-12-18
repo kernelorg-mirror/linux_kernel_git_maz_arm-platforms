@@ -1475,9 +1475,9 @@ static bool forward_traps(struct kvm_vcpu *vcpu, u64 control_bit)
 	control_bit_set = __vcpu_sys_reg(vcpu, HCR_EL2) & control_bit;
 	if (!vcpu_mode_el2(vcpu) && control_bit_set) {
 		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_hsr(vcpu));
-		return false;
+		return true;
 	}
-	return true;
+	return false;
 }
 
 static bool forward_at_traps(struct kvm_vcpu *vcpu)

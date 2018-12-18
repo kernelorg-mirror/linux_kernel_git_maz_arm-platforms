@@ -378,15 +378,16 @@ static inline int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
+static inline int kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u64 esr_el2)
+{
+	return 0;
+}
+
 static inline void kvm_nested_s2_unmap(struct kvm_vcpu *vcpu) { }
 static inline void kvm_nested_s2_free(struct kvm *kvm) { }
 static inline void kvm_nested_s2_wp(struct kvm *kvm) { }
 static inline void kvm_nested_s2_clear(struct kvm *kvm) { }
 static inline void kvm_nested_s2_flush(struct kvm *kvm) { }
-static inline int kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u64 esr_el2)
-{
-	return 0;
-}
 
 static inline u64 kvm_get_vttbr(struct kvm_vmid *vmid,
 				struct kvm_s2_mmu *mmu)

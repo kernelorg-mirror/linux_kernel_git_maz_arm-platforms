@@ -1248,16 +1248,15 @@ static int stage2_pmdp_test_and_clear_young(pmd_t *pmd)
 }
 
 /**
- * __kvm_phys_addr_ioremap - map a device range to guest IPA
+ * kvm_phys_addr_ioremap - map a device range to guest IPA
  *
  * @kvm:	The KVM pointer
  * @guest_ipa:	The IPA at which to insert the mapping
  * @pa:		The physical address of the device
  * @size:	The size of the mapping
  */
-int __kvm_phys_addr_ioremap(struct kvm *kvm, struct kvm_s2_mmu *mmu,
-			    phys_addr_t guest_ipa, phys_addr_t pa,
-			    unsigned long size, bool writable)
+int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
+			  phys_addr_t pa, unsigned long size, bool writable)
 {
 	phys_addr_t addr, end;
 	int ret = 0;
@@ -1278,7 +1277,7 @@ int __kvm_phys_addr_ioremap(struct kvm *kvm, struct kvm_s2_mmu *mmu,
 		if (ret)
 			goto out;
 		spin_lock(&kvm->mmu_lock);
-		ret = stage2_set_pte(mmu, &cache, addr, &pte,
+		ret = stage2_set_pte(&kvm->arch.mmu, &cache, addr, &pte,
 				     KVM_S2PTE_FLAG_IS_IOMAP);
 		spin_unlock(&kvm->mmu_lock);
 		if (ret)
@@ -1290,13 +1289,6 @@ int __kvm_phys_addr_ioremap(struct kvm *kvm, struct kvm_s2_mmu *mmu,
 out:
 	mmu_free_memory_cache(&cache);
 	return ret;
-}
-
-int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
-			  phys_addr_t pa, unsigned long size, bool writable)
-{
-	return __kvm_phys_addr_ioremap(kvm, &kvm->arch.mmu, guest_ipa, pa,
-				       size, writable);
 }
 
 static bool transparent_hugepage_adjust(kvm_pfn_t *pfnp, phys_addr_t *ipap,

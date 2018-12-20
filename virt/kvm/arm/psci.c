@@ -108,8 +108,6 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	struct kvm_vcpu *vcpu = NULL;
 	struct swait_queue_head *wq;
 	unsigned long cpu_id;
-	unsigned long context_id;
-	phys_addr_t target_pc;
 
 	cpu_id = smccc_get_arg1(source_vcpu) & MPIDR_HWID_BITMASK;
 	if (vcpu_mode_is_32bit(source_vcpu))
@@ -130,30 +128,21 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 			return PSCI_RET_INVALID_PARAMS;
 	}
 
-	target_pc = smccc_get_arg2(source_vcpu);
-	context_id = smccc_get_arg3(source_vcpu);
-
-	kvm_reset_vcpu(vcpu);
-
-	/* Gracefully handle Thumb2 entry point */
-	if (vcpu_mode_is_32bit(vcpu) && (target_pc & 1)) {
-		target_pc &= ~((phys_addr_t) 1);
-		vcpu_set_thumb(vcpu);
-	}
+	vcpu->arch.reset_state.pc = smccc_get_arg2(source_vcpu);
 
 	/* Propagate caller endianness */
-	if (kvm_vcpu_is_be(source_vcpu))
-		kvm_vcpu_set_be(vcpu);
+	vcpu->arch.reset_state.be = kvm_vcpu_is_be(source_vcpu);
 
-	*vcpu_pc(vcpu) = target_pc;
 	/*
 	 * NOTE: We always update r0 (or x0) because for PSCI v0.1
 	 * the general puspose registers are undefined upon CPU_ON.
 	 */
-	smccc_set_retval(vcpu, context_id, 0, 0, 0);
-	vcpu->arch.power_off = false;
-	smp_mb();		/* Make sure the above is visible */
+	vcpu->arch.reset_state.r0 = smccc_get_arg3(source_vcpu);
 
+	vcpu->arch.reset_state.valid = true;
+	vcpu->arch.power_off = false;
+
+	kvm_make_request(KVM_REQ_VCPU_RESET, vcpu);
 	wq = kvm_arch_vcpu_wq(vcpu);
 	swake_up_one(wq);
 

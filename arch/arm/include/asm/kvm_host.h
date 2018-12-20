@@ -157,6 +157,12 @@ struct vcpu_reset_state {
 	bool		reset;
 };
 
+enum vcpu_power_state {
+	KVM_ARM_VCPU_OFF,
+	KVM_ARM_VCPU_ON_PENDING,
+	KVM_ARM_VCPU_ON,
+};
+
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
 
@@ -184,8 +190,8 @@ struct kvm_vcpu_arch {
 	 * here.
 	 */
 
-	/* vcpu power-off state */
-	bool power_off;
+	/* vcpu power state */
+	enum vcpu_power_state power_state;
 
 	 /* Don't run the guest (internal implementation need) */
 	bool pause;

@@ -106,6 +106,7 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	struct kvm *kvm = source_vcpu->kvm;
 	struct kvm_vcpu *vcpu = NULL;
 	unsigned long cpu_id;
+	enum vcpu_power_state old_power_state;
 
 	cpu_id = smccc_get_arg1(source_vcpu) & MPIDR_HWID_BITMASK;
 	if (vcpu_mode_is_32bit(source_vcpu))
@@ -119,12 +120,18 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	 */
 	if (!vcpu)
 		return PSCI_RET_INVALID_PARAMS;
-	if (!vcpu->arch.power_off) {
-		if (kvm_psci_version(source_vcpu, kvm) != KVM_ARM_PSCI_0_1)
-			return PSCI_RET_ALREADY_ON;
-		else
+	old_power_state = cmpxchg(&vcpu->arch.power_state,
+				  KVM_ARM_VCPU_OFF,
+				  KVM_ARM_VCPU_ON_PENDING);
+
+	if (old_power_state != KVM_ARM_VCPU_OFF &&
+	    kvm_psci_version(source_vcpu, kvm) == KVM_ARM_PSCI_0_1)
 			return PSCI_RET_INVALID_PARAMS;
-	}
+
+	if (old_power_state == KVM_ARM_VCPU_ON_PENDING)
+			return PSCI_RET_ON_PENDING;
+	else if (old_power_state == KVM_ARM_VCPU_ON)
+			return PSCI_RET_ALREADY_ON;
 
 	reset_state = &vcpu->arch.reset_state;
 
@@ -148,7 +155,7 @@ static unsigned long kvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	 */
 	smp_wmb();
 
-	vcpu->arch.power_off = false;
+	WRITE_ONCE(vcpu->arch.power_state, KVM_ARM_VCPU_ON);
 	kvm_vcpu_wake_up(vcpu);
 
 	return PSCI_RET_SUCCESS;
@@ -183,7 +190,7 @@ static unsigned long kvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 		mpidr = kvm_vcpu_get_mpidr_aff(tmp);
 		if ((mpidr & target_affinity_mask) == target_affinity) {
 			matching_cpus++;
-			if (!tmp->arch.power_off)
+			if (tmp->arch.power_state == KVM_ARM_VCPU_ON)
 				return PSCI_0_2_AFFINITY_LEVEL_ON;
 		}
 	}

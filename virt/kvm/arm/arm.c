@@ -411,7 +411,7 @@ static void vcpu_power_off(struct kvm_vcpu *vcpu)
 int kvm_arch_vcpu_ioctl_get_mpstate(struct kvm_vcpu *vcpu,
 				    struct kvm_mp_state *mp_state)
 {
-	if (vcpu->arch.power_off)
+	if (vcpu->arch.power_state != KVM_ARM_VCPU_ON)
 		mp_state->mp_state = KVM_MP_STATE_STOPPED;
 	else
 		mp_state->mp_state = KVM_MP_STATE_RUNNABLE;
@@ -426,7 +426,7 @@ int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 
 	switch (mp_state->mp_state) {
 	case KVM_MP_STATE_RUNNABLE:
-		vcpu->arch.power_off = false;
+		vcpu->arch.power_state = KVM_ARM_VCPU_ON;
 		break;
 	case KVM_MP_STATE_STOPPED:
 		vcpu_power_off(vcpu);
@@ -448,8 +448,9 @@ int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 int kvm_arch_vcpu_runnable(struct kvm_vcpu *v)
 {
 	bool irq_lines = *vcpu_hcr(v) & (HCR_VI | HCR_VF);
-	return ((irq_lines || kvm_vgic_vcpu_pending_irq(v))
-		&& !v->arch.power_off && !v->arch.pause);
+	return (irq_lines || kvm_vgic_vcpu_pending_irq(v)) &&
+		v->arch.power_state == KVM_ARM_VCPU_ON &&
+		!v->arch.pause;
 }
 
 bool kvm_arch_vcpu_in_kernel(struct kvm_vcpu *vcpu)
@@ -614,14 +615,19 @@ void kvm_arm_resume_guest(struct kvm *kvm)
 	}
 }
 
+static bool vcpu_sleeping(struct kvm_vcpu *vcpu)
+{
+	return vcpu->arch.power_state != KVM_ARM_VCPU_ON ||
+		vcpu->arch.pause;
+}
+
 static void vcpu_req_sleep(struct kvm_vcpu *vcpu)
 {
 	struct swait_queue_head *wq = kvm_arch_vcpu_wq(vcpu);
 
-	swait_event_interruptible_exclusive(*wq, ((!vcpu->arch.power_off) &&
-				       (!vcpu->arch.pause)));
+	swait_event_interruptible_exclusive(*wq, !vcpu_sleeping(vcpu));
 
-	if (vcpu->arch.power_off || vcpu->arch.pause) {
+	if (vcpu_sleeping(vcpu)) {
 		/* Awaken to handle a signal, request we sleep again later. */
 		kvm_make_request(KVM_REQ_SLEEP, vcpu);
 	}
@@ -646,7 +652,7 @@ static void check_vcpu_requests(struct kvm_vcpu *vcpu)
 			vcpu_req_sleep(vcpu);
 
 		if (kvm_check_request(KVM_REQ_VCPU_OFF, vcpu)) {
-			vcpu->arch.power_off = true;
+			vcpu->arch.power_state = KVM_ARM_VCPU_OFF;
 			vcpu_req_sleep(vcpu);
 		}
 
@@ -1016,7 +1022,7 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	if (test_bit(KVM_ARM_VCPU_POWER_OFF, vcpu->arch.features))
 		vcpu_power_off(vcpu);
 	else
-		vcpu->arch.power_off = false;
+		vcpu->arch.power_state = KVM_ARM_VCPU_ON;
 
 	return 0;
 }

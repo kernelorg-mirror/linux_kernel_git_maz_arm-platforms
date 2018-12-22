@@ -57,7 +57,8 @@
 #define ARM64_WORKAROUND_1542419		47
 #define ARM64_WORKAROUND_1319367		48
 #define ARM64_HAS_NESTED_VIRT			49
+#define ARM64_HAS_ARMv8_4_TTL			50
 
-#define ARM64_NCAPS				50
+#define ARM64_NCAPS				51
 
 #endif /* __ASM_CPUCAPS_H */

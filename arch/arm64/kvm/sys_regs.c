@@ -2343,17 +2343,55 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			     const struct sys_reg_desc *r)
 {
 	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
+	u64 vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
 	struct kvm_s2_mmu *mmu;
+	u64 base_addr;
+	int max_size;
+
+	/*
+	 * We drop a number of things from the supplied value:
+	 *
+	 * - NS bit: we're non-secure only.
+	 *
+	 * - TTL field: We already have the granule size from the
+	 *   VTCR_EL2.TG0 field, and the level is only relevant to the
+	 *   guest's S2PT.
+	 *
+	 * - IPA[51:48]: We don't support 52bit IPA just yet...
+	 *
+	 * And of course, adjust the IPA to be on an actual address.
+	 */
+	base_addr = (p->regval & GENMASK_ULL(35, 0)) << 12;
+
+	/* Compute the maximum extent of the invalidation */
+	switch ((vtcr & VTCR_EL2_TG0_MASK)) {
+	case VTCR_EL2_TG0_4K:
+		max_size = SZ_1G;
+		break;
+	case VTCR_EL2_TG0_16K:
+		max_size = SZ_32M;
+		break;
+	case VTCR_EL2_TG0_64K:
+		/*
+		 * No, we do not support 52bit IPA in nested yet. Once
+		 * we do, this should be 4TB.
+		 */
+		/* FIXME: remove the 52bit PA support from the IDregs */
+		max_size = SZ_512M;
+		break;
+	default:
+		BUG();
+	}
 
 	spin_lock(&vcpu->kvm->mmu_lock);
 
 	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, HCR_VM);
 	if (mmu)
-		kvm_unmap_stage2_range(vcpu->kvm, mmu, p->regval, PAGE_SIZE);
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, base_addr, max_size);
 
 	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, 0);
 	if (mmu)
-		kvm_unmap_stage2_range(vcpu->kvm, mmu, p->regval, PAGE_SIZE);
+		kvm_unmap_stage2_range(vcpu->kvm, mmu, base_addr, max_size);
 
 	spin_unlock(&vcpu->kvm->mmu_lock);
 

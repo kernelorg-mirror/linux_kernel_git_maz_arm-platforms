@@ -322,6 +322,62 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	return walk_nested_s2_pgd(vcpu, gipa, &wi, result);
 }
 
+
+unsigned int ttl_to_size(u8 ttl)
+{
+	int level = ttl & 3;
+	unsigned int max_size = 0;
+
+	switch (ttl >> 2) {
+	case 0:			/* No size information */
+		break;
+	case 1:			/* 4kB translation granule */
+		switch (level) {
+		case 0:
+			break;
+		case 1:
+			max_size = SZ_1G;
+			break;
+		case 2:
+			max_size = SZ_2M;
+			break;
+		case 3:
+			max_size = SZ_4K;
+			break;
+		}
+		break;
+	case 2:			/* 16kB translation granule */
+		switch (level) {
+		case 0:
+		case 1:
+			break;
+		case 2:
+			max_size = SZ_32M;
+			break;
+		case 3:
+			max_size = SZ_16K;
+			break;
+		}
+		break;
+	case 3:			/* 64kB translation granule */
+		switch (level) {
+		case 0:
+		case 1:
+			/* No 52bit IPA support */
+			break;
+		case 2:
+			max_size = SZ_512M;
+			break;
+		case 3:
+			max_size = SZ_64K;
+			break;
+		}
+		break;
+	}
+
+	return max_size;
+}
+
 /* Must be called with kvm->lock held */
 struct kvm_s2_mmu *lookup_s2_mmu(struct kvm *kvm, u64 vttbr, u64 hcr)
 {

@@ -80,6 +80,7 @@ out:
 }
 
 struct s2_walk_info {
+	u64	     baddr;
 	unsigned int pgshift;
 	unsigned int pgsize;
 	unsigned int ps;
@@ -177,7 +178,6 @@ static int check_output_size(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 			      struct s2_walk_info *wi, struct kvm_s2_trans *out)
 {
-	u64 vttbr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	int first_block_level, level, stride, input_size, base_lower_bound;
 	phys_addr_t base_addr;
 	unsigned int addr_top, addr_bottom;
@@ -211,7 +211,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 
 	base_lower_bound = 3 + input_size - ((3 - level) * stride +
 			   wi->pgshift);
-	base_addr = vttbr & GENMASK_ULL(47, base_lower_bound);
+	base_addr = wi->baddr & GENMASK_ULL(47, base_lower_bound);
 
 	if (check_output_size(vcpu, wi, base_addr)) {
 		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
@@ -305,6 +305,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	if (!nested_virt_in_use(vcpu))
 		return 0;
 
+	wi.baddr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	wi.t0sz = vtcr & TCR_EL2_T0SZ_MASK;
 
 	switch (vtcr & VTCR_EL2_TG0_MASK) {

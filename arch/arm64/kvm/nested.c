@@ -85,6 +85,7 @@ struct s2_walk_info {
 	unsigned int ps;
 	unsigned int sl;
 	unsigned int t0sz;
+	bool	     be;
 };
 
 static unsigned int ps_to_output_size(unsigned int ps)
@@ -235,7 +236,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 		 * Handle reversedescriptors if endianness differs between the
 		 * host and the guest hypervisor.
 		 */
-		if (vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE)
+		if (wi->be)
 			desc = be64_to_cpu(desc);
 		else
 			desc = le64_to_cpu(desc);
@@ -318,6 +319,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	wi.pgsize = 1UL << wi.pgshift;
 	wi.ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
 	wi.sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
+	wi.be = vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE;
 
 	return walk_nested_s2_pgd(vcpu, gipa, &wi, result);
 }

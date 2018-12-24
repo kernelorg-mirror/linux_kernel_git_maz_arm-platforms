@@ -208,14 +208,14 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	if (WARN_ON(ret))
 		return ret;
 
-	if (check_output_size(vcpu, wi, vttbr)) {
-		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
-		return 1;
-	}
-
 	base_lower_bound = 3 + input_size - ((3 - level) * stride +
 			   wi->pgshift);
 	base_addr = vttbr & GENMASK_ULL(47, base_lower_bound);
+
+	if (check_output_size(vcpu, wi, base_addr)) {
+		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
+		return 1;
+	}
 
 	addr_top = input_size - 1;
 

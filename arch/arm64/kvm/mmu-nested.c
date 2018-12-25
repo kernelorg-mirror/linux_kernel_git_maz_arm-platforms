@@ -106,8 +106,7 @@ static int check_base_s2_limits(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 }
 
 /* Check if output is within boundaries */
-static int check_output_size(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
-			     phys_addr_t output)
+static int check_output_size(struct s2_walk_info *wi, phys_addr_t output)
 {
 	unsigned int output_size = ps_to_output_size(wi->ps);
 
@@ -165,7 +164,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 			   wi->pgshift);
 	base_addr = wi->baddr & GENMASK_ULL(47, base_lower_bound);
 
-	if (check_output_size(vcpu, wi, base_addr)) {
+	if (check_output_size(wi, base_addr)) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 		return 1;
 	}
@@ -203,7 +202,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 		if ((desc & 3) == 1 || level == 3)
 			break;
 
-		if (check_output_size(vcpu, wi, desc)) {
+		if (check_output_size(wi, desc)) {
 			out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 			return 1;
 		}
@@ -224,7 +223,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	 * for misprogramming of the contiguous bit.
 	 */
 
-	if (check_output_size(vcpu, wi, desc)) {
+	if (check_output_size(wi, desc)) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 		return 1;
 	}

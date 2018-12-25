@@ -83,6 +83,7 @@ struct s2_walk_info {
 	int	     (*read_desc)(phys_addr_t pa, u64 *desc, void *data);
 	void	     *data;
 	u64	     baddr;
+	unsigned int max_pa_bits;
 	unsigned int pgshift;
 	unsigned int pgsize;
 	unsigned int ps;
@@ -105,12 +106,6 @@ static unsigned int ps_to_output_size(unsigned int ps)
 	}
 }
 
-static unsigned int pa_max(void)
-{
-	 /* We always emulate a VM with maximum PA size of KVM_PHYS_SIZE. */
-	return KVM_PHYS_SHIFT;
-}
-
 static int esr_s2_fault(struct kvm_vcpu *vcpu, int level, u32 fsc)
 {
 	u32 esr;
@@ -129,21 +124,21 @@ static int check_base_s2_limits(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 	/* Check translation limits */
 	switch (wi->pgsize) {
 	case SZ_64K:
-		if (level == 0 || (level == 1 && pa_max() <= 42))
+		if (level == 0 || (level == 1 && wi->max_pa_bits <= 42))
 			return -EFAULT;
 		break;
 	case SZ_16K:
-		if (level == 0 || (level == 1 && pa_max() <= 40))
+		if (level == 0 || (level == 1 && wi->max_pa_bits <= 40))
 			return -EFAULT;
 		break;
 	case SZ_4K:
-		if (level < 0 || (level == 0 && pa_max() <= 42))
+		if (level < 0 || (level == 0 && wi->max_pa_bits <= 42))
 			return -EFAULT;
 		break;
 	}
 
 	/* Check input size limits */
-	if (input_size > pa_max() &&
+	if (input_size > wi->max_pa_bits &&
 	    (!vcpu_mode_is_32bit(vcpu) || input_size > 40))
 		return -EFAULT;
 
@@ -161,8 +156,8 @@ static int check_output_size(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 {
 	unsigned int output_size = ps_to_output_size(wi->ps);
 
-	if (output_size > pa_max())
-		output_size = pa_max();
+	if (output_size > wi->max_pa_bits)
+		output_size = wi->max_pa_bits;
 
 	if (output_size != 48 && (output & GENMASK_ULL(47, output_size)))
 		return -1;
@@ -316,6 +311,8 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 	wi.read_desc = read_guest_s2_desc;
 	wi.data = vcpu;
+	 /* We always emulate a VM with maximum PA size of KVM_PHYS_SIZE. */
+	wi.max_pa_bits = KVM_PHYS_SHIFT;
 	wi.baddr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 	wi.t0sz = vtcr & TCR_EL2_T0SZ_MASK;
 

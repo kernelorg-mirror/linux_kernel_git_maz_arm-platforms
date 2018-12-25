@@ -90,6 +90,7 @@ struct s2_walk_info {
 	unsigned int sl;
 	unsigned int t0sz;
 	bool	     be;
+	bool	     el1_aarch32;
 };
 
 static unsigned int ps_to_output_size(unsigned int ps)
@@ -120,7 +121,7 @@ static int esr_s2_fault(struct kvm_vcpu *vcpu, int level, u32 fsc)
 	return esr;
 }
 
-static int check_base_s2_limits(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
+static int check_base_s2_limits(struct s2_walk_info *wi,
 				int level, int input_size, int stride)
 {
 	int start_size;
@@ -143,7 +144,7 @@ static int check_base_s2_limits(struct kvm_vcpu *vcpu, struct s2_walk_info *wi,
 
 	/* Check input size limits */
 	if (input_size > wi->max_pa_bits &&
-	    (!vcpu_mode_is_32bit(vcpu) || input_size > 40))
+	    (!wi->el1_aarch32 || input_size > 40))
 		return -EFAULT;
 
 	/* Check number of entries in starting level table */
@@ -205,7 +206,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	if (input_size > 48 || input_size < 25)
 		return -EFAULT;
 
-	ret = check_base_s2_limits(vcpu, wi, level, input_size, stride);
+	ret = check_base_s2_limits(wi, level, input_size, stride);
 	if (WARN_ON(ret))
 		return ret;
 
@@ -333,6 +334,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	wi.ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
 	wi.sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
 	wi.be = vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE;
+	wi.el1_aarch32 = vcpu_mode_is_32bit(vcpu);
 
 	ret = walk_nested_s2_pgd(vcpu, gipa, &wi, result);
 	if (ret)

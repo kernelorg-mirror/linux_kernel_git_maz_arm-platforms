@@ -174,9 +174,9 @@ static int check_output_size(struct s2_walk_info *wi, phys_addr_t output)
  * AArch64.TranslationTableWalk  function.  I strongly recommend looking at
  * that pseudocode in trying to understand this.
  *
- * Must be called with the kvm->srcy read lock held
+ * Must be called with the kvm->srcu read lock held
  */
-static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
+static int walk_nested_s2_pgd(phys_addr_t ipa,
 			      struct s2_walk_info *wi, struct kvm_s2_trans *out)
 {
 	int first_block_level, level, stride, input_size, base_lower_bound;
@@ -336,7 +336,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	wi.be = vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE;
 	wi.el1_aarch32 = vcpu_mode_is_32bit(vcpu);
 
-	ret = walk_nested_s2_pgd(vcpu, gipa, &wi, result);
+	ret = walk_nested_s2_pgd(gipa, &wi, result);
 	if (ret)
 		result->esr |= (kvm_vcpu_get_hsr(vcpu) & ~ESR_ELx_FSC);
 

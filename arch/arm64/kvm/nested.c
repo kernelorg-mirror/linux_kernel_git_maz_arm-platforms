@@ -103,13 +103,17 @@ static unsigned int ps_to_output_size(unsigned int ps)
 	}
 }
 
+static u32 compute_fsc(int level, u32 fsc)
+{
+	return fsc | (level & 0x3);
+}
+
 static int esr_s2_fault(struct kvm_vcpu *vcpu, int level, u32 fsc)
 {
 	u32 esr;
 
 	esr = kvm_vcpu_get_hsr(vcpu) & ~ESR_ELx_FSC;
-	esr |= fsc;
-	esr |= level & 0x3;
+	esr |= compute_fsc(level, fsc);
 	return esr;
 }
 
@@ -208,7 +212,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	base_addr = wi->baddr & GENMASK_ULL(47, base_lower_bound);
 
 	if (check_output_size(vcpu, wi, base_addr)) {
-		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
+		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 		return 1;
 	}
 
@@ -237,7 +241,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 
 		/* Check for valid descriptor at this point */
 		if (!(desc & 1) || ((desc & 3) == 1 && level == 3)) {
-			out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_FAULT);
+			out->esr = compute_fsc(level, ESR_ELx_FSC_FAULT);
 			return 1;
 		}
 
@@ -246,7 +250,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 			break;
 
 		if (check_output_size(vcpu, wi, desc)) {
-			out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
+			out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 			return 1;
 		}
 
@@ -257,7 +261,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	}
 
 	if (level < first_block_level) {
-		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_FAULT);
+		out->esr = compute_fsc(level, ESR_ELx_FSC_FAULT);
 		return 1;
 	}
 
@@ -267,12 +271,12 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 	 */
 
 	if (check_output_size(vcpu, wi, desc)) {
-		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ADDRSZ);
+		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 		return 1;
 	}
 
 	if (!(desc & BIT(10))) {
-		out->esr = esr_s2_fault(vcpu, level, ESR_ELx_FSC_ACCESS);
+		out->esr = compute_fsc(level, ESR_ELx_FSC_ACCESS);
 		return 1;
 	}
 
@@ -300,6 +304,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 {
 	u64 vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
 	struct s2_walk_info wi;
+	int ret;
 
 	result->esr = 0;
 
@@ -327,7 +332,11 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 	wi.sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
 	wi.be = vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE;
 
-	return walk_nested_s2_pgd(vcpu, gipa, &wi, result);
+	ret = walk_nested_s2_pgd(vcpu, gipa, &wi, result);
+	if (ret)
+		result->esr |= (kvm_vcpu_get_hsr(vcpu) & ~ESR_ELx_FSC);
+
+	return ret;
 }
 
 

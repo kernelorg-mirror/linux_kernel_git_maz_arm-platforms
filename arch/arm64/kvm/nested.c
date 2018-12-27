@@ -307,6 +307,26 @@ static int read_guest_s2_desc(phys_addr_t pa, u64 *desc, void *data)
 	return kvm_read_guest(vcpu->kvm, pa, desc, sizeof(*desc));
 }
 
+static void vtcr_to_walk_info(u64 vtcr, struct s2_walk_info *wi)
+{
+	wi->t0sz = vtcr & TCR_EL2_T0SZ_MASK;
+
+	switch (vtcr & VTCR_EL2_TG0_MASK) {
+	case VTCR_EL2_TG0_4K:
+		wi->pgshift = 12;	 break;
+	case VTCR_EL2_TG0_16K:
+		wi->pgshift = 14;	 break;
+	case VTCR_EL2_TG0_64K:
+	default:
+		wi->pgshift = 16;	 break;
+	}
+
+	wi->pgsize = 1UL << wi->pgshift;
+	wi->ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
+	wi->sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
+	wi->max_pa_bits = VTCR_EL2_IPA(vtcr);
+}
+
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 		       struct kvm_s2_trans *result)
 {
@@ -321,23 +341,10 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 	wi.read_desc = read_guest_s2_desc;
 	wi.data = vcpu;
-	 /* We always emulate a VM with maximum PA size of KVM_PHYS_SIZE. */
-	wi.max_pa_bits = KVM_PHYS_SHIFT;
 	wi.baddr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
-	wi.t0sz = vtcr & TCR_EL2_T0SZ_MASK;
 
-	switch (vtcr & VTCR_EL2_TG0_MASK) {
-	case VTCR_EL2_TG0_4K:
-		wi.pgshift = 12;	 break;
-	case VTCR_EL2_TG0_16K:
-		wi.pgshift = 14;	 break;
-	case VTCR_EL2_TG0_64K:
-	default:
-		wi.pgshift = 16;	 break;
-	}
-	wi.pgsize = 1UL << wi.pgshift;
-	wi.ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
-	wi.sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
+	vtcr_to_walk_info(vtcr, &wi);
+
 	wi.be = vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_EE;
 	wi.el1_aarch32 = vcpu_mode_is_32bit(vcpu);
 

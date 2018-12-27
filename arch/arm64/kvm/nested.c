@@ -242,6 +242,7 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 		/* Check for valid descriptor at this point */
 		if (!(desc & 1) || ((desc & 3) == 1 && level == 3)) {
 			out->esr = compute_fsc(level, ESR_ELx_FSC_FAULT);
+			out->upper_attr = desc;
 			return 1;
 		}
 
@@ -251,6 +252,7 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 
 		if (check_output_size(wi, desc)) {
 			out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
+			out->upper_attr = desc;
 			return 1;
 		}
 
@@ -262,6 +264,7 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 
 	if (level < first_block_level) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_FAULT);
+		out->upper_attr = desc;
 		return 1;
 	}
 
@@ -272,11 +275,13 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 
 	if (check_output_size(wi, desc)) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
+		out->upper_attr = desc;
 		return 1;
 	}
 
 	if (!(desc & BIT(10))) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ACCESS);
+		out->upper_attr = desc;
 		return 1;
 	}
 

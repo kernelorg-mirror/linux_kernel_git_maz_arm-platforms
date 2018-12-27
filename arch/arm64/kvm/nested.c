@@ -198,7 +198,7 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 		break;
 	default:
 		/* GCC is braindead */
-		WARN(1, "Page size is none of 4K, 16K or 64K");
+		unreachable();
 	}
 
 	stride = wi->pgshift - 3;

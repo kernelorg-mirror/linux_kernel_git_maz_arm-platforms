@@ -64,5 +64,8 @@ extern void kvm_nested_s2_flush(struct kvm *kvm);
 int handle_wfx_nested(struct kvm_vcpu *vcpu, bool is_wfe);
 extern bool forward_traps(struct kvm_vcpu *vcpu, u64 control_bit);
 extern bool forward_nv_traps(struct kvm_vcpu *vcpu);
+u8 get_guest_mapping_ttl(struct kvm_vcpu *vcpu, u64 addr);
+
+#define KVM_NV_GUEST_MAP_SZ	GENMASK_ULL(56, 55)
 
 #endif /* __ARM64_KVM_NESTED_H */

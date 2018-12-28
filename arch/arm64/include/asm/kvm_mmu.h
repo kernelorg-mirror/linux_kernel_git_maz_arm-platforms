@@ -554,6 +554,7 @@ void kvm_nested_s2_wp(struct kvm *kvm);
 void kvm_nested_s2_clear(struct kvm *kvm);
 void kvm_nested_s2_flush(struct kvm *kvm);
 int kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u64 esr_el2);
+u8 get_guest_mapping_ttl(struct kvm_vcpu *vcpu, u64 addr);
 
 static inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)
 {
@@ -570,6 +571,8 @@ static inline u64 get_vmid(u64 vttbr)
 	return (vttbr & VTTBR_VMID_MASK(get_kvm_vmid_bits())) >>
 	       VTTBR_VMID_SHIFT;
 }
+
+#define KVM_NV_GUEST_MAP_SZ	GENMASK_ULL(56, 55)
 
 #endif /* __ASSEMBLY__ */
 #endif /* __ARM64_KVM_MMU_H__ */

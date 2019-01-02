@@ -32,8 +32,8 @@
  * have to use an IPI based mechanism. Until then, we stick to the simple
  * hardware assisted version.
  *
- * As v7 does not support flushing per IPA, just nuke the whole TLB
- * instead, ignoring the ipa value.
+ * As v7 does not support flushing per IPA (let alone any level hint),
+ * just nuke the whole TLB instead, ignoring the ipa value.
  */
 void __hyp_text __kvm_tlb_flush_vmid(struct kvm *kvm)
 {
@@ -51,7 +51,7 @@ void __hyp_text __kvm_tlb_flush_vmid(struct kvm *kvm)
 	write_sysreg(0, VTTBR);
 }
 
-void __hyp_text __kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa)
+void __hyp_text __kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa, int level)
 {
 	__kvm_tlb_flush_vmid(kvm);
 }

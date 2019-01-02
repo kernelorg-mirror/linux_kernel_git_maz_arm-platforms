@@ -72,4 +72,13 @@ static inline bool kvm_stage2_has_pmd(struct kvm *kvm)
 	return true;
 }
 
+/*
+ * The ARMv8.4-TTL extension doesn't apply to AArch32, so the below is
+ * only to keep things compiling.
+ */
+#define S2_NO_LEVEL_HINT	0
+#define S2_PUD_LEVEL		S2_NO_LEVEL_HINT
+#define S2_PMD_LEVEL		S2_NO_LEVEL_HINT
+#define S2_PTE_LEVEL		S2_NO_LEVEL_HINT
+
 #endif	/* __ARM_S2_PGTABLE_H_ */

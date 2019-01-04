@@ -426,6 +426,9 @@ static inline bool kvm_cpu_has_cnp(void)
 	return false;
 }
 
+void kvm_init_s2_mmu(struct kvm_s2_mmu *mmu) {}
+void kvm_init_nested(struct kvm *kvm) {}
+
 static __always_inline u64 kvm_get_vttbr(struct kvm_s2_mmu *mmu)
 {
 	struct kvm_vmid *vmid = &mmu->vmid;

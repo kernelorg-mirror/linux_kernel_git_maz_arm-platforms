@@ -48,6 +48,7 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_mmu.h>
+#include <asm/kvm_nested.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_coproc.h>
 #include <asm/sections.h>
@@ -137,6 +138,8 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 	/* Mark the initial VMID generation invalid */
 	kvm->arch.mmu.vmid.vmid_gen = 0;
 	kvm->arch.mmu.kvm = kvm;
+
+	kvm_init_nested(kvm);
 
 	ret = create_hyp_mappings(kvm, kvm + 1, PAGE_HYP);
 	if (ret)
@@ -364,6 +367,9 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 {
 	int *last_ran;
 
+	if (nested_virt_in_use(vcpu))
+		kvm_vcpu_load_hw_mmu(vcpu);
+
 	last_ran = this_cpu_ptr(vcpu->kvm->arch.last_vcpu_ran);
 
 	/*
@@ -396,6 +402,8 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	kvm_vcpu_put_sysregs(vcpu);
 	kvm_timer_vcpu_put(vcpu);
 	kvm_vgic_put(vcpu);
+	if (nested_virt_in_use(vcpu))
+		kvm_vcpu_put_hw_mmu(vcpu);
 
 	vcpu->cpu = -1;
 
@@ -927,7 +935,7 @@ int kvm_vm_ioctl_irq_line(struct kvm *kvm, struct kvm_irq_level *irq_level,
 static int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
 			       const struct kvm_vcpu_init *init)
 {
-	unsigned int i;
+	unsigned int i, ret;
 	int phys_target = kvm_target_cpu();
 
 	if (init->target != phys_target)
@@ -961,8 +969,11 @@ static int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
 
 	vcpu->arch.target = phys_target;
 
-	/* Now we know what it is, we can reset it. */
-	return kvm_reset_vcpu(vcpu);
+	ret = kvm_vcpu_init_nested(vcpu);
+	if (!ret)
+		ret = kvm_reset_vcpu(vcpu);
+
+	return ret;
 }
 
 

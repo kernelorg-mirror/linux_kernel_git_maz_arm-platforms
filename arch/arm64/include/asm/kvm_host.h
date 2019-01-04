@@ -88,10 +88,38 @@ struct kvm_s2_mmu {
 	phys_addr_t	pgd_phys;
 
 	struct kvm *kvm;
+
+	/*
+	 * For a shadow stage-2 MMU, the virtual vttbr programmed by the guest
+	 * hypervisor.  Unused for kvm_arch->mmu. Set to 1 when the structure
+	 * contains no valid information.
+	 */
+	u64	vttbr;
+
+	/* true when this represents a nested context where virtual HCR_EL2.VM == 1 */
+	bool	nested_stage2_enabled;
+
+	/*
+	 *  0: Nobody is currently using this, check vttbr for validity
+	 * >0: Somebody is actively using this.
+	 */
+	atomic_t refcnt;
 };
+
+static inline bool kvm_s2_mmu_valid(struct kvm_s2_mmu *mmu)
+{
+	return !(mmu->vttbr & 1);
+}
 
 struct kvm_arch {
 	struct kvm_s2_mmu mmu;
+
+	/*
+	 * Stage 2 paging stage for VMs with nested virtual using a virtual
+	 * VMID.
+	 */
+	struct kvm_s2_mmu *nested_mmus;
+	size_t nested_mmus_size;
 
 	/* VTCR_EL2 value for this VM */
 	u64    vtcr;

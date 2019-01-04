@@ -416,4 +416,8 @@ static inline int kvm_arm_setup_stage2(struct kvm *kvm, unsigned long type)
 	return 0;
 }
 
+static inline void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu) {}
+static inline void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu) {}
+static inline int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu) { return 0; }
+
 #endif /* __ARM_KVM_HOST_H__ */

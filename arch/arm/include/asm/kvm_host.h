@@ -424,4 +424,8 @@ static inline bool kvm_arm_vcpu_is_finalized(struct kvm_vcpu *vcpu)
 	return true;
 }
 
+static inline void kvm_vcpu_load_hw_mmu(struct kvm_vcpu *vcpu) {}
+static inline void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu) {}
+static inline int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu) { return 0; }
+
 #endif /* __ARM_KVM_HOST_H__ */

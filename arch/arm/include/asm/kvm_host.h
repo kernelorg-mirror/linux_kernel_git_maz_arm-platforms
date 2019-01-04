@@ -55,17 +55,22 @@ struct kvm_vmid {
 	u32    vmid;
 };
 
-struct kvm_arch {
-	/* The last vcpu id that ran on each physical CPU */
-	int __percpu *last_vcpu_ran;
-
-	/*
-	 * Anything that is not used directly from assembly code goes
-	 * here.
-	 */
-
+struct kvm_s2_mmu {
 	/* The VMID generation used for the virt. memory system */
 	struct kvm_vmid vmid;
+
+	/* Stage-2 page table */
+	pgd_t *pgd;
+	phys_addr_t pgd_phys;
+
+	struct kvm *kvm;
+};
+
+struct kvm_arch {
+	struct kvm_s2_mmu mmu;
+
+	/* The last vcpu id that ran on each physical CPU */
+	int __percpu *last_vcpu_ran;
 
 	/* Stage-2 page table */
 	pgd_t *pgd;
@@ -163,6 +168,8 @@ struct vcpu_reset_state {
 
 struct kvm_vcpu_arch {
 	struct kvm_cpu_context ctxt;
+
+	struct kvm_s2_mmu *hw_mmu;
 
 	int target; /* Processor target */
 	DECLARE_BITMAP(features, KVM_VCPU_MAX_FEATURES);

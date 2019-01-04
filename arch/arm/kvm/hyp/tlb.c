@@ -40,8 +40,7 @@ void __hyp_text __kvm_tlb_flush_vmid(struct kvm *kvm)
 	dsb(ishst);
 
 	/* Switch to requested VMID */
-	kvm = kern_hyp_va(kvm);
-	write_sysreg(kvm_get_vttbr(kvm), VTTBR);
+	write_sysreg(kvm_get_vttbr(&kvm->arch.mmu), VTTBR);
 	isb();
 
 	write_sysreg(0, TLBIALLIS);
@@ -58,10 +57,8 @@ void __hyp_text __kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa)
 
 void __hyp_text __kvm_tlb_flush_local_vmid(struct kvm_vcpu *vcpu)
 {
-	struct kvm *kvm = kern_hyp_va(kern_hyp_va(vcpu)->kvm);
-
 	/* Switch to requested VMID */
-	write_sysreg(kvm_get_vttbr(kvm), VTTBR);
+	write_sysreg(kvm_get_vttbr(vcpu->arch.hw_mmu), VTTBR);
 	isb();
 
 	write_sysreg(0, TLBIALL);

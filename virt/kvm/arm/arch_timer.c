@@ -896,6 +896,13 @@ static struct arch_timer_context *get_timer_from_sysreg(struct kvm_vcpu *vcpu,
 		return vcpu_ptimer(vcpu);
 	case TIMER_VTIMER:
 		return vcpu_vtimer(vcpu);
+
+	case TIMER_HPTIMER:
+		return vcpu_hptimer(vcpu);
+
+	case TIMER_HVTIMER:
+		return vcpu_hvtimer(vcpu);
+
 	default:
 		BUG();
 	}

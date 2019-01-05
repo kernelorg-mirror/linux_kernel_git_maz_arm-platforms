@@ -1304,14 +1304,38 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 	case SYS_CNTP_TVAL_EL0:
 	case SYS_CNTP_CTL_EL0:
 	case SYS_CNTP_CVAL_EL0:
+		if (vcpu_mode_el2(vcpu) && vcpu_el2_e2h_is_set(vcpu)) {
+			tmr = TIMER_HPTIMER;
+			break;
+		}
+		/* fall through */
+		
+	case cntp_tval_EL02:
+	case cntp_ctl_EL02:
+	case cntp_cval_EL02:
 	case SYS_AARCH32_CNTP_TVAL:
 	case SYS_AARCH32_CNTP_CTL:
 	case SYS_AARCH32_CNTP_CVAL:
 		tmr = TIMER_PTIMER;
 		break;
 
+	case cntv_tval_EL02:
+	case cntv_ctl_EL02:
+	case cntv_cval_EL02:
 	case SYS_CNTVOFF_EL2:
 		tmr = TIMER_VTIMER;
+		break;
+
+	case SYS_CNTHP_TVAL_EL2:
+	case SYS_CNTHP_CTL_EL2:
+	case SYS_CNTHP_CVAL_EL2:
+		tmr = TIMER_HPTIMER;
+		break;
+
+	case SYS_CNTHV_TVAL_EL2:
+	case SYS_CNTHV_CTL_EL2:
+	case SYS_CNTHV_CVAL_EL2:
+		tmr = TIMER_HVTIMER;
 		break;
 
 	default:
@@ -1320,16 +1344,28 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 
 	switch (reg) {
 	case SYS_CNTP_CVAL_EL0:
+	case cntp_cval_EL02:
+	case cntv_cval_EL02:
+	case SYS_CNTHP_CVAL_EL2:
+	case SYS_CNTHV_CVAL_EL2:
 	case SYS_AARCH32_CNTP_CVAL:
 		treg = TIMER_REG_CVAL;
 		break;
 
 	case SYS_CNTP_TVAL_EL0:
+	case cntp_tval_EL02:
+	case cntv_tval_EL02:
+	case SYS_CNTHP_TVAL_EL2:
+	case SYS_CNTHV_TVAL_EL2:
 	case SYS_AARCH32_CNTP_TVAL:
 		treg = TIMER_REG_TVAL;
 		break;
 
 	case SYS_CNTP_CTL_EL0:
+	case cntp_ctl_EL02:
+	case cntv_ctl_EL02:
+	case SYS_CNTHP_CTL_EL2:
+	case SYS_CNTHV_CTL_EL2:
 	case SYS_AARCH32_CNTP_CTL:
 		treg = TIMER_REG_CTL;
 		break;

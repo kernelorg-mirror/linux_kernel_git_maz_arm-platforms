@@ -125,6 +125,12 @@ static inline pud_t kvm_s2pud_mkexec(pud_t pud)
 	return pud;
 }
 
+static inline pud_t kvm_s2pud_revoke_read(pud_t pud)
+{
+	WARN_ON(1);
+	return pud;
+}
+
 static inline bool kvm_s2pud_exec(pud_t *pud)
 {
 	WARN_ON(1);
@@ -164,6 +170,18 @@ static inline pte_t kvm_s2pte_mkexec(pte_t pte)
 static inline pmd_t kvm_s2pmd_mkexec(pmd_t pmd)
 {
 	pmd_val(pmd) &= ~PMD_SECT_XN;
+	return pmd;
+}
+
+static inline pte_t kvm_s2pte_revoke_read(pte_t pte)
+{
+	pte_val(pte) &= ~L_PTE_S2_RDONLY;
+	return pte;
+}
+
+static inline pmd_t kvm_s2pmd_revoke_read(pmd_t pmd)
+{
+	pmd_val(pmd) &= ~L_PMD_S2_RDONLY;
 	return pmd;
 }
 
@@ -459,6 +477,16 @@ static inline int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu,
 }
 
 static inline void kvm_inject_s2_fault(struct kvm_vcpu *vcpu, u32 esr)
+{
+	BUG();
+}
+
+static inline bool kvm_s2_trans_readable(struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
+static inline bool kvm_s2_trans_writable(struct kvm_s2_trans *trans)
 {
 	BUG();
 }

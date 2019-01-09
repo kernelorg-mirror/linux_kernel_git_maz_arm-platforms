@@ -806,7 +806,7 @@ static inline int iort_add_device_replay(const struct iommu_ops *ops,
 {
 	int err = 0;
 
-	if (dev->bus && !device_iommu_mapped(dev))
+	if (ops && dev->bus && !device_iommu_mapped(dev))
 		err = iommu_probe_device(dev);
 
 	return err;

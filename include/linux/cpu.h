@@ -189,4 +189,11 @@ static inline void cpu_smt_check_topology_early(void) { }
 static inline void cpu_smt_check_topology(void) { }
 #endif
 
+/* generic cpu vulnerability attributes */
+#define VULN_MELTDOWN  0x01
+#define VULN_SPECTREV1 0x02
+#define VULN_SPECTREV2 0x04
+#define VULN_SSB       0x08
+#define VULN_L1TF      0x10
+
 #endif /* _LINUX_CPU_H_ */

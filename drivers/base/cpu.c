@@ -561,6 +561,11 @@ static struct attribute *cpu_root_vulnerabilities_attrs[] = {
 	NULL
 };
 
+uint __weak arch_supported_vuln_attr_fields(void)
+{
+	return VULN_MELTDOWN|VULN_SPECTREV1|VULN_SPECTREV2|VULN_SSB|VULN_L1TF;
+}
+
 static const struct attribute_group cpu_root_vulnerabilities_group = {
 	.name  = "vulnerabilities",
 	.attrs = cpu_root_vulnerabilities_attrs,
@@ -568,6 +573,20 @@ static const struct attribute_group cpu_root_vulnerabilities_group = {
 
 static void __init cpu_register_vulnerabilities(void)
 {
+	int fld;
+	int max_fields = ARRAY_SIZE(cpu_root_vulnerabilities_attrs) - 1;
+	struct attribute **hd = cpu_root_vulnerabilities_attrs;
+	uint enabled_fields = arch_supported_vuln_attr_fields();
+
+	/* only enable entries requested by the arch code */
+	for (fld = 0; fld < max_fields; fld++) {
+		if (enabled_fields & 1 << fld) {
+			*hd = cpu_root_vulnerabilities_attrs[fld];
+			hd++;
+		}
+	}
+	*hd = NULL;
+
 	if (sysfs_create_group(&cpu_subsys.dev_root->kobj,
 			       &cpu_root_vulnerabilities_group))
 		pr_err("Unable to register CPU vulnerabilities\n");

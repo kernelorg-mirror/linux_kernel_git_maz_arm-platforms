@@ -113,9 +113,13 @@ static u64 vm_get_features(struct virtio_device *vdev)
 	struct virtio_mmio_device *vm_dev = to_virtio_mmio_device(vdev);
 	u64 features;
 
+#if 0
 	writel(1, vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
 	features = readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
 	features <<= 32;
+#else
+	features = 0;
+#endif
 
 	writel(0, vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES_SEL);
 	features |= readl(vm_dev->base + VIRTIO_MMIO_DEVICE_FEATURES);
@@ -137,9 +141,11 @@ static int vm_finalize_features(struct virtio_device *vdev)
 		return -EINVAL;
 	}
 
+#if 0
 	writel(1, vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
 	writel((u32)(vdev->features >> 32),
 			vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES);
+#endif
 
 	writel(0, vm_dev->base + VIRTIO_MMIO_DRIVER_FEATURES_SEL);
 	writel((u32)vdev->features,

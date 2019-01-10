@@ -1319,6 +1319,11 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 		tmr = TIMER_PTIMER;
 		treg = TIMER_REG_CVAL;
 		break;
+	case SYS_CNTVOFF_EL2:
+		tmr = TIMER_VTIMER;
+		treg = TIMER_REG_VOFF;
+		break;
+
 	default:
 		BUG();
 	}
@@ -2243,7 +2248,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	EL2_REG(CONTEXTIDR_EL2, access_rw, reset_val, 0),
 	EL2_REG(TPIDR_EL2, access_rw, reset_val, 0),
 
-	EL2_REG(CNTVOFF_EL2, access_rw, reset_val, 0),
+	{ SYS_DESC(SYS_CNTVOFF_EL2), access_arch_timer },
 	EL2_REG(CNTHCTL_EL2, access_rw, reset_val, 0),
 
 	EL12_REG(SCTLR, access_vm_reg, reset_val, 0x00C50078),

@@ -924,6 +924,10 @@ static u64 kvm_arm_timer_read(struct kvm_vcpu *vcpu,
 		val = kvm_phys_timer_read() - timer->cntvoff;
 		break;
 
+	case TIMER_REG_VOFF:
+		val = timer->cntvoff;
+		break;
+
 	default:
 		BUG();
 	}
@@ -964,6 +968,10 @@ static void kvm_arm_timer_write(struct kvm_vcpu *vcpu,
 
 	case TIMER_REG_CVAL:
 		timer->cnt_cval = val;
+		break;
+
+	case TIMER_REG_VOFF:
+		timer->cntvoff = val;
 		break;
 
 	default:
@@ -1171,6 +1179,10 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 		kvm_debug("incorrectly configured timer irqs\n");
 		return -EINVAL;
 	}
+
+	/* Nested virtualization requires zero offset for virtual EL2 */
+	if (nested_virt_in_use(vcpu))
+		vcpu_vtimer(vcpu)->cntvoff = 0;
 
 	get_timer_map(vcpu, &map);
 

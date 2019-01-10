@@ -916,6 +916,10 @@ static u64 kvm_arm_timer_read(struct kvm_vcpu *vcpu,
 		val = kvm_phys_timer_read() - timer->cntvoff;
 		break;
 
+	case TIMER_REG_VOFF:
+		val = timer->cntvoff;
+		break;
+
 	default:
 		BUG();
 	}
@@ -956,6 +960,10 @@ static void kvm_arm_timer_write(struct kvm_vcpu *vcpu,
 
 	case TIMER_REG_CVAL:
 		timer->cnt_cval = val;
+		break;
+
+	case TIMER_REG_VOFF:
+		timer->cntvoff = val;
 		break;
 
 	default:

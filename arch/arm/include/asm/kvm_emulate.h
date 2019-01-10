@@ -343,4 +343,7 @@ static inline unsigned long vcpu_data_host_to_guest(struct kvm_vcpu *vcpu,
 	}
 }
 
+static inline bool is_hyp_ctxt(struct kvm_vcpu *vcpu) { return false; }
+
+
 #endif /* __ARM_KVM_EMULATE_H__ */

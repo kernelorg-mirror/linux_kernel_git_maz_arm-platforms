@@ -994,12 +994,47 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 			      struct sys_reg_params *p,
 			      const struct sys_reg_desc *r)
 {
+	enum kvm_arch_timers tmr;
+	enum kvm_arch_timer_regs treg;
 	u64 reg = reg_to_encoding(r);
 
+	switch (reg) {
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_CNTP_CTL_EL0:
+	case SYS_CNTP_CVAL_EL0:
+	case SYS_AARCH32_CNTP_TVAL:
+	case SYS_AARCH32_CNTP_CTL:
+	case SYS_AARCH32_CNTP_CVAL:
+		tmr = TIMER_PTIMER;
+		break;
+	default:
+		BUG();
+	}
+
+	switch (reg) {
+	case SYS_CNTP_CVAL_EL0:
+	case SYS_AARCH32_CNTP_CVAL:
+		treg = TIMER_REG_CVAL;
+		break;
+
+	case SYS_CNTP_TVAL_EL0:
+	case SYS_AARCH32_CNTP_TVAL:
+		treg = TIMER_REG_TVAL;
+		break;
+
+	case SYS_CNTP_CTL_EL0:
+	case SYS_AARCH32_CNTP_CTL:
+		treg = TIMER_REG_CTL;
+		break;
+
+	default:
+		BUG();
+	}
+
 	if (p->is_write)
-		kvm_arm_timer_write_sysreg(vcpu, reg, p->regval);
+		kvm_arm_timer_write_sysreg(vcpu, tmr, treg, p->regval);
 	else
-		p->regval = kvm_arm_timer_read_sysreg(vcpu, reg);
+		p->regval = kvm_arm_timer_read_sysreg(vcpu, tmr, treg);
 
 	return true;
 }

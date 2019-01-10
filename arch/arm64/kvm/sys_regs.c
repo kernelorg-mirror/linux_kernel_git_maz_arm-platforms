@@ -150,7 +150,6 @@ struct el2_sysreg_map {
 	PURE_EL2_SYSREG( RVBAR_EL2 ),
 	PURE_EL2_SYSREG( RMR_EL2 ),
 	PURE_EL2_SYSREG( TPIDR_EL2 ),
-	PURE_EL2_SYSREG( CNTVOFF_EL2 ),
 	PURE_EL2_SYSREG( CNTHCTL_EL2 ),
 	PURE_EL2_SYSREG( HPFAR_EL2 ),
 	EL2_SYSREG(      SCTLR_EL2,  SCTLR_EL1,      translate_sctlr ),
@@ -1285,6 +1284,11 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 	case SYS_AARCH32_CNTP_CVAL:
 		tmr = TIMER_PTIMER;
 		break;
+
+	case SYS_CNTVOFF_EL2:
+		tmr = TIMER_VTIMER;
+		break;
+
 	default:
 		BUG();
 	}
@@ -1303,6 +1307,10 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 	case SYS_CNTP_CTL_EL0:
 	case SYS_AARCH32_CNTP_CTL:
 		treg = TIMER_REG_CTL;
+		break;
+
+	case SYS_CNTVOFF_EL2:
+		treg = TIMER_REG_VOFF;
 		break;
 
 	default:
@@ -1935,7 +1943,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_CONTEXTIDR_EL2), access_rw, reset_val, CONTEXTIDR_EL2, 0 },
 	{ SYS_DESC(SYS_TPIDR_EL2), access_rw, reset_val, TPIDR_EL2, 0 },
 
-	{ SYS_DESC(SYS_CNTVOFF_EL2), access_rw, reset_val, CNTVOFF_EL2, 0 },
+	{ SYS_DESC(SYS_CNTVOFF_EL2), access_arch_timer },
 	{ SYS_DESC(SYS_CNTHCTL_EL2), access_rw, reset_val, CNTHCTL_EL2, 0 },
 
 	{ SYS_DESC(SYS_CNTHP_TVAL_EL2), access_arch_timer },

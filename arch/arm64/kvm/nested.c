@@ -325,6 +325,7 @@ static void vtcr_to_walk_info(u64 vtcr, struct s2_walk_info *wi)
 	wi->pgsize = 1UL << wi->pgshift;
 	wi->ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
 	wi->sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
+	wi.max_pa_bits = VTCR_EL2_IPA(vtcr);
 }
 
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
@@ -341,8 +342,6 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 	wi.read_desc = read_guest_s2_desc;
 	wi.data = vcpu;
-	 /* We always emulate a VM with maximum PA size of KVM_PHYS_SIZE. */
-	wi.max_pa_bits = KVM_PHYS_SHIFT;
 	wi.baddr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);
 
 	vtcr_to_walk_info(vtcr, &wi);

@@ -368,7 +368,6 @@ static int read_host_s2_desc(phys_addr_t pa, u64 *desc, void *data)
 static int kvm_walk_shadow_s2(struct kvm_s2_mmu *mmu, phys_addr_t gipa,
 			      struct kvm_s2_trans *result)
 {
-	/* FIXME: use VM's vtcr once on top of 4.20 */
 	u64 vtcr = read_sysreg(vtcr_el2);
 	struct s2_walk_info wi = { };
 

@@ -454,6 +454,8 @@ static void kvm_timer_unblocking(struct kvm_vcpu *vcpu)
 	soft_timer_cancel(&timer->bg_timer);
 }
 
+static void set_cntvoff(u64 cntvoff);
+
 static void timer_restore_state(struct arch_timer_context *ctx)
 {
 	struct arch_timer_cpu *timer = vcpu_timer(ctx->vcpu);
@@ -471,6 +473,7 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 	switch (index) {
 	case TIMER_VTIMER:
 	case TIMER_HVTIMER:
+		set_cntvoff(ctx->cntvoff);
 		write_sysreg_el0(ctx->cnt_cval, cntv_cval);
 		isb();
 		write_sysreg_el0(ctx->cnt_ctl, cntv_ctl);
@@ -599,8 +602,6 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 	} else {
 		kvm_timer_vcpu_load_nogic(vcpu);
 	}
-
-	set_cntvoff(map.direct_vtimer->cntvoff);
 
 	kvm_timer_unblocking(vcpu);
 

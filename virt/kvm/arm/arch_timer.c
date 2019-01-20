@@ -520,12 +520,15 @@ static inline void set_timer_irq_phys_active(struct arch_timer_context *ctx, boo
 static void kvm_timer_vcpu_load_gic(struct arch_timer_context *ctx)
 {
 	struct kvm_vcpu *vcpu = ctx->vcpu;
-	bool phys_active;
+	bool phys_active = false;;
+
+	kvm_timer_update_irq(ctx->vcpu, kvm_timer_should_fire(ctx), ctx);
 
 	if (irqchip_in_kernel(vcpu->kvm))
 		phys_active = kvm_vgic_map_is_active(vcpu, ctx->irq.irq);
-	else
-		phys_active = ctx->irq.level;
+
+	phys_active |= ctx->irq.level;
+
 	set_timer_irq_phys_active(ctx, phys_active);
 }
 

@@ -435,12 +435,21 @@ static inline void set_vtimer_irq_phys_active(struct kvm_vcpu *vcpu, bool active
 static void kvm_timer_vcpu_load_gic(struct kvm_vcpu *vcpu)
 {
 	struct arch_timer_context *vtimer = vcpu_vtimer(vcpu);
-	bool phys_active;
+	bool phys_active = false;
+
+	/*
+	 * Update the timer output so that it is likely to match the
+	 * state we're about to restore. If the timer expires between
+	 * this point and the register restoration, we'll take the
+	 * interrupt anyway.
+	 */
+	kvm_timer_update_irq(vcpu, kvm_timer_should_fire(vtimer), vtimer);
 
 	if (irqchip_in_kernel(vcpu->kvm))
 		phys_active = kvm_vgic_map_is_active(vcpu, vtimer->irq.irq);
-	else
-		phys_active = vtimer->irq.level;
+
+	phys_active |= vtimer->irq.level;
+
 	set_vtimer_irq_phys_active(vcpu, phys_active);
 }
 

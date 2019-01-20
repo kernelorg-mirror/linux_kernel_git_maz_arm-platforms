@@ -147,8 +147,7 @@ static irqreturn_t kvm_arch_timer_handler(int irq, void *dev_id)
 	else
 		ctx = map.direct_ptimer;
 
-	if (kvm_timer_should_fire(ctx))
-		kvm_timer_update_irq(vcpu, true, ctx);
+	kvm_timer_update_irq(vcpu, true, ctx);
 
 	if (userspace_irqchip(vcpu->kvm) &&
 	    !static_branch_unlikely(&has_gic_active_state))

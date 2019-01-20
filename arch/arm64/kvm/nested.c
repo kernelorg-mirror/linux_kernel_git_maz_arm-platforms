@@ -325,7 +325,7 @@ static void vtcr_to_walk_info(u64 vtcr, struct s2_walk_info *wi)
 	wi->pgsize = 1UL << wi->pgshift;
 	wi->ps = (vtcr & VTCR_EL2_PS_MASK) >> VTCR_EL2_PS_SHIFT;
 	wi->sl = (vtcr & VTCR_EL2_SL0_MASK) >> VTCR_EL2_SL0_SHIFT;
-	wi.max_pa_bits = VTCR_EL2_IPA(vtcr);
+	wi->max_pa_bits = VTCR_EL2_IPA(vtcr);
 }
 
 int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,

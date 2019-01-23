@@ -5,5 +5,6 @@
 #include <linux/kvm_host.h>
 
 static inline bool nested_virt_in_use(const struct kvm_vcpu *vcpu) { return false; }
+static inline bool enhanced_nested_virt_in_use(const struct kvm_vcpu *vcpu) { return false; }
 
 #endif /* __ARM_KVM_NESTED_H */

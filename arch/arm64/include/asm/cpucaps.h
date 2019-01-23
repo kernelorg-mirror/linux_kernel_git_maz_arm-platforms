@@ -63,7 +63,8 @@
 #define ARM64_HAS_GENERIC_AUTH			53
 #define ARM64_HAS_ARMv8_4_TTL			54
 #define ARM64_HAS_NESTED_VIRT			55
+#define ARM64_HAS_ENHANCED_NESTED_VIRT		56
 
-#define ARM64_NCAPS				56
+#define ARM64_NCAPS				57
 
 #endif /* __ASM_CPUCAPS_H */

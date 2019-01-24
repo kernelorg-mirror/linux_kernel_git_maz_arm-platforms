@@ -404,8 +404,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 
 static void vcpu_power_off(struct kvm_vcpu *vcpu)
 {
-	vcpu->arch.power_off = true;
-	kvm_make_request(KVM_REQ_SLEEP, vcpu);
+	kvm_make_request(KVM_REQ_VCPU_OFF, vcpu);
 	kvm_vcpu_kick(vcpu);
 }
 
@@ -645,6 +644,11 @@ static void check_vcpu_requests(struct kvm_vcpu *vcpu)
 	if (kvm_request_pending(vcpu)) {
 		if (kvm_check_request(KVM_REQ_SLEEP, vcpu))
 			vcpu_req_sleep(vcpu);
+
+		if (kvm_check_request(KVM_REQ_VCPU_OFF, vcpu)) {
+			vcpu->arch.power_off = true;
+			vcpu_req_sleep(vcpu);
+		}
 
 		if (kvm_check_request(KVM_REQ_VCPU_RESET, vcpu))
 			kvm_reset_vcpu(vcpu);

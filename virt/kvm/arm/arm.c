@@ -408,6 +408,16 @@ static void vcpu_power_off(struct kvm_vcpu *vcpu)
 	kvm_vcpu_kick(vcpu);
 }
 
+static void vcpu_power_on(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * Make sure a potential VCPU_OFF request is consumed, or
+	 * we'll be back to that state as soon as we start running.
+	 */
+	kvm_check_request(KVM_REQ_VCPU_OFF, vcpu);
+	vcpu->arch.power_state = KVM_ARM_VCPU_ON;
+}
+
 int kvm_arch_vcpu_ioctl_get_mpstate(struct kvm_vcpu *vcpu,
 				    struct kvm_mp_state *mp_state)
 {
@@ -426,7 +436,7 @@ int kvm_arch_vcpu_ioctl_set_mpstate(struct kvm_vcpu *vcpu,
 
 	switch (mp_state->mp_state) {
 	case KVM_MP_STATE_RUNNABLE:
-		vcpu->arch.power_state = KVM_ARM_VCPU_ON;
+		vcpu_power_on(vcpu);
 		break;
 	case KVM_MP_STATE_STOPPED:
 		vcpu_power_off(vcpu);
@@ -1022,7 +1032,7 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	if (test_bit(KVM_ARM_VCPU_POWER_OFF, vcpu->arch.features))
 		vcpu_power_off(vcpu);
 	else
-		vcpu->arch.power_state = KVM_ARM_VCPU_ON;
+		vcpu_power_on(vcpu);
 
 	return 0;
 }

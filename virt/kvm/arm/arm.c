@@ -658,13 +658,13 @@ static int kvm_vcpu_initialized(struct kvm_vcpu *vcpu)
 static void check_vcpu_requests(struct kvm_vcpu *vcpu)
 {
 	if (kvm_request_pending(vcpu)) {
-		if (kvm_check_request(KVM_REQ_SLEEP, vcpu))
-			vcpu_req_sleep(vcpu);
-
 		if (kvm_check_request(KVM_REQ_VCPU_OFF, vcpu)) {
 			vcpu->arch.power_state = KVM_ARM_VCPU_OFF;
-			vcpu_req_sleep(vcpu);
+			kvm_make_request(KVM_REQ_SLEEP, vcpu);
 		}
+
+		if (kvm_check_request(KVM_REQ_SLEEP, vcpu))
+			vcpu_req_sleep(vcpu);
 
 		if (kvm_check_request(KVM_REQ_VCPU_RESET, vcpu))
 			kvm_reset_vcpu(vcpu);

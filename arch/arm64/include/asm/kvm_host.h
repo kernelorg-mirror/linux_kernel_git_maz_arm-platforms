@@ -92,6 +92,10 @@ struct kvm_arch {
 	 * supported.
 	 */
 	bool return_nisv_io_abort_to_user;
+
+	/* PV cond yield stuff */
+	struct rb_root		pvcy_root;
+	rwlock_t		pvcy_lock;
 };
 
 #define KVM_NR_MEM_OBJS     40
@@ -261,6 +265,10 @@ struct kvm_vcpu_arch {
 
 	/* Exception Information */
 	struct kvm_vcpu_fault_info fault;
+
+	/* PV cond yield data */
+	struct rb_node *pvcy_node;
+	phys_addr_t pvcy_ipa;
 
 	/* State of various workarounds, see kvm_asm.h for bit assignment */
 	u64 workaround_flags;
@@ -712,5 +720,12 @@ bool kvm_arm_vcpu_is_finalized(struct kvm_vcpu *vcpu);
 
 #define kvm_arm_vcpu_sve_finalized(vcpu) \
 	((vcpu)->arch.flags & KVM_ARM64_VCPU_SVE_FINALIZED)
+
+void kvm_pvcy_populate(struct kvm *kvm, phys_addr_t array_ipa, int nr);
+void kvm_pvcy_revoke(struct kvm *kvm, phys_addr_t array_ipa, int nr);
+void kvm_pvcy_prepare_state(struct kvm_vcpu *vcpu);
+int kvm_pvcy_check_state(struct kvm_vcpu *vcpu);
+void kvm_pvcy_init(struct kvm *kvm);
+void kvm_pvcy_teardown(struct kvm *kvm);
 
 #endif /* __ARM64_KVM_HOST_H__ */

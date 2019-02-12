@@ -139,6 +139,13 @@ SECTIONS
 	EXCEPTION_TABLE(8)		/* __init_begin will be marked RO NX */
 	NOTES
 
+	. = ALIGN(8);
+	.pv_cond_yield_table : {
+		__pv_cond_yield_table = .;
+		*(.pv_cond_yield_table)
+		__pv_cond_yield_table_end = .;
+	}
+
 	. = ALIGN(PAGE_SIZE);
 	idmap_pg_dir = .;
 	. += IDMAP_DIR_SIZE;

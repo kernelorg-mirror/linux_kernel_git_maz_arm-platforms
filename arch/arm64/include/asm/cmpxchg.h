@@ -209,10 +209,19 @@ static inline void __cmpwait_case_##sz(volatile void *ptr,		\
 	"	ldxr" #sfx "\t%" #w "[tmp], %[v]\n"			\
 	"	eor	%" #w "[tmp], %" #w "[tmp], %" #w "[val]\n"	\
 	"	cbnz	%" #w "[tmp], 1f\n"				\
-	"	wfe\n"							\
-	"1:"								\
+	"0:	wfe\n"							\
+	"1:\n"								\
+	"	.pushsection .pv_cond_yield_table, \"a\"\n"		\
+	"	.quad	0b\n"						\
+	"	.quad	(-1 >> (64 - " #sz "))\n"			\
+	"	// This is some of my finest work\n"			\
+	"	.byte	0%x[val] - ((0%x[val] >> 4) * 6)\n"		\
+	"	.byte	0%x[vr] - ((0%x[vr] >> 4) * 6)\n"		\
+	"	.short	0\n"						\
+	"	.word	0\n"						\
+	"	.popsection\n"						\
 	: [tmp] "=&r" (tmp), [v] "+Q" (*(unsigned long *)ptr)		\
-	: [val] "r" (val));						\
+	: [vr] "r" (ptr), [val] "r" (val));				\
 }
 
 __CMPWAIT_CASE(w, b, 8);

@@ -86,6 +86,10 @@ struct kvm_arch {
 
 	/* Mandated version of PSCI */
 	u32 psci_version;
+
+	/* PV cond yield stuff */
+	struct rb_root		pvcy_root;
+	rwlock_t		pvcy_lock;
 };
 
 #define KVM_NR_MEM_OBJS     40
@@ -230,6 +234,10 @@ struct kvm_vcpu_arch {
 
 	/* Exception Information */
 	struct kvm_vcpu_fault_info fault;
+
+	/* PV cond yield data */
+	struct rb_node *pvcy_node;
+	phys_addr_t pvcy_ipa;
 
 	/* State of various workarounds, see kvm_asm.h for bit assignment */
 	u64 workaround_flags;
@@ -593,5 +601,12 @@ struct kvm *kvm_arch_alloc_vm(void);
 void kvm_arch_free_vm(struct kvm *kvm);
 
 int kvm_arm_setup_stage2(struct kvm *kvm, unsigned long type);
+
+void kvm_pvcy_populate(struct kvm *kvm, phys_addr_t array_ipa, int nr);
+void kvm_pvcy_revoke(struct kvm *kvm, phys_addr_t array_ipa, int nr);
+void kvm_pvcy_prepare_state(struct kvm_vcpu *vcpu);
+int kvm_pvcy_check_state(struct kvm_vcpu *vcpu);
+void kvm_pvcy_init(struct kvm *kvm);
+void kvm_pvcy_teardown(struct kvm *kvm);
 
 #endif /* __ARM64_KVM_HOST_H__ */

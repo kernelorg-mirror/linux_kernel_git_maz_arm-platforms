@@ -110,6 +110,8 @@ void kvm_arch_check_processor_compat(void *rtn)
 	*(int *)rtn = 0;
 }
 
+void __weak kvm_pvcy_init(struct kvm *kvm) {}
+void __weak kvm_pvcy_teardown(struct kvm *kvm) {}
 
 /**
  * kvm_arch_init_vm - initializes a VM data structure
@@ -118,6 +120,8 @@ void kvm_arch_check_processor_compat(void *rtn)
 int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 {
 	int ret, cpu;
+
+	kvm_pvcy_init(kvm);
 
 	ret = kvm_arm_setup_stage2(kvm, type);
 	if (ret)
@@ -192,6 +196,8 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 		}
 	}
 	atomic_set(&kvm->online_vcpus, 0);
+
+	kvm_pvcy_teardown(kvm);
 }
 
 int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)

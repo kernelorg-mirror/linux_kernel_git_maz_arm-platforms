@@ -7,6 +7,7 @@
  */
 
 #include <linux/acpi.h>
+#include <linux/arm-smccc.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/stddef.h>
@@ -39,6 +40,7 @@
 #include <asm/elf.h>
 #include <asm/cpufeature.h>
 #include <asm/cpu_ops.h>
+#include <asm/hypervisor.h>
 #include <asm/kasan.h>
 #include <asm/numa.h>
 #include <asm/sections.h>
@@ -276,6 +278,44 @@ arch_initcall(reserve_memblock_reserved_regions);
 
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
 
+static void pv_init(void)
+{
+	extern pv_cond_yield_ent_t __pv_cond_yield_table[],
+				   __pv_cond_yield_table_end[];
+
+	unsigned long pv_table_nents;
+	struct arm_smccc_res res;
+
+	if (psci_ops.smccc_version == SMCCC_VERSION_1_0)
+		return;
+
+	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_HYP_CALL_UID_FUNC_ID, &res);
+	if (res.a0 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_0 ||
+	    res.a1 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_1 ||
+	    res.a2 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_2 ||
+	    res.a3 != ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_3)
+		return;
+
+	memset(&res, 0, sizeof(res));
+	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_HYP_KVM_FEATURES_FUNC_ID, &res);
+	pr_info("KVM hypervisor services detected (0x%08lx 0x%08lx 0x%08lx 0x%08lx)\n",
+		res.a3, res.a2, res.a1, res.a0);
+	if (!(res.a0 & BIT(ARM_SMCCC_KVM_FUNC_PV_COND_YIELD)))
+		return;
+
+	pv_table_nents = (unsigned long)(__pv_cond_yield_table_end -
+					 __pv_cond_yield_table);
+	memset(&res, 0, sizeof(res));
+	arm_smccc_1_1_invoke(ARM_SMCCC_VENDOR_HYP_KVM_PV_COND_YIELD_FUNC_ID,
+			     KVM_PV_COND_YIELD_OP_REGISTER,
+			     __pa_symbol(__pv_cond_yield_table),
+			     pv_table_nents, &res);
+	if (res.a0 == SMCCC_RET_SUCCESS) {
+		pr_info("Registered PV cond yield table (%lu entries)\n",
+			pv_table_nents);
+	}
+}
+
 void __init setup_arch(char **cmdline_p)
 {
 	init_mm.start_code = (unsigned long) _text;
@@ -337,6 +377,7 @@ void __init setup_arch(char **cmdline_p)
 	else
 		psci_acpi_init();
 
+	pv_init();
 	cpu_read_bootcpu_ops();
 	smp_init_cpus();
 	smp_build_mpidr_hash();

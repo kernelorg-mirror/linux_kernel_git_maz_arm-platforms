@@ -62,6 +62,33 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 		if (gpa != GPA_INVALID)
 			val = gpa;
 		break;
+	case ARM_SMCCC_VENDOR_HYP_CALL_UID_FUNC_ID:
+		val[0] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_0;
+		val[1] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_1;
+		val[2] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_2;
+		val[3] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_3;
+		break;
+	case ARM_SMCCC_VENDOR_HYP_KVM_FEATURES_FUNC_ID:
+		val[0] = BIT(ARM_SMCCC_KVM_FUNC_FEATURES) |
+			 BIT(ARM_SMCCC_KVM_FUNC_PV_COND_YIELD);
+		break;
+	case ARM_SMCCC_VENDOR_HYP_KVM_PV_COND_YIELD_FUNC_ID:
+		option = smccc_get_arg1(vcpu);
+		switch (option) {
+		case KVM_PV_COND_YIELD_OP_REGISTER:
+			kvm_pvcy_populate(vcpu->kvm,
+					  smccc_get_arg2(vcpu),
+					  smccc_get_arg3(vcpu));
+			val[0] = SMCCC_RET_SUCCESS;
+			break;
+		case KVM_PV_COND_YIELD_OP_UNREGISTER:
+			kvm_pvcy_revoke(vcpu->kvm,
+					smccc_get_arg2(vcpu),
+					smccc_get_arg3(vcpu));
+			val[0] = SMCCC_RET_SUCCESS;
+			break;
+		};
+		break;
 	default:
 		return kvm_psci_call(vcpu);
 	}

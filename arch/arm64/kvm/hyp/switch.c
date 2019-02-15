@@ -660,6 +660,11 @@ int kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 	sysreg_save_guest_state_vhe(guest_ctxt);
 	sysreg_restore_host_state_vhe(host_ctxt);
 
+	if (exit_code == ARM_EXCEPTION_TRAP &&
+	    kvm_vcpu_trap_get_class(vcpu) == ESR_ELx_EC_WFx &&
+	    (kvm_vcpu_get_hsr(vcpu) & ESR_ELx_WFx_ISS_WFE))
+		kvm_pvcy_prepare_state(vcpu);
+
 	__deactivate_traps(vcpu);
 
 	if (vcpu->arch.flags & KVM_ARM64_FP_ENABLED)

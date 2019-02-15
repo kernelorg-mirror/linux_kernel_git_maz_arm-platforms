@@ -69,10 +69,15 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 		val[3] = ARM_SMCCC_VENDOR_HYP_UID_KVM_REG_3;
 		break;
 	case ARM_SMCCC_VENDOR_HYP_KVM_FEATURES_FUNC_ID:
-		val[0] = BIT(ARM_SMCCC_KVM_FUNC_FEATURES) |
-			 BIT(ARM_SMCCC_KVM_FUNC_PV_COND_YIELD);
+		val[0] = BIT(ARM_SMCCC_KVM_FUNC_FEATURES);
+		if (!vcpu_el1_is_32bit(vcpu) && has_vhe())
+			 val[0] |= BIT(ARM_SMCCC_KVM_FUNC_PV_COND_YIELD);
 		break;
 	case ARM_SMCCC_VENDOR_HYP_KVM_PV_COND_YIELD_FUNC_ID:
+		if (vcpu_el1_is_32bit(vcpu) || !has_vhe()) {
+			val[0] = SMCCC_RET_NOT_SUPPORTED;
+			break;
+		}
 		option = smccc_get_arg1(vcpu);
 		switch (option) {
 		case KVM_PV_COND_YIELD_OP_REGISTER:

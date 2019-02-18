@@ -1996,7 +1996,6 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 	fault_status = kvm_vcpu_trap_get_fault_type(vcpu);
 
-	fault_ipa = kvm_vcpu_get_fault_ipa(vcpu);
 	ipa = fault_ipa = kvm_vcpu_get_fault_ipa(vcpu);
 	is_iabt = kvm_vcpu_trap_is_iabt(vcpu);
 
@@ -2038,7 +2037,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 
 	/*
 	 * We may have faulted on a shadow stage 2 page table if we are
-	 * running a nested guest.  In this case, we have to resovle the L2
+	 * running a nested guest.  In this case, we have to resolve the L2
 	 * IPA to the L1 IPA first, before knowing what kind of memory should
 	 * back the L1 IPA.
 	 *
@@ -2055,7 +2054,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		if (ret)
 			goto out_unlock;
 
-		ret = kvm_s2_handle_perm_fault(vcpu, fault_ipa, &nested_trans);
+		ret = kvm_s2_handle_perm_fault(vcpu, &nested_trans);
 		esr = kvm_s2_trans_esr(&nested_trans);
 		if (esr)
 			kvm_inject_s2_fault(vcpu, esr);

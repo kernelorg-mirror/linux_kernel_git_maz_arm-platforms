@@ -548,8 +548,7 @@ void kvm_vcpu_put_hw_mmu(struct kvm_vcpu *vcpu)
  * Returns non-zero if permission fault is handled by injecting it to the next
  * level hypervisor.
  */
-int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
-			     struct kvm_s2_trans *trans)
+int kvm_s2_handle_perm_fault(struct kvm_vcpu *vcpu, struct kvm_s2_trans *trans)
 {
 	unsigned long fault_status = kvm_vcpu_trap_get_fault_type(vcpu);
 	bool forward_fault = false;

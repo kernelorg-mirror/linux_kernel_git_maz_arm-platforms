@@ -440,10 +440,11 @@ unsigned int ttl_to_size(u8 ttl)
  * The granule size is extracted from VTCR_EL2.TG0 while the level is
  * retrieved from first entry carrying the level as a tag.
  */
-u8 get_guest_mapping_ttl(struct kvm_vcpu *vcpu, u64 addr)
+u8 get_guest_mapping_ttl(struct kvm_vcpu *vcpu, struct kvm_s2_mmu *mmu,
+			 u64 addr)
 {
-	u64 sz = 0, vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
-	struct kvm_s2_trans out = { };
+	u64 tmp, sz = 0, vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
+	struct kvm_s2_trans out;
 	u8 ttl, level;
 
 	switch (vtcr & VTCR_EL2_TG0_MASK) {
@@ -459,6 +460,8 @@ u8 get_guest_mapping_ttl(struct kvm_vcpu *vcpu, u64 addr)
 	default:
 		BUG();
 	}
+
+	tmp = addr;
 
 again:
 	/* Iteratively compute the block sizes for a particular granule size */
@@ -486,13 +489,24 @@ again:
 	if (sz == 0)
 		return 0;
 
-	addr &= ~(sz - 1);
-	kvm_walk_shadow_s2(vcpu->arch.hw_mmu, addr, &out);
+	tmp &= ~(sz - 1);
+	out = (struct kvm_s2_trans) { };
+	kvm_walk_shadow_s2(mmu, tmp, &out);
 	level = FIELD_GET(KVM_NV_GUEST_MAP_SZ, out.upper_attr);
 	if (!level)
 		goto again;
 
-	return (ttl | level);
+	ttl |= level;
+	
+	/*
+	 * We now have found some level information in the shadow S2. Check
+	 * that the resulting range is actually including the original IPA.
+	 */
+	sz = ttl_to_size(ttl);
+	if (addr < (tmp + sz))
+		return ttl;
+
+	return 0;
 }
 
 /* Must be called with kvm->lock held */

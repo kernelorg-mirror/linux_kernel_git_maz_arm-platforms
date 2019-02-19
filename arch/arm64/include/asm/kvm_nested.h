@@ -52,6 +52,11 @@ static inline bool kvm_s2_trans_writable(struct kvm_s2_trans *trans)
 	return trans->writable;
 }
 
+static inline int kvm_s2_trans_level(struct kvm_s2_trans *trans)
+{
+	return trans->level;
+}
+
 extern int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 			      struct kvm_s2_trans *result);
 

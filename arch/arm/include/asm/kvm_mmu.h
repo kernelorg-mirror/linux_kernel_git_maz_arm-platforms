@@ -484,6 +484,11 @@ static inline bool kvm_s2_trans_writable(struct kvm_s2_trans *trans)
 	BUG();
 }
 
+static inline u64 kvm_encode_nested_level(struct kvm_s2_trans *trans)
+{
+	BUG();
+}
+
 static inline void kvm_nested_s2_flush(struct kvm *kvm) {}
 static inline void kvm_nested_s2_wp(struct kvm *kvm) {}
 static inline void kvm_nested_s2_clear(struct kvm *kvm) {}

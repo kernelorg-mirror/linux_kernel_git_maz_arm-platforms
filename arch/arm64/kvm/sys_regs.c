@@ -2506,10 +2506,12 @@ static bool handle_vmalls12e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	return true;
 }
 
-static unsigned long compute_tlb_inval_range(struct kvm_vcpu *vcpu, u64 val)
+static unsigned long compute_tlb_inval_range(struct kvm_vcpu *vcpu,
+					     struct kvm_s2_mmu *mmu,
+					     u64 val)
 {
-	unsigned long max_size = 0;
-	u8 ttl, level;
+	unsigned long max_size;
+	u8 ttl;
 
 	ttl = FIELD_GET(GENMASK_ULL(47, 44), val);
 
@@ -2518,54 +2520,7 @@ static unsigned long compute_tlb_inval_range(struct kvm_vcpu *vcpu, u64 val)
 		ttl = get_guest_mapping_ttl(vcpu, addr);
 	}
 
-	level = ttl & 3;
-
-	switch (ttl >> 2) {
-	case 0:			/* No size information */
-		break;
-	case 1:			/* 4kB translation granule */
-		switch (level) {
-		case 0:
-			break;
-		case 1:
-			max_size = SZ_1G;
-			break;
-		case 2:
-			max_size = SZ_2M;
-			break;
-		case 3:
-			max_size = SZ_4K;
-			break;
-		}
-		break;
-	case 2:			/* 16kB translation granule */
-		switch (level) {
-		case 0:
-		case 1:
-			break;
-		case 2:
-			max_size = SZ_32M;
-			break;
-		case 3:
-			max_size = SZ_16K;
-			break;
-		}
-		break;
-	case 3:			/* 64kB translation granule */
-		switch (level) {
-		case 0:
-		case 1:
-			/* No 52bit IPA support */
-			break;
-		case 2:
-			max_size = SZ_512M;
-			break;
-		case 3:
-			max_size = SZ_64K;
-			break;
-		}
-		break;
-	}
+	max_size = ttl_to_size(ttl);
 
 	if (!max_size) {
 		u64 vtcr = vcpu_read_sys_reg(vcpu, VTCR_EL2);
@@ -2614,16 +2569,21 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	 *
 	 * And of course, adjust the IPA to be on an actual address.
 	 */
-	max_size = compute_tlb_inval_range(vcpu, p->regval);
 	base_addr = (p->regval & GENMASK_ULL(35, 0)) << 12;
 
 	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, HCR_VM);
-	if (mmu)
+	if (mmu) {
+		max_size = compute_tlb_inval_range(vcpu, mmu, p->regval);
+		base_addr &= ~(max_size - 1);
 		kvm_unmap_stage2_range(mmu, base_addr, max_size);
+	}
 
 	mmu = lookup_s2_mmu(vcpu->kvm, vttbr, 0);
-	if (mmu)
+	if (mmu) {
+		max_size = compute_tlb_inval_range(vcpu, mmu, p->regval);
+		base_addr &= ~(max_size - 1);
 		kvm_unmap_stage2_range(mmu, base_addr, max_size);
+	}
 
 	spin_unlock(&vcpu->kvm->mmu_lock);
 

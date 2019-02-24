@@ -33,10 +33,16 @@ Optional properties:
 		 this interrupt number. during system suspend, the irq will be enabled
 		 so that the wifi chip can wakeup host platform under certain condition.
 		 during system resume, the irq will be disabled to make sure
-		 unnecessary interrupt is not received.
+		 unnecessary interrupt is not received. For PCI devices, it
+		 is recommended that this property is placed in a "wake-up"
+		 sub-node in order to limit the ambiguity with PCI legacy
+		 interrupts.
   - vmmc-supply: a phandle of a regulator, supplying VCC to the card
   - mmc-pwrseq:  phandle to the MMC power sequence node. See "mmc-pwrseq-*"
 		 for documentation of MMC power sequence bindings.
+  - wake-up:	 a subnode containing the interrupt specifier for a wake-up
+		 interrupt. This is the recommended configuration for PCI
+		 devices.
 
 Example:
 
@@ -64,5 +70,20 @@ so that firmware can wakeup host using this device side pin.
 		marvell,caldata_00_txpwrlimit_2g_cfg_set = /bits/ 8 <
 	0x01 0x00 0x06 0x00 0x08 0x02 0x89 0x01>;
 		marvell,wakeup-pin = <3>;
+	};
+};
+
+&pci_rootport {
+	mvl_wifi: wifi@0,0 {
+		compatible = "pci1b4b,2b42";
+		reg = <0x83010000 0x0 0x00000000 0x0 0x00100000
+		       0x83010000 0x0 0x00100000 0x0 0x00100000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&wlan_host_wake_l>;
+		wake-up {
+			interrupt-parent = <&gpio0>;
+			interrupts = <8 IRQ_TYPE_LEVEL_LOW>;
+			wakeup-source;
+		};
 	};
 };

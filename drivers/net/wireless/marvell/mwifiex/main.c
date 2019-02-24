@@ -1590,16 +1590,25 @@ static void mwifiex_probe_of(struct mwifiex_adapter *adapter)
 {
 	int ret;
 	struct device *dev = adapter->dev;
+	struct device_node *wup_node;
 
 	if (!dev->of_node)
 		goto err_exit;
 
 	adapter->dt_node = dev->of_node;
-	adapter->irq_wakeup = irq_of_parse_and_map(adapter->dt_node, 0);
+	wup_node = of_get_child_by_name(adapter->dt_node, "wake-up");
+	if (!wup_node)
+		wup_node = adapter->dt_node;
+	adapter->irq_wakeup = irq_of_parse_and_map(wup_node, 0);
 	if (!adapter->irq_wakeup) {
 		dev_dbg(dev, "fail to parse irq_wakeup from device tree\n");
 		goto err_exit;
 	}
+
+	if (dev_is_pci(dev) && adapter->dt_node == wup_node)
+		dev_warn(dev,
+			 "wake-up interrupt outside 'wake-up' subnode of %pOF\n",
+			 adapter->dt_node);
 
 	ret = devm_request_irq(dev, adapter->irq_wakeup,
 			       mwifiex_irq_wakeup_handler, IRQF_TRIGGER_LOW,

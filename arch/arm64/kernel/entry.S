@@ -336,6 +336,29 @@ alternative_if ARM64_WORKAROUND_845719
 alternative_else_nop_endif
 #endif
 3:
+#ifdef CONFIG_ARM64_ERRATUM_1188873
+alternative_if_not ARM64_WORKAROUND_1188873
+	b	1f
+alternative_else_nop_endif
+
+	ubfx	x0, x22, #4, #1			// Extract PSR_MODE32
+	eor	x0, x0, #1			// Negate it
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
+	mrs	x1, cntkctl_el1
+alternative_else
+	mrs	x1, cnthctl_el2
+alternative_endif
+	ubfx	x2, x1, #1, #1			// Extract EL0VCTEN
+	cmp	x2, x0
+	b.eq	1f				// Matches, nothing to do
+	bfi	x1, x0, #1, #1			// Move EL0VCTEN in place
+alternative_if_not ARM64_HAS_VIRT_HOST_EXTN
+	msr	cntkctl_el1, x1
+alternative_else
+	msr	cnthctl_el2, x1
+alternative_endif
+1:
+#endif
 	apply_ssbd 0, x0, x1
 	.endif
 

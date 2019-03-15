@@ -71,22 +71,18 @@ DECLARE_PER_CPU(const struct arch_timer_erratum_workaround *,
 		timer_unstable_counter_workaround);
 
 #define arch_timer_reg_read_stable(reg)					\
-({									\
-	u64 _val;							\
-	if (needs_unstable_timer_counter_workaround()) {		\
-		const struct arch_timer_erratum_workaround *wa;		\
+	({								\
+		struct arch_timer_erratum_workaround *dummy;		\
+		typeof(dummy->read_ ## reg) rd;				\
+		u64 _val;						\
+									\
 		preempt_disable_notrace();				\
-		wa = __this_cpu_read(timer_unstable_counter_workaround); \
-		if (wa && wa->read_##reg)				\
-			_val = wa->read_##reg();			\
-		else							\
-			_val = read_sysreg(reg);			\
+		rd = erratum_handler(read_ ## reg);			\
+		_val = rd ? rd() : read_sysreg(reg);			\
 		preempt_enable_notrace();				\
-	} else {							\
-		_val = read_sysreg(reg);				\
-	}								\
-	_val;								\
-})
+									\
+		_val;							\
+	})
 
 /*
  * These register accessors are marked inline so the compiler can

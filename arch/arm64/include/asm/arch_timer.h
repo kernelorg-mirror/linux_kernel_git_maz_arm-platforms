@@ -21,6 +21,7 @@
 
 #include <asm/barrier.h>
 #include <asm/sysreg.h>
+#include <asm/virt.h>
 
 #include <linux/bug.h>
 #include <linux/init.h>
@@ -139,12 +140,18 @@ static inline u32 arch_timer_get_cntfrq(void)
 
 static inline u32 arch_timer_get_cntkctl(void)
 {
+	if (is_kernel_in_hyp_mode())
+		return read_sysreg(cnthctl_el2);
+
 	return read_sysreg(cntkctl_el1);
 }
 
 static inline void arch_timer_set_cntkctl(u32 cntkctl)
 {
-	write_sysreg(cntkctl, cntkctl_el1);
+	if (is_kernel_in_hyp_mode())
+		write_sysreg(cntkctl, cnthctl_el2);
+	else
+		write_sysreg(cntkctl, cntkctl_el1);
 	isb();
 }
 

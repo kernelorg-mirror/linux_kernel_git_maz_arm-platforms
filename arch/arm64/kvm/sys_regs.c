@@ -1324,7 +1324,8 @@ static u64 read_id_reg(const struct kvm_vcpu *vcpu,
 			 (u32)r->CRn, (u32)r->CRm, (u32)r->Op2);
 	u64 val = raz ? 0 : read_sanitised_ftr_reg(id);
 
-	if (id == SYS_ID_AA64PFR0_EL1 && !vcpu_has_sve(vcpu)) {
+	if (id == SYS_ID_AA64PFR0_EL1 &&
+	    (!vcpu_has_sve(vcpu) || nested_virt_in_use(vcpu))) {
 		val &= ~(0xfUL << ID_AA64PFR0_SVE_SHIFT);
 	} else if (id == SYS_ID_AA64ISAR1_EL1 && !vcpu_has_ptrauth(vcpu)) {
 		val &= ~(0xfUL << ID_AA64ISAR1_APA_SHIFT) |

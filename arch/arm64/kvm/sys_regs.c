@@ -1708,6 +1708,28 @@ static bool access_spsr_el2(struct kvm_vcpu *vcpu,
 	return true;
 }
 
+static bool access_id_aa64isar1_el1(struct kvm_vcpu *v,
+				    struct sys_reg_params *p,
+				    const struct sys_reg_desc *r)
+{
+	bool ret;
+	u64 val;
+
+	ret = access_id_reg(v, p, r);
+	if (!ret || !nested_virt_in_use(v))
+		return ret;
+
+	val = p->regval;
+	val &= ~((0xfUL << ID_AA64ISAR1_APA_SHIFT) |
+		 (0xfUL << ID_AA64ISAR1_API_SHIFT) |
+		 (0xfUL << ID_AA64ISAR1_GPA_SHIFT) |
+		 (0xfUL << ID_AA64ISAR1_GPI_SHIFT));
+
+	p->regval = val;
+
+	return true;
+}
+
 static bool access_id_aa64pfr0_el1(struct kvm_vcpu *v,
 				   struct sys_reg_params *p,
 				   const struct sys_reg_desc *r)
@@ -1840,7 +1862,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	/* CRm=6 */
 	ID_SANITISED(ID_AA64ISAR0_EL1),
-	ID_SANITISED(ID_AA64ISAR1_EL1),
+	ID_SANITISED_FN(ID_AA64ISAR1_EL1, access_id_aa64isar1_el1),
 	ID_UNALLOCATED(6,2),
 	ID_UNALLOCATED(6,3),
 	ID_UNALLOCATED(6,4),

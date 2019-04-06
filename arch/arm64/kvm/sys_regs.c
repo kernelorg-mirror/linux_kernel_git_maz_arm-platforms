@@ -1712,13 +1712,18 @@ static bool access_id_aa64pfr0_el1(struct kvm_vcpu *v,
 				   struct sys_reg_params *p,
 				   const struct sys_reg_desc *r)
 {
+	bool ret;
 	u64 val;
 
-	if (!nested_virt_in_use(v) || p->is_write)
-		return access_id_reg(v, p, r);
+	ret = access_id_reg(v, p, r);
+	if (!ret || !nested_virt_in_use(v))
+		return ret;
 
-	val = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
-	p->regval = val & ~(0xf << ID_AA64PFR0_RAS_SHIFT);
+	val = p->regval;
+	val &= ~(0xfUL << ID_AA64PFR0_RAS_SHIFT);
+	val &= ~(0xfUL << ID_AA64PFR0_SVE_SHIFT);
+
+	p->regval = val;
 
 	return true;
 }

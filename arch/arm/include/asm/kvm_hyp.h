@@ -96,10 +96,11 @@
 #define read_sysreg_el0(r)		read_sysreg(r##_el0)
 #define write_sysreg_el0(v, r)		write_sysreg(v, r##_el0)
 
-#define cntp_ctl_el0			CNTP_CTL
-#define cntp_cval_el0			CNTP_CVAL
-#define cntv_ctl_el0			CNTV_CTL
-#define cntv_cval_el0			CNTV_CVAL
+#define SYS_CNTP_CTL_EL0		CNTP_CTL
+#define SYS_CNTP_CVAL_EL0		CNTP_CVAL
+#define SYS_CNTV_CTL_EL0		CNTV_CTL
+#define SYS_CNTV_CVAL_EL0		CNTV_CVAL
+
 #define cntvoff_el2			CNTVOFF
 #define cnthctl_el2			CNTHCTL
 

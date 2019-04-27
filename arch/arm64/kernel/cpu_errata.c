@@ -22,6 +22,7 @@
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/cpufeature.h>
+#include <asm/mitigations.h>
 
 static bool __maybe_unused
 is_affected_midr_range(const struct arm64_cpu_capabilities *entry, int scope)
@@ -277,16 +278,30 @@ static int detect_harden_bp_fw(void)
 
 DEFINE_PER_CPU_READ_MOSTLY(u64, arm64_ssbd_callback_required);
 
+static struct arm64_mitigation_state arm64_ssb_state = {
+#ifdef CONFIG_ARM64_SSBD
+	.policy		= POLICY_MITIGATION_AUTO,
+#else
+	.policy		= POLICY_MITIGATION_OFF,
+#endif
+	.system		= SYSTEM_MITIGATION_UNAFFECTED,
+	.strings	= {
+		[SYSTEM_MITIGATION_UNKNOWN]	= "Vulnerable",
+		[SYSTEM_MITIGATION_AFFECTED]	= "Mitigation: Speculative Store Bypass disabled via prctl",
+		[SYSTEM_MITIGATION_UNAFFECTED]	= "Not affected",
+	},
+};
+
 int ssbd_state __read_mostly = ARM64_SSBD_KERNEL;
-static bool __ssb_safe = true;
 
 static const struct ssbd_options {
 	const char	*str;
 	int		state;
+	enum policy_mitigation_state policy;
 } ssbd_options[] = {
-	{ "force-on",	ARM64_SSBD_FORCE_ENABLE, },
-	{ "force-off",	ARM64_SSBD_FORCE_DISABLE, },
-	{ "kernel",	ARM64_SSBD_KERNEL, },
+	{ "force-on",	ARM64_SSBD_FORCE_ENABLE, POLICY_MITIGATION_ON },
+	{ "force-off",	ARM64_SSBD_FORCE_DISABLE, POLICY_MITIGATION_OFF },
+	{ "kernel",	ARM64_SSBD_KERNEL, POLICY_MITIGATION_AUTO },
 };
 
 static int __init ssbd_cfg(char *buf)
@@ -303,6 +318,7 @@ static int __init ssbd_cfg(char *buf)
 			continue;
 
 		ssbd_state = ssbd_options[i].state;
+		arm64_ssb_state.policy = ssbd_options[i].policy;
 		return 0;
 	}
 
@@ -376,31 +392,12 @@ void arm64_set_ssbd_mitigation(bool state)
 	}
 }
 
-static bool has_ssbd_mitigation(const struct arm64_cpu_capabilities *entry,
-				    int scope)
+static enum cpu_mitigation_state check_wa2(void)
 {
 	struct arm_smccc_res res;
-	bool required = true;
-	s32 val;
-	bool this_cpu_safe = false;
 
-	WARN_ON(scope != SCOPE_LOCAL_CPU || preemptible());
-
-	if (this_cpu_has_cap(ARM64_SSBS)) {
-		required = false;
-		goto out_printmsg;
-	}
-
-	/* delay setting __ssb_safe until we get a firmware response */
-	if (is_midr_in_range_list(read_cpuid_id(), entry->midr_range_list))
-		this_cpu_safe = true;
-
-	if (psci_ops.smccc_version == SMCCC_VERSION_1_0) {
-		ssbd_state = ARM64_SSBD_UNKNOWN;
-		if (!this_cpu_safe)
-			__ssb_safe = false;
-		return false;
-	}
+	if (psci_ops.smccc_version == SMCCC_VERSION_1_0)
+		return CPU_MITIGATION_UNKNOWN;
 
 	switch (psci_ops.conduit) {
 	case PSCI_CONDUIT_HVC:
@@ -414,78 +411,72 @@ static bool has_ssbd_mitigation(const struct arm64_cpu_capabilities *entry,
 		break;
 
 	default:
-		ssbd_state = ARM64_SSBD_UNKNOWN;
-		if (!this_cpu_safe)
-			__ssb_safe = false;
-		return false;
+		WARN_ON(1);
+		return CPU_MITIGATION_UNKNOWN;
 	}
 
-	val = (s32)res.a0;
-
-	switch (val) {
+	switch ((s32)res.a0) {
 	case SMCCC_RET_NOT_SUPPORTED:
-		ssbd_state = ARM64_SSBD_UNKNOWN;
-		if (!this_cpu_safe)
-			__ssb_safe = false;
-		return false;
+		return CPU_MITIGATION_UNKNOWN;
 
 	/* machines with mixed mitigation requirements must not return this */
 	case SMCCC_RET_NOT_REQUIRED:
-		pr_info_once("%s mitigation not required\n", entry->desc);
-		ssbd_state = ARM64_SSBD_MITIGATED;
-		return false;
+		return CPU_MITIGATION_SYSTEM_UNAFFECTED;
 
 	case SMCCC_RET_SUCCESS:
-		__ssb_safe = false;
-		required = true;
-		break;
+		return CPU_MITIGATION_REQUIRED;
 
 	case 1:	/* Mitigation not required on this CPU */
-		required = false;
-		break;
+		return CPU_MITIGATION_UNAFFECTED;
 
 	default:
 		WARN_ON(1);
-		if (!this_cpu_safe)
-			__ssb_safe = false;
-		return false;
+		return CPU_MITIGATION_UNKNOWN;
 	}
 
-	switch (ssbd_state) {
-	case ARM64_SSBD_FORCE_DISABLE:
+}
+
+static enum cpu_mitigation_state check_ssbd_mitigation(const struct arm64_cpu_capabilities *entry)
+{
+	enum cpu_mitigation_state cms = check_wa2();
+
+	if (cms == CPU_MITIGATION_SYSTEM_UNAFFECTED ||
+	    cms == CPU_MITIGATION_UNAFFECTED)
+		goto out;
+
+	if (is_midr_in_range_list(read_cpuid_id(),
+				  entry->midr_range_list))
+		return CPU_MITIGATION_UNAFFECTED;
+
+	if (this_cpu_has_cap(ARM64_SSBS))
+		return CPU_MITIGATION_REQUIRED;
+
+out:
+	return cms;
+}
+
+static bool has_ssbd_mitigation(const struct arm64_cpu_capabilities *entry,
+				    int scope)
+{
+	enum cpu_mitigation_state cms = check_ssbd_mitigation(entry);
+	enum cpu_policy_mitigation_state cpms;
+
+	cpms = arm64_update_system_mitigation_state(&arm64_ssb_state, cms);
+	switch (cpms) {
+	case CPU_POLICY_MITIGATION_OFF:
 		arm64_set_ssbd_mitigation(false);
-		required = false;
 		break;
-
-	case ARM64_SSBD_KERNEL:
-		if (required) {
-			__this_cpu_write(arm64_ssbd_callback_required, 1);
-			arm64_set_ssbd_mitigation(true);
-		}
-		break;
-
-	case ARM64_SSBD_FORCE_ENABLE:
+	case CPU_POLICY_MITIGATION_AUTO:
+		__this_cpu_write(arm64_ssbd_callback_required, 1);
+		/* Fall through */
+	case CPU_POLICY_MITIGATION_ON:
 		arm64_set_ssbd_mitigation(true);
-		required = true;
 		break;
-
-	default:
-		WARN_ON(1);
+	case CPU_POLICY_MITIGATION_NONE:
 		break;
 	}
 
-out_printmsg:
-	switch (ssbd_state) {
-	case ARM64_SSBD_FORCE_DISABLE:
-		pr_info_once("%s disabled from command-line\n", entry->desc);
-		break;
-
-	case ARM64_SSBD_FORCE_ENABLE:
-		pr_info_once("%s forced from command-line\n", entry->desc);
-		break;
-	}
-
-	return required;
+	return arm64_ssb_state.system == SYSTEM_MITIGATION_AFFECTED;
 }
 
 /* known invulnerable cores */
@@ -834,16 +825,5 @@ ssize_t cpu_show_spectre_v2(struct device *dev, struct device_attribute *attr,
 ssize_t cpu_show_spec_store_bypass(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
-	if (__ssb_safe)
-		return sprintf(buf, "Not affected\n");
-
-	switch (ssbd_state) {
-	case ARM64_SSBD_KERNEL:
-	case ARM64_SSBD_FORCE_ENABLE:
-		if (IS_ENABLED(CONFIG_ARM64_SSBD))
-			return sprintf(buf,
-			    "Mitigation: Speculative Store Bypass disabled via prctl\n");
-	}
-
-	return sprintf(buf, "Vulnerable\n");
+	return sprintf("%s\n", arm64_get_mitigation_string(&arm64_ssb_state));
 }

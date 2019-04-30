@@ -32,14 +32,16 @@ static void ssbd_ssbs_disable(struct task_struct *task)
  */
 static int ssbd_prctl_set(struct task_struct *task, unsigned long ctrl)
 {
-	int state = arm64_get_ssbd_state();
+	enum system_mitigation_state state = arm64_get_ssbd_state();
 
 	/* Unsupported */
-	if (state == ARM64_SSBD_UNKNOWN)
+	if (state == SYSTEM_MITIGATION_UNKNOWN)
 		return -EINVAL;
 
-	/* Treat the unaffected/mitigated state separately */
-	if (state == ARM64_SSBD_MITIGATED) {
+	/* Treat the unaffected/force-mitigated state separately */
+	if (state == SYSTEM_MITIGATION_UNAFFECTED ||
+	    (state == SYSTEM_MITIGATION_AFFECTED &&
+	     arm64_ssb_state.policy == POLICY_MITIGATION_ON)) {
 		switch (ctrl) {
 		case PR_SPEC_ENABLE:
 			return -EPERM;
@@ -53,27 +55,27 @@ static int ssbd_prctl_set(struct task_struct *task, unsigned long ctrl)
 	 * Things are a bit backward here: the arm64 internal API
 	 * *enables the mitigation* when the userspace API *disables
 	 * speculation*. So much fun.
+	 *
+	 * At this stage, the system mitigation state is guaranteed to
+	 * be AFFECTED, and the policy not to be either ON (see above)
+	 * nor OFF (otherwise we'd be UNKNOWN). The logical conclusion
+	 * is that we can only be AFFECTED+AUTO.
 	 */
 	switch (ctrl) {
 	case PR_SPEC_ENABLE:
 		/* If speculation is force disabled, enable is not allowed */
-		if (state == ARM64_SSBD_FORCE_ENABLE ||
-		    task_spec_ssb_force_disable(task))
+		if (task_spec_ssb_force_disable(task))
 			return -EPERM;
 		task_clear_spec_ssb_disable(task);
 		clear_tsk_thread_flag(task, TIF_SSBD);
 		ssbd_ssbs_enable(task);
 		break;
 	case PR_SPEC_DISABLE:
-		if (state == ARM64_SSBD_FORCE_DISABLE)
-			return -EPERM;
 		task_set_spec_ssb_disable(task);
 		set_tsk_thread_flag(task, TIF_SSBD);
 		ssbd_ssbs_disable(task);
 		break;
 	case PR_SPEC_FORCE_DISABLE:
-		if (state == ARM64_SSBD_FORCE_DISABLE)
-			return -EPERM;
 		task_set_spec_ssb_disable(task);
 		task_set_spec_ssb_force_disable(task);
 		set_tsk_thread_flag(task, TIF_SSBD);
@@ -100,20 +102,26 @@ int arch_prctl_spec_ctrl_set(struct task_struct *task, unsigned long which,
 static int ssbd_prctl_get(struct task_struct *task)
 {
 	switch (arm64_get_ssbd_state()) {
-	case ARM64_SSBD_UNKNOWN:
+	case SYSTEM_MITIGATION_UNKNOWN:
 		return -EINVAL;
-	case ARM64_SSBD_FORCE_ENABLE:
+	case SYSTEM_MITIGATION_UNAFFECTED:
+		return PR_SPEC_NOT_AFFECTED;
+	case SYSTEM_MITIGATION_AFFECTED:
+		break;
+	}
+
+	switch (arm64_ssb_state.policy) {
+	case POLICY_MITIGATION_ON:
 		return PR_SPEC_DISABLE;
-	case ARM64_SSBD_KERNEL:
+	case POLICY_MITIGATION_AUTO:
 		if (task_spec_ssb_force_disable(task))
 			return PR_SPEC_PRCTL | PR_SPEC_FORCE_DISABLE;
 		if (task_spec_ssb_disable(task))
 			return PR_SPEC_PRCTL | PR_SPEC_DISABLE;
 		return PR_SPEC_PRCTL | PR_SPEC_ENABLE;
-	case ARM64_SSBD_FORCE_DISABLE:
-		return PR_SPEC_ENABLE;
+	case POLICY_MITIGATION_OFF:
 	default:
-		return PR_SPEC_NOT_AFFECTED;
+		return PR_SPEC_ENABLE;
 	}
 }
 

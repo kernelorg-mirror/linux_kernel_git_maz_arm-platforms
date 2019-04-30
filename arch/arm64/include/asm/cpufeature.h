@@ -29,6 +29,9 @@
 #include <linux/bug.h>
 #include <linux/jump_label.h>
 #include <linux/kernel.h>
+#include <linux/percpu.h>
+
+#include <asm/mitigations.h>
 
 /*
  * CPU feature register tracking
@@ -622,20 +625,17 @@ static inline bool system_uses_irq_prio_masking(void)
 	       cpus_have_const_cap(ARM64_HAS_IRQ_PRIO_MASKING);
 }
 
-#define ARM64_SSBD_UNKNOWN		-1
-#define ARM64_SSBD_FORCE_DISABLE	0
-#define ARM64_SSBD_KERNEL		1
-#define ARM64_SSBD_FORCE_ENABLE		2
-#define ARM64_SSBD_MITIGATED		3
+extern struct arm64_mitigation_state arm64_ssb_state;
 
-static inline int arm64_get_ssbd_state(void)
+static inline enum system_mitigation_state arm64_get_ssbd_state(void)
 {
-#ifdef CONFIG_ARM64_SSBD
-	extern int ssbd_state;
-	return ssbd_state;
-#else
-	return ARM64_SSBD_UNKNOWN;
-#endif
+	return arm64_ssb_state.system;
+}
+
+static inline
+enum cpu_policy_mitigation_state arm64_get_this_cpu_ssbd_state(void)
+{
+	return *this_cpu_ptr(arm64_ssb_state.pcpu);
 }
 
 void arm64_set_ssbd_mitigation(bool state);

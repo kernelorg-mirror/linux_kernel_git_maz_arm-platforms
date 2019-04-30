@@ -72,7 +72,7 @@ void notrace __cpu_suspend_exit(void)
 	 * have turned the mitigation on. If the user has forcefully
 	 * disabled it, make sure their wishes are obeyed.
 	 */
-	if (arm64_get_ssbd_state() == ARM64_SSBD_FORCE_DISABLE)
+	if (arm64_get_this_cpu_ssbd_state() == CPU_POLICY_MITIGATION_OFF)
 		arm64_set_ssbd_mitigation(false);
 }
 

@@ -321,10 +321,12 @@ int swsusp_arch_suspend(void)
 		 * mitigation off behind our back, let's set the state
 		 * to what we expect it to be.
 		 */
-		switch (arm64_get_ssbd_state()) {
-		case ARM64_SSBD_FORCE_ENABLE:
-		case ARM64_SSBD_KERNEL:
+		switch (arm64_get_this_cpu_ssbd_state()) {
+		case CPU_POLICY_MITIGATION_ON:
+		case CPU_POLICY_MITIGATION_AUTO:
 			arm64_set_ssbd_mitigation(true);
+		default:
+			break;
 		}
 	}
 

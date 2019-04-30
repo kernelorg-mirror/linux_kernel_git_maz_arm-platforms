@@ -408,7 +408,8 @@ int copy_thread(unsigned long clone_flags, unsigned long stack_start,
 		    cpus_have_const_cap(ARM64_HAS_UAO))
 			childregs->pstate |= PSR_UAO_BIT;
 
-		if (arm64_get_ssbd_state() == ARM64_SSBD_FORCE_DISABLE)
+		/* CHECK: now identical to start_thread... */
+		if (arm64_get_this_cpu_ssbd_state() != CPU_POLICY_MITIGATION_ON)
 			childregs->pstate |= PSR_SSBS_BIT;
 
 		if (system_uses_irq_prio_masking())

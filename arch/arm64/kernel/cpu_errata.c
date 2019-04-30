@@ -278,13 +278,16 @@ static int detect_harden_bp_fw(void)
 
 DEFINE_PER_CPU_READ_MOSTLY(u64, arm64_ssbd_callback_required);
 
-static struct arm64_mitigation_state arm64_ssb_state = {
+static DEFINE_PER_CPU_READ_MOSTLY(enum cpu_policy_mitigation_state,
+				  arm64_ssbd_state_pcpu);
+struct arm64_mitigation_state arm64_ssb_state __read_mostly = {
 #ifdef CONFIG_ARM64_SSBD
 	.policy		= POLICY_MITIGATION_AUTO,
 #else
 	.policy		= POLICY_MITIGATION_OFF,
 #endif
 	.system		= SYSTEM_MITIGATION_UNAFFECTED,
+	.pcpu		= &arm64_ssbd_state_pcpu,
 	.strings	= {
 		[SYSTEM_MITIGATION_UNKNOWN]	= "Vulnerable",
 		[SYSTEM_MITIGATION_AFFECTED]	= "Mitigation: Speculative Store Bypass disabled via prctl",
@@ -292,16 +295,14 @@ static struct arm64_mitigation_state arm64_ssb_state = {
 	},
 };
 
-int ssbd_state __read_mostly = ARM64_SSBD_KERNEL;
-
 static const struct ssbd_options {
 	const char	*str;
 	int		state;
 	enum policy_mitigation_state policy;
 } ssbd_options[] = {
-	{ "force-on",	ARM64_SSBD_FORCE_ENABLE, POLICY_MITIGATION_ON },
-	{ "force-off",	ARM64_SSBD_FORCE_DISABLE, POLICY_MITIGATION_OFF },
-	{ "kernel",	ARM64_SSBD_KERNEL, POLICY_MITIGATION_AUTO },
+	{ "force-on",	POLICY_MITIGATION_ON },
+	{ "force-off",	POLICY_MITIGATION_OFF },
+	{ "kernel",	POLICY_MITIGATION_AUTO },
 };
 
 static int __init ssbd_cfg(char *buf)
@@ -317,7 +318,6 @@ static int __init ssbd_cfg(char *buf)
 		if (strncmp(buf, ssbd_options[i].str, len))
 			continue;
 
-		ssbd_state = ssbd_options[i].state;
 		arm64_ssb_state.policy = ssbd_options[i].policy;
 		return 0;
 	}
@@ -358,7 +358,8 @@ void __init arm64_enable_wa2_handling(struct alt_instr *alt,
 	 * ARCH_WORKAROUND_2 handling if the SSBD state allows it to
 	 * be flipped.
 	 */
-	if (arm64_get_ssbd_state() == ARM64_SSBD_KERNEL)
+	if (arm64_get_ssbd_state() == SYSTEM_MITIGATION_AFFECTED &&
+	    arm64_ssb_state.policy == POLICY_MITIGATION_AUTO)
 		*updptr = cpu_to_le32(aarch64_insn_gen_nop());
 }
 

@@ -8,28 +8,33 @@
 #include <asm/bug.h>
 #include <asm/mitigations.h>
 
-enum cpu_policy_mitigation_state
-arm64_update_system_mitigation_state(struct arm64_mitigation_state *ms,
-				     enum cpu_mitigation_state cms)
+enum arm64_workaround_state
+arm64_update_system_vulnerability_state(struct arm64_mitigation_state *ms,
+					enum arm64_vulnerability_state cvs)
 {
-	enum cpu_policy_mitigation_state cpms;
+	enum arm64_workaround_state cws;
 
-	switch (cms) {
-	case CPU_MITIGATION_UNKNOWN:
-		if (ms->system > SYSTEM_MITIGATION_UNKNOWN)
-			ms->system = SYSTEM_MITIGATION_UNKNOWN;
+	/*
+	 * One-off initialization of the system workaround state based
+	 * on the cmdline or default configuration
+	 */
+	if (ms->system_workaround == __ARM64_WORKAROUND_UNINITIALIZED)
+		ms->system_workaround = ms->cmd_line;
+
+	/* Propagate the CPU vulnerability state to the system level */
+	switch (cvs) {
+	case ARM64_VULNERABILITY_UNKNOWN:
+		if (ms->system_vulnerability > ARM64_VULNERABILITY_UNKNOWN)
+			ms->system_vulnerability = ARM64_VULNERABILITY_UNKNOWN;
 		break;
 
-	case CPU_MITIGATION_REQUIRED:
-		if (ms->system > SYSTEM_MITIGATION_AFFECTED)
-			ms->system = SYSTEM_MITIGATION_AFFECTED;
+	case ARM64_VULNERABILITY_AFFECTED:
+		if (ms->system_vulnerability > ARM64_VULNERABILITY_AFFECTED)
+			ms->system_vulnerability = ARM64_VULNERABILITY_AFFECTED;
 		break;
 
-	case CPU_MITIGATION_UNAFFECTED:
-		break;
-
-	case CPU_MITIGATION_SYSTEM_UNAFFECTED:
-		WARN_ON(ms->system != SYSTEM_MITIGATION_UNAFFECTED);
+	case ARM64_VULNERABILITY_UNAFFECTED:
+		WARN_ON(ms->system_vulnerability != ARM64_VULNERABILITY_UNAFFECTED);
 		break;
 	}
 
@@ -38,41 +43,35 @@ arm64_update_system_mitigation_state(struct arm64_mitigation_state *ms,
 	 * mitigate it, "promote" the system to be vulnerable. In all
 	 * the other cases, you get what the system gives you.
 	 */
-	if (ms->policy == POLICY_MITIGATION_OFF &&
-	    ms->system == SYSTEM_MITIGATION_AFFECTED)
-		ms->system = SYSTEM_MITIGATION_UNKNOWN;
+	if (ms->system_workaround == ARM64_WORKAROUND_OFF &&
+	    ms->system_vulnerability == ARM64_VULNERABILITY_AFFECTED)
+		ms->system_vulnerability = ARM64_VULNERABILITY_UNKNOWN;
 
 	/* Flag out a pathological case -- go fix your FW */
-	WARN_ON(ms->policy == POLICY_MITIGATION_ON &&
-		ms->system == SYSTEM_MITIGATION_UNKNOWN);
+	WARN_ON(ms->system_workaround == ARM64_WORKAROUND_ON &&
+		ms->system_vulnerability == ARM64_VULNERABILITY_UNKNOWN);
 
-	/* If UNKNOWN or UNAFFECTED, nothing to do */
-	if (ms->system != SYSTEM_MITIGATION_AFFECTED) {
-		cpms = CPU_POLICY_MITIGATION_NONE;
-		goto out;
-	}
+	/*
+	 * If the system as a whole isn't mitigated nor vulnerable,
+	 * don't do a thing, and set the workaround to NONE.
+	 *
+	 * If on the contrary it is affected, set the CPU mitigation
+	 * state to the same as the whole system, unless the CPU
+	 * itself is unaffected.
+	 */
+	if (ms->system_vulnerability != ARM64_VULNERABILITY_AFFECTED)
+		ms->system_workaround = cws = ARM64_WORKAROUND_NONE;
+	else if (cvs != ARM64_VULNERABILITY_UNAFFECTED)
+		cws = ms->system_workaround;
+	else
+		cws = ARM64_WORKAROUND_NONE;
 
-	switch (ms->policy) {
-	case POLICY_MITIGATION_OFF:
-		cpms = CPU_POLICY_MITIGATION_OFF;
-		break;
+	*this_cpu_ptr(ms->cpu_workaround) = cws;
 
-	case POLICY_MITIGATION_ON:
-		cpms = CPU_POLICY_MITIGATION_ON;
-		break;
-
-	case POLICY_MITIGATION_AUTO:
-	default:
-		cpms = CPU_POLICY_MITIGATION_AUTO;
-	}
-
-out:
-	*this_cpu_ptr(ms->pcpu) = cpms;
-
-	return cpms;
+	return cws;
 }
 
 const char *arm64_get_mitigation_string(struct arm64_mitigation_state *ms)
 {
-	return ms->strings[ms->system];
+	return ms->strings[ms->system_vulnerability];
 }

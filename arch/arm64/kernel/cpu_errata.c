@@ -278,31 +278,30 @@ static int detect_harden_bp_fw(void)
 
 DEFINE_PER_CPU_READ_MOSTLY(u64, arm64_ssbd_callback_required);
 
-static DEFINE_PER_CPU_READ_MOSTLY(enum cpu_policy_mitigation_state,
+static DEFINE_PER_CPU_READ_MOSTLY(enum arm64_workaround_state,
 				  arm64_ssbd_state_pcpu);
 struct arm64_mitigation_state arm64_ssb_state __read_mostly = {
 #ifdef CONFIG_ARM64_SSBD
-	.policy		= POLICY_MITIGATION_AUTO,
+	.cmd_line		= ARM64_WORKAROUND_AUTO,
 #else
-	.policy		= POLICY_MITIGATION_OFF,
+	.cmd_line		= ARM64_WORKAROUND_OFF,
 #endif
-	.system		= SYSTEM_MITIGATION_UNAFFECTED,
-	.pcpu		= &arm64_ssbd_state_pcpu,
-	.strings	= {
-		[SYSTEM_MITIGATION_UNKNOWN]	= "Vulnerable",
-		[SYSTEM_MITIGATION_AFFECTED]	= "Mitigation: Speculative Store Bypass disabled via prctl",
-		[SYSTEM_MITIGATION_UNAFFECTED]	= "Not affected",
+	.system_vulnerability	= ARM64_VULNERABILITY_UNAFFECTED,
+	.cpu_workaround		= &arm64_ssbd_state_pcpu,
+	.strings		= {
+		[ARM64_VULNERABILITY_UNKNOWN]	= "Vulnerable",
+		[ARM64_VULNERABILITY_AFFECTED]	= "Mitigation: Speculative Store Bypass disabled via prctl",
+		[ARM64_VULNERABILITY_UNAFFECTED]= "Not affected",
 	},
 };
 
 static const struct ssbd_options {
 	const char	*str;
-	int		state;
-	enum policy_mitigation_state policy;
+	enum arm64_workaround_state cmd_line;
 } ssbd_options[] = {
-	{ "force-on",	POLICY_MITIGATION_ON },
-	{ "force-off",	POLICY_MITIGATION_OFF },
-	{ "kernel",	POLICY_MITIGATION_AUTO },
+	{ "force-on",	ARM64_WORKAROUND_ON },
+	{ "force-off",	ARM64_WORKAROUND_OFF },
+	{ "kernel",	ARM64_WORKAROUND_AUTO },
 };
 
 static int __init ssbd_cfg(char *buf)
@@ -318,7 +317,7 @@ static int __init ssbd_cfg(char *buf)
 		if (strncmp(buf, ssbd_options[i].str, len))
 			continue;
 
-		arm64_ssb_state.policy = ssbd_options[i].policy;
+		arm64_ssb_state.cmd_line = ssbd_options[i].cmd_line;
 		return 0;
 	}
 
@@ -358,8 +357,7 @@ void __init arm64_enable_wa2_handling(struct alt_instr *alt,
 	 * ARCH_WORKAROUND_2 handling if the SSBD state allows it to
 	 * be flipped.
 	 */
-	if (arm64_get_ssbd_state() == SYSTEM_MITIGATION_AFFECTED &&
-	    arm64_ssb_state.policy == POLICY_MITIGATION_AUTO)
+	if (arm64_ssb_state.system_workaround == ARM64_WORKAROUND_AUTO)
 		*updptr = cpu_to_le32(aarch64_insn_gen_nop());
 }
 
@@ -393,12 +391,12 @@ void arm64_set_ssbd_mitigation(bool state)
 	}
 }
 
-static enum cpu_mitigation_state check_wa2(void)
+static enum arm64_vulnerability_state check_wa2(void)
 {
 	struct arm_smccc_res res;
 
 	if (psci_ops.smccc_version == SMCCC_VERSION_1_0)
-		return CPU_MITIGATION_UNKNOWN;
+		return ARM64_VULNERABILITY_UNKNOWN;
 
 	switch (psci_ops.conduit) {
 	case PSCI_CONDUIT_HVC:
@@ -413,71 +411,72 @@ static enum cpu_mitigation_state check_wa2(void)
 
 	default:
 		WARN_ON(1);
-		return CPU_MITIGATION_UNKNOWN;
+		return ARM64_VULNERABILITY_UNKNOWN;
 	}
 
 	switch ((s32)res.a0) {
 	case SMCCC_RET_NOT_SUPPORTED:
-		return CPU_MITIGATION_UNKNOWN;
+		return ARM64_VULNERABILITY_UNKNOWN;
 
 	/* machines with mixed mitigation requirements must not return this */
 	case SMCCC_RET_NOT_REQUIRED:
-		return CPU_MITIGATION_SYSTEM_UNAFFECTED;
+		return ARM64_VULNERABILITY_UNAFFECTED;
 
 	case SMCCC_RET_SUCCESS:
-		return CPU_MITIGATION_REQUIRED;
+		return ARM64_VULNERABILITY_AFFECTED;
 
 	case 1:	/* Mitigation not required on this CPU */
-		return CPU_MITIGATION_UNAFFECTED;
+		return ARM64_VULNERABILITY_UNAFFECTED;
 
 	default:
 		WARN_ON(1);
-		return CPU_MITIGATION_UNKNOWN;
+		return ARM64_VULNERABILITY_UNKNOWN;
 	}
 
 }
 
-static enum cpu_mitigation_state check_ssbd_mitigation(const struct arm64_cpu_capabilities *entry)
+static enum arm64_vulnerability_state check_ssbd_mitigation(const struct arm64_cpu_capabilities *entry)
 {
-	enum cpu_mitigation_state cms = check_wa2();
+	enum arm64_vulnerability_state cvs = check_wa2();
 
-	if (cms == CPU_MITIGATION_SYSTEM_UNAFFECTED ||
-	    cms == CPU_MITIGATION_UNAFFECTED)
+	if (cvs == ARM64_VULNERABILITY_UNAFFECTED)
 		goto out;
 
 	if (is_midr_in_range_list(read_cpuid_id(),
 				  entry->midr_range_list))
-		return CPU_MITIGATION_UNAFFECTED;
+		return ARM64_VULNERABILITY_UNAFFECTED;
 
 	if (this_cpu_has_cap(ARM64_SSBS))
-		return CPU_MITIGATION_REQUIRED;
+		return ARM64_VULNERABILITY_AFFECTED;
 
 out:
-	return cms;
+	return cvs;
 }
 
 static bool has_ssbd_mitigation(const struct arm64_cpu_capabilities *entry,
-				    int scope)
+				int scope)
 {
-	enum cpu_mitigation_state cms = check_ssbd_mitigation(entry);
-	enum cpu_policy_mitigation_state cpms;
+	enum arm64_vulnerability_state cvs = check_ssbd_mitigation(entry);
+	enum arm64_workaround_state cws;
 
-	cpms = arm64_update_system_mitigation_state(&arm64_ssb_state, cms);
-	switch (cpms) {
-	case CPU_POLICY_MITIGATION_OFF:
+	cws = arm64_update_system_vulnerability_state(&arm64_ssb_state, cvs);
+	switch (cws) {
+	case ARM64_WORKAROUND_OFF:
 		arm64_set_ssbd_mitigation(false);
 		break;
-	case CPU_POLICY_MITIGATION_AUTO:
+	case ARM64_WORKAROUND_AUTO:
 		__this_cpu_write(arm64_ssbd_callback_required, 1);
 		/* Fall through */
-	case CPU_POLICY_MITIGATION_ON:
+	case ARM64_WORKAROUND_ON:
 		arm64_set_ssbd_mitigation(true);
 		break;
-	case CPU_POLICY_MITIGATION_NONE:
+	case ARM64_WORKAROUND_NONE:
 		break;
+	default:
+		WARN_ON(1);
 	}
 
-	return arm64_ssb_state.system == SYSTEM_MITIGATION_AFFECTED;
+	return arm64_ssb_state.system_vulnerability == ARM64_VULNERABILITY_AFFECTED;
 }
 
 /* known invulnerable cores */

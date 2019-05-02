@@ -32,16 +32,14 @@ static void ssbd_ssbs_disable(struct task_struct *task)
  */
 static int ssbd_prctl_set(struct task_struct *task, unsigned long ctrl)
 {
-	enum system_mitigation_state state = arm64_get_ssbd_state();
+	enum arm64_workaround_state sw = arm64_get_ssbd_state();
 
 	/* Unsupported */
-	if (state == SYSTEM_MITIGATION_UNKNOWN)
+	if (sw == ARM64_WORKAROUND_NONE || sw == ARM64_WORKAROUND_OFF)
 		return -EINVAL;
 
-	/* Treat the unaffected/force-mitigated state separately */
-	if (state == SYSTEM_MITIGATION_UNAFFECTED ||
-	    (state == SYSTEM_MITIGATION_AFFECTED &&
-	     arm64_ssb_state.policy == POLICY_MITIGATION_ON)) {
+	/* Treat the force-mitigated state separately */
+	if (sw == ARM64_WORKAROUND_ON) {
 		switch (ctrl) {
 		case PR_SPEC_ENABLE:
 			return -EPERM;
@@ -56,10 +54,7 @@ static int ssbd_prctl_set(struct task_struct *task, unsigned long ctrl)
 	 * *enables the mitigation* when the userspace API *disables
 	 * speculation*. So much fun.
 	 *
-	 * At this stage, the system mitigation state is guaranteed to
-	 * be AFFECTED, and the policy not to be either ON (see above)
-	 * nor OFF (otherwise we'd be UNKNOWN). The logical conclusion
-	 * is that we can only be AFFECTED+AUTO.
+	 * Here, we're guaranteed to be in the AUTO state
 	 */
 	switch (ctrl) {
 	case PR_SPEC_ENABLE:
@@ -101,25 +96,26 @@ int arch_prctl_spec_ctrl_set(struct task_struct *task, unsigned long which,
 
 static int ssbd_prctl_get(struct task_struct *task)
 {
-	switch (arm64_get_ssbd_state()) {
-	case SYSTEM_MITIGATION_UNKNOWN:
+	enum arm64_vulnerability_state sv = arm64_ssb_state.system_vulnerability;
+	switch (sv) {
+	case ARM64_VULNERABILITY_UNKNOWN:
 		return -EINVAL;
-	case SYSTEM_MITIGATION_UNAFFECTED:
+	case ARM64_VULNERABILITY_UNAFFECTED:
 		return PR_SPEC_NOT_AFFECTED;
-	case SYSTEM_MITIGATION_AFFECTED:
+	case ARM64_VULNERABILITY_AFFECTED:
 		break;
 	}
 
-	switch (arm64_ssb_state.policy) {
-	case POLICY_MITIGATION_ON:
+	switch (arm64_get_ssbd_state()) {
+	case ARM64_WORKAROUND_ON:
 		return PR_SPEC_DISABLE;
-	case POLICY_MITIGATION_AUTO:
+	case ARM64_WORKAROUND_AUTO:
 		if (task_spec_ssb_force_disable(task))
 			return PR_SPEC_PRCTL | PR_SPEC_FORCE_DISABLE;
 		if (task_spec_ssb_disable(task))
 			return PR_SPEC_PRCTL | PR_SPEC_DISABLE;
 		return PR_SPEC_PRCTL | PR_SPEC_ENABLE;
-	case POLICY_MITIGATION_OFF:
+	case ARM64_WORKAROUND_OFF:
 	default:
 		return PR_SPEC_ENABLE;
 	}

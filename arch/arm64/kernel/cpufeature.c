@@ -1188,8 +1188,7 @@ static void cpu_enable_ssbs(const struct arm64_cpu_capabilities *__unused)
 	}
 	spin_unlock(&hook_lock);
 
-	if (arm64_get_ssbd_state() == SYSTEM_MITIGATION_AFFECTED &&
-	    arm64_ssb_state.policy == POLICY_MITIGATION_OFF) {
+	if (arm64_get_this_cpu_ssbd_state() == ARM64_WORKAROUND_OFF) {
 		sysreg_clear_set(sctlr_el1, 0, SCTLR_ELx_DSSBS);
 		arm64_set_ssbd_mitigation(false);
 	} else {

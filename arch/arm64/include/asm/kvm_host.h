@@ -469,7 +469,7 @@ static inline void __cpu_init_hyp_mode(phys_addr_t pgd_ptr,
 	 * at EL2.
 	 */
 	if (!has_vhe() && this_cpu_has_cap(ARM64_SSBS) &&
-	    arm64_get_this_cpu_ssbd_state() == CPU_POLICY_MITIGATION_OFF) {
+	    arm64_get_this_cpu_ssbd_state() == ARM64_WORKAROUND_OFF) {
 		kvm_call_hyp(__kvm_enable_ssbs);
 	}
 }
@@ -568,16 +568,16 @@ static inline bool kvm_arm_harden_branch_predictor(void)
 
 static inline int kvm_arm_have_ssbd(void)
 {
-	switch (arm64_get_ssbd_state()) {
-	case SYSTEM_MITIGATION_AFFECTED:
-		if (arm64_ssb_state.policy == POLICY_MITIGATION_ON)
+	switch (arm64_ssb_state.system_vulnerability) {
+	case ARM64_VULNERABILITY_AFFECTED:
+		if (arm64_get_ssbd_state() != ARM64_WORKAROUND_ON)
 			return KVM_SSBD_MITIGATED;
 		return KVM_SSBD_KERNEL;
 
-	case SYSTEM_MITIGATION_UNAFFECTED:
+	case ARM64_VULNERABILITY_UNAFFECTED:
 		return KVM_SSBD_MITIGATED;
 
-	case SYSTEM_MITIGATION_UNKNOWN:
+	case ARM64_VULNERABILITY_UNKNOWN:
 	default:
 		return KVM_SSBD_UNKNOWN;
 	}

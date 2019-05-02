@@ -322,8 +322,8 @@ int swsusp_arch_suspend(void)
 		 * to what we expect it to be.
 		 */
 		switch (arm64_get_this_cpu_ssbd_state()) {
-		case CPU_POLICY_MITIGATION_ON:
-		case CPU_POLICY_MITIGATION_AUTO:
+		case ARM64_WORKAROUND_ON:
+		case ARM64_WORKAROUND_AUTO:
 			arm64_set_ssbd_mitigation(true);
 		default:
 			break;

@@ -627,15 +627,14 @@ static inline bool system_uses_irq_prio_masking(void)
 
 extern struct arm64_mitigation_state arm64_ssb_state;
 
-static inline enum system_mitigation_state arm64_get_ssbd_state(void)
+static inline enum arm64_workaround_state arm64_get_ssbd_state(void)
 {
-	return arm64_ssb_state.system;
+	return arm64_ssb_state.system_workaround;
 }
 
-static inline
-enum cpu_policy_mitigation_state arm64_get_this_cpu_ssbd_state(void)
+static inline enum arm64_workaround_state arm64_get_this_cpu_ssbd_state(void)
 {
-	return *this_cpu_ptr(arm64_ssb_state.pcpu);
+	return *this_cpu_ptr(arm64_ssb_state.cpu_workaround);
 }
 
 void arm64_set_ssbd_mitigation(bool state);

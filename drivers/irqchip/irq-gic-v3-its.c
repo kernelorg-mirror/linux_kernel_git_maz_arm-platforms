@@ -144,7 +144,7 @@ struct event_lpi_map {
 	int			nr_lpis;
 	raw_spinlock_t		vlpi_lock;
 	struct its_vm		*vm;
-	struct its_vlpi_map	*vlpi_maps;
+	struct its_vlpi_map	**vlpi_maps;
 	int			nr_vlpis;
 };
 
@@ -936,7 +936,7 @@ static void its_send_invall(struct its_node *its, struct its_collection *col)
 
 static void its_send_vmapti(struct its_device *dev, u32 id)
 {
-	struct its_vlpi_map *map = &dev->event_map.vlpi_maps[id];
+	struct its_vlpi_map *map = dev->event_map.vlpi_maps[id];
 	struct its_cmd_desc desc;
 
 	desc.its_vmapti_cmd.vpe = map->vpe;
@@ -950,7 +950,7 @@ static void its_send_vmapti(struct its_device *dev, u32 id)
 
 static void its_send_vmovi(struct its_device *dev, u32 id)
 {
-	struct its_vlpi_map *map = &dev->event_map.vlpi_maps[id];
+	struct its_vlpi_map *map = dev->event_map.vlpi_maps[id];
 	struct its_cmd_desc desc;
 
 	desc.its_vmovi_cmd.vpe = map->vpe;
@@ -1048,7 +1048,7 @@ static void lpi_write_config(struct irq_data *d, u8 clr, u8 set)
 		struct its_vlpi_map *map;
 
 		va = page_address(its_dev->event_map.vm->vprop_page);
-		map = &its_dev->event_map.vlpi_maps[event];
+		map = its_dev->event_map.vlpi_maps[event];
 		hwirq = map->vintid;
 
 		/* Remember the updated property */
@@ -1087,10 +1087,10 @@ static void its_vlpi_set_doorbell(struct irq_data *d, bool enable)
 	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
 	u32 event = its_get_event_id(d);
 
-	if (its_dev->event_map.vlpi_maps[event].db_enabled == enable)
+	if (its_dev->event_map.vlpi_maps[event]->db_enabled == enable)
 		return;
 
-	its_dev->event_map.vlpi_maps[event].db_enabled = enable;
+	its_dev->event_map.vlpi_maps[event]->db_enabled = enable;
 
 	/*
 	 * More fun with the architecture:
@@ -1260,13 +1260,14 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 	u32 event = its_get_event_id(d);
 	int ret = 0;
 
-	if (!info->map)
+	if (!info->map || !its_dev->event_map.vlpi_maps)
 		return -EINVAL;
 
 	raw_spin_lock(&its_dev->event_map.vlpi_lock);
 
 	if (!its_dev->event_map.vm) {
 		struct its_vlpi_map *maps;
+		int i;
 
 		maps = kcalloc(its_dev->event_map.nr_lpis, sizeof(*maps),
 			       GFP_ATOMIC);
@@ -1276,14 +1277,15 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 		}
 
 		its_dev->event_map.vm = info->map->vm;
-		its_dev->event_map.vlpi_maps = maps;
+		for (i = 0; i < its_dev->event_map.nr_lpis; i++)
+			its_dev->event_map.vlpi_maps[i] = maps + i;
 	} else if (its_dev->event_map.vm != info->map->vm) {
 		ret = -EINVAL;
 		goto out;
 	}
 
 	/* Get our private copy of the mapping information */
-	its_dev->event_map.vlpi_maps[event] = *info->map;
+	*its_dev->event_map.vlpi_maps[event] = *info->map;
 
 	if (irqd_is_forwarded_to_vcpu(d)) {
 		/* Already mapped, move it around */
@@ -1325,13 +1327,13 @@ static int its_vlpi_get(struct irq_data *d, struct its_cmd_info *info)
 	raw_spin_lock(&its_dev->event_map.vlpi_lock);
 
 	if (!its_dev->event_map.vm ||
-	    !its_dev->event_map.vlpi_maps[event].vm) {
+	    !its_dev->event_map.vlpi_maps[event]->vm) {
 		ret = -EINVAL;
 		goto out;
 	}
 
 	/* Copy our mapping information to the incoming request */
-	*info->map = its_dev->event_map.vlpi_maps[event];
+	*info->map = *its_dev->event_map.vlpi_maps[event];
 
 out:
 	raw_spin_unlock(&its_dev->event_map.vlpi_lock);
@@ -1370,7 +1372,7 @@ static int its_vlpi_unmap(struct irq_data *d)
 	 */
 	if (!--its_dev->event_map.nr_vlpis) {
 		its_dev->event_map.vm = NULL;
-		kfree(its_dev->event_map.vlpi_maps);
+		kfree(its_dev->event_map.vlpi_maps[0]);
 	}
 
 out:
@@ -2385,6 +2387,7 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 {
 	struct its_device *dev;
 	unsigned long *lpi_map = NULL;
+	struct its_vlpi_map **vlpi_map = NULL;
 	unsigned long flags;
 	u16 *col_map = NULL;
 	void *itt;
@@ -2418,12 +2421,16 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 		nr_lpis = 0;
 		lpi_base = 0;
 	}
+	if (its->is_v4)
+		vlpi_map = kcalloc(nr_lpis, sizeof(*vlpi_map), GFP_KERNEL);
 
-	if (!dev || !itt ||  !col_map || (!lpi_map && alloc_lpis)) {
+	if (!dev || !itt ||  !col_map || (!lpi_map && alloc_lpis) ||
+	    (!vlpi_map && its->is_v4)) {
 		kfree(dev);
 		kfree(itt);
 		kfree(lpi_map);
 		kfree(col_map);
+		kfree(vlpi_map);
 		return NULL;
 	}
 
@@ -2436,6 +2443,7 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	dev->event_map.col_map = col_map;
 	dev->event_map.lpi_base = lpi_base;
 	dev->event_map.nr_lpis = nr_lpis;
+	dev->event_map.vlpi_maps = vlpi_map;
 	raw_spin_lock_init(&dev->event_map.vlpi_lock);
 	dev->device_id = dev_id;
 	INIT_LIST_HEAD(&dev->entry);
@@ -2460,6 +2468,7 @@ static void its_free_device(struct its_device *its_dev)
 	kfree(its_dev->itt);
 	kfree(its_dev->event_map.lpi_map);
 	kfree(its_dev->event_map.col_map);
+	kfree(its_dev->event_map.vlpi_maps);
 	kfree(its_dev);
 }
 

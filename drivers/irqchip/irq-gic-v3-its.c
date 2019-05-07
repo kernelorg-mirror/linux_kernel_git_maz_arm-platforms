@@ -2458,6 +2458,8 @@ static void its_free_device(struct its_device *its_dev)
 	list_del(&its_dev->entry);
 	raw_spin_unlock_irqrestore(&its_dev->its->lock, flags);
 	kfree(its_dev->itt);
+	kfree(its_dev->event_map.lpi_map);
+	kfree(its_dev->event_map.col_map);
 	kfree(its_dev);
 }
 

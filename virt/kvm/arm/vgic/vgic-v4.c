@@ -261,7 +261,7 @@ int kvm_vgic_v4_set_forwarding(struct kvm *kvm, int virq,
 {
 	struct vgic_its *its;
 	struct vgic_irq *irq;
-	struct its_vlpi_map map;
+	struct its_vlpi_map *map;
 	int ret;
 
 	if (!vgic_supports_direct_msis(kvm))
@@ -283,13 +283,19 @@ int kvm_vgic_v4_set_forwarding(struct kvm *kvm, int virq,
 	if (ret)
 		goto out;
 
+	map = kmalloc(sizeof(*map), GFP_KERNEL);
+	if (!map) {
+		ret = -ENOMEM;
+		goto out;
+	}
+
 	/*
 	 * Emit the mapping request. If it fails, the ITS probably
 	 * isn't v4 compatible, so let's silently bail out. Holding
 	 * the ITS lock should ensure that nothing can modify the
 	 * target vcpu.
 	 */
-	map = (struct its_vlpi_map) {
+	*map = (struct its_vlpi_map) {
 		.vm		= &kvm->arch.vgic.its_vm,
 		.vpe		= &irq->target_vcpu->arch.vgic_cpu.vgic_v3.its_vpe,
 		.vintid		= irq->intid,
@@ -299,9 +305,11 @@ int kvm_vgic_v4_set_forwarding(struct kvm *kvm, int virq,
 		.db_enabled	= true,
 	};
 
-	ret = its_map_vlpi(virq, &map);
-	if (ret)
+	ret = its_map_vlpi(virq, map);
+	if (ret) {
+		kfree(map);
 		goto out;
+	}
 
 	irq->hw		= true;
 	irq->host_irq	= virq;

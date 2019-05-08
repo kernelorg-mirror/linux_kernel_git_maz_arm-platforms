@@ -1265,27 +1265,17 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 
 	raw_spin_lock(&its_dev->event_map.vlpi_lock);
 
-	if (!its_dev->event_map.vm) {
-		struct its_vlpi_map *maps;
-		int i;
-
-		maps = kcalloc(its_dev->event_map.nr_lpis, sizeof(*maps),
-			       GFP_ATOMIC);
-		if (!maps) {
-			ret = -ENOMEM;
-			goto out;
-		}
-
-		its_dev->event_map.vm = info->map->vm;
-		for (i = 0; i < its_dev->event_map.nr_lpis; i++)
-			its_dev->event_map.vlpi_maps[i] = maps + i;
-	} else if (its_dev->event_map.vm != info->map->vm) {
+	if (its_dev->event_map.vm && its_dev->event_map.vm != info->map->vm) {
 		ret = -EINVAL;
 		goto out;
 	}
 
-	/* Get our private copy of the mapping information */
-	*its_dev->event_map.vlpi_maps[event] = *info->map;
+	its_dev->event_map.vm = info->map->vm;
+
+	if (its_dev->event_map.vlpi_maps[event] &&
+	    its_dev->event_map.vlpi_maps[event] != info->map)
+		kfree(its_dev->event_map.vlpi_maps[event]);
+	its_dev->event_map.vlpi_maps[event] = info->map;
 
 	if (irqd_is_forwarded_to_vcpu(d)) {
 		/* Already mapped, move it around */
@@ -1326,8 +1316,7 @@ static int its_vlpi_get(struct irq_data *d, struct its_cmd_info *info)
 
 	raw_spin_lock(&its_dev->event_map.vlpi_lock);
 
-	if (!its_dev->event_map.vm ||
-	    !its_dev->event_map.vlpi_maps[event]->vm) {
+	if (!its_dev->event_map.vm || !its_dev->event_map.vlpi_maps[event]) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1363,6 +1352,10 @@ static int its_vlpi_unmap(struct irq_data *d)
 				    LPI_PROP_ENABLED |
 				    LPI_PROP_GROUP1));
 
+	/* Free the mapping data structure */
+	kfree(its_dev->event_map.vlpi_maps[event]);
+	its_dev->event_map.vlpi_maps[event] = NULL;
+
 	/* Potentially unmap the VM from this ITS */
 	its_unmap_vm(its_dev->its, its_dev->event_map.vm);
 
@@ -1370,10 +1363,8 @@ static int its_vlpi_unmap(struct irq_data *d)
 	 * Drop the refcount and make the device available again if
 	 * this was the last VLPI.
 	 */
-	if (!--its_dev->event_map.nr_vlpis) {
+	if (!--its_dev->event_map.nr_vlpis)
 		its_dev->event_map.vm = NULL;
-		kfree(its_dev->event_map.vlpi_maps[0]);
-	}
 
 out:
 	raw_spin_unlock(&its_dev->event_map.vlpi_lock);

@@ -608,5 +608,6 @@ void kvm_pvcy_prepare_state(struct kvm_vcpu *vcpu);
 int kvm_pvcy_check_state(struct kvm_vcpu *vcpu);
 void kvm_pvcy_init(struct kvm *kvm);
 void kvm_pvcy_teardown(struct kvm *kvm);
+#define kvm_vcpu_has_pvcy(vcpu) (!!vcpu->kvm->arch.pvcy_root.rb_node)
 
 #endif /* __ARM64_KVM_HOST_H__ */

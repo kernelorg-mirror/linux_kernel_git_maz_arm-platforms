@@ -827,6 +827,12 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu, struct kvm_run *run)
 		guest_exit();
 		trace_kvm_exit(ret, kvm_vcpu_trap_get_class(vcpu), *vcpu_pc(vcpu));
 
+		/*
+		 * Now that interrupts are enabled, signal interrupts
+		 * that require SW resampling.
+		 */
+		kvm_vgic_process_resample(vcpu);
+
 		/* Exit types that need handling before we can be preempted */
 		handle_exit_early(vcpu, run, ret);
 

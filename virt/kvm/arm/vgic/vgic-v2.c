@@ -79,8 +79,7 @@ void vgic_v2_fold_lr_state(struct kvm_vcpu *vcpu)
 
 		/* Notify fds when the guest EOI'ed a level-triggered SPI */
 		if (lr_signals_eoi_mi(val) && vgic_valid_spi(vcpu->kvm, intid))
-			kvm_notify_acked_irq(vcpu->kvm, 0,
-					     intid - VGIC_NR_PRIVATE_IRQS);
+			vgic_cpu->spi_notify[vgic_cpu->spi_notify_count++] = intid;
 
 		irq = vgic_get_irq(vcpu->kvm, vcpu, intid);
 

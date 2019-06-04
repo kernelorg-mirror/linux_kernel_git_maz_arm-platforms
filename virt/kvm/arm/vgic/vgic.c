@@ -880,6 +880,8 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
 	WARN_ON(vgic_v4_flush_hwstate(vcpu));
 
+	vcpu->arch.vgic_cpu.spi_notify_count = 0;
+
 	/*
 	 * If there are no virtual interrupts active or pending for this
 	 * VCPU, then there is no work to do and we can bail out without
@@ -906,6 +908,16 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 	if (can_access_vgic_from_kernel())
 		vgic_restore_state(vcpu);
+}
+
+void kvm_vgic_process_resample(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	int i;
+
+	for (i = 0; i < vgic_cpu->spi_notify_count; i++)
+		kvm_notify_acked_irq(vcpu->kvm, 0,
+				     vgic_cpu->spi_notify[i] - VGIC_NR_PRIVATE_IRQS);
 }
 
 void kvm_vgic_load(struct kvm_vcpu *vcpu)

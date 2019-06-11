@@ -642,6 +642,21 @@ static int vgic_v3_set_attr(struct kvm_device *dev,
 			unlock_all_vcpus(dev->kvm);
 			mutex_unlock(&dev->kvm->lock);
 			return ret;
+
+		case KVM_DEV_ARM_VGIC_PCPU_LPI_CACHE_SIZE: {
+			u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+			u32 val;
+
+			if (get_user(val, uaddr))
+				return -EFAULT;
+
+			/* YAAL: Yet Another Arbitrary Limit */
+			if (val > 256)
+				return -E2BIG;
+
+			dev->kvm->arch.vgic.lpi_pcpu_cache_size = val;
+			return 0;
+		}
 		}
 		break;
 	}
@@ -691,6 +706,17 @@ static int vgic_v3_get_attr(struct kvm_device *dev,
 		tmp32 = reg;
 		return put_user(tmp32, uaddr);
 	}
+	case KVM_DEV_ARM_VGIC_GRP_CTRL: {
+		switch (attr->attr) {
+		case KVM_DEV_ARM_VGIC_PCPU_LPI_CACHE_SIZE: {
+			u32 __user *uaddr = (u32 __user *)(long)attr->addr;
+
+			return put_user(dev->kvm->arch.vgic.lpi_pcpu_cache_size,
+					uaddr);
+		}
+		}
+		break;
+	}
 	}
 	return -ENXIO;
 }
@@ -725,6 +751,8 @@ static int vgic_v3_has_attr(struct kvm_device *dev,
 		case KVM_DEV_ARM_VGIC_CTRL_INIT:
 			return 0;
 		case KVM_DEV_ARM_VGIC_SAVE_PENDING_TABLES:
+			return 0;
+		case KVM_DEV_ARM_VGIC_PCPU_LPI_CACHE_SIZE:
 			return 0;
 		}
 	}

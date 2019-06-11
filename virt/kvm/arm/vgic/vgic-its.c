@@ -1827,13 +1827,16 @@ out:
 void vgic_lpi_translation_cache_init(struct kvm *kvm)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;
-	unsigned int sz;
+	unsigned int sz = dist->lpi_pcpu_cache_size;
 	int i;
 
 	if (!list_empty(&dist->lpi_translation_cache))
 		return;
 
-	sz = atomic_read(&kvm->online_vcpus) * LPI_DEFAULT_PCPU_CACHE_SIZE;
+	if (!sz)
+		sz = LPI_DEFAULT_PCPU_CACHE_SIZE;
+
+	sz *= atomic_read(&kvm->online_vcpus);
 
 	for (i = 0; i < sz; i++) {
 		struct vgic_translation_cache_entry *cte;

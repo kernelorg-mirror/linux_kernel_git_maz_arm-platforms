@@ -251,6 +251,7 @@ struct vgic_dist {
 
 	/* LPI translation cache */
 	struct list_head	lpi_translation_cache;
+	u32			lpi_pcpu_cache_size;
 
 	/* used by vgic-debug */
 	struct vgic_state_iter *iter;

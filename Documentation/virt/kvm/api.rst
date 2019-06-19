@@ -3117,6 +3117,8 @@ Possible features:
 	  and execute guest code when KVM_RUN is called.
 	- KVM_ARM_VCPU_EL1_32BIT: Starts the CPU in a 32bit mode.
 	  Depends on KVM_CAP_ARM_EL1_32BIT (arm64 only).
+	- KVM_ARM_VCPU_HAS_EL2: Starts the CPU at EL2.
+	  Depends on KVM_CAP_ARM_EL2.
 	- KVM_ARM_VCPU_PSCI_0_2: Emulate PSCI v0.2 (or a future revision
           backward compatible with v0.2) for the CPU.
 	  Depends on KVM_CAP_ARM_PSCI_0_2.

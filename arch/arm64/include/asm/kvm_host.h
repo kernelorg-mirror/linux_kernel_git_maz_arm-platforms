@@ -294,13 +294,11 @@ enum vcpu_sysreg {
 #define cp14_DBGWVR0	(DBGWVR0_EL1 * 2)
 #define cp14_DBGDCCINT	(MDCCINT_EL1 * 2)
 
-#define NR_COPRO_REGS	(NR_SYS_REGS * 2)
-
 struct kvm_cpu_context {
 	struct kvm_regs	gp_regs;
 	union {
 		u64 sys_regs[NR_SYS_REGS];
-		u32 copro[NR_COPRO_REGS];
+		u32 copro[0];
 	};
 
 	struct kvm_vcpu *__hyp_running_vcpu;

@@ -130,16 +130,15 @@ u64 translate_cnthctl(u64 cnthctl)
 
 #define	__PURE_EL2_SYSREG(el2)						\
 	case el2: {							\
-		*xlate = NULL;						\
 		*el1r = el2;						\
-		return true;						\
+		break;							\
 	}
 
 #define __MAPPED_EL2_SYSREG(el2, el1, fn)				\
 	case el2: {							\
 		*xlate = fn;						\
 		*el1r = el1;						\
-		return true;						\
+		break;							\
 	}
 
 static bool get_el2_mapping(unsigned int reg,
@@ -160,7 +159,7 @@ static bool get_el2_mapping(unsigned int reg,
 		__PURE_EL2_SYSREG(	TPIDR_EL2	);
 		__PURE_EL2_SYSREG(	CNTHCTL_EL2	);
 		__PURE_EL2_SYSREG(	HPFAR_EL2	);
-		__PURE_EL2_SYSREG(	ELR_EL2	);
+		__PURE_EL2_SYSREG(	ELR_EL2		);
 		__PURE_EL2_SYSREG(	SPSR_EL2	);
 		__MAPPED_EL2_SYSREG(	SCTLR_EL2, SCTLR_EL1, translate_sctlr );
 		__MAPPED_EL2_SYSREG(	CPTR_EL2,  CPACR_EL1, translate_cptr  );
@@ -174,9 +173,11 @@ static bool get_el2_mapping(unsigned int reg,
 		__MAPPED_EL2_SYSREG(	FAR_EL2,   FAR_EL1,   NULL	      );
 		__MAPPED_EL2_SYSREG(	MAIR_EL2,  MAIR_EL1,  NULL	      );
 		__MAPPED_EL2_SYSREG(	AMAIR_EL2, AMAIR_EL1, NULL	      );
+	default:
+		return false;
 	}
 
-	return false;
+	return true;
 }
 
 static bool __vcpu_read_sys_reg_from_cpu(int reg, u64 *val)
@@ -263,7 +264,7 @@ static bool __vcpu_write_sys_reg_to_cpu(u64 val, int reg)
 u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
 	u64 val = 0x8badf00d8badf00d;
-	u64 (*xlate)(u64);
+	u64 (*xlate)(u64) = NULL;
 	unsigned int el1r;
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
@@ -317,7 +318,7 @@ memory_read:
 
 void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 {
-	u64 (*xlate)(u64);
+	u64 (*xlate)(u64) = NULL;
 	unsigned int el1r;
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)

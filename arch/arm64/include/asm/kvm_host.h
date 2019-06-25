@@ -252,7 +252,7 @@ enum vcpu_sysreg {
 	CNTHCTL_EL2,	/* Counter-timer Hypervisor Control register */
 	SP_EL2,		/* EL2 Stack Pointer */
 
-	NR_SYS_REGS	/* Nothing after this line! */
+	__NR_SYS_REGS	/* Nothing after this line! */
 };
 
 /* 32bit mapping */
@@ -299,8 +299,8 @@ enum vcpu_sysreg {
 struct kvm_cpu_context {
 	struct kvm_regs	gp_regs;
 	union {
-		u64 sys_regs[NR_SYS_REGS];
-		u32 copro[NR_COPRO_REGS];
+		u64 sys_regs[__NR_SYS_REGS];
+		u32 copro[0];
 	};
 
 	struct kvm_vcpu *__hyp_running_vcpu;

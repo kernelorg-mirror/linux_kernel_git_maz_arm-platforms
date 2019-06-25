@@ -3557,7 +3557,7 @@ static void reset_sys_reg_descs(struct kvm_vcpu *vcpu,
 			int reg = table[i].reg;
 
 			table[i].reset(vcpu, &table[i]);
-			if (reg > 0 && reg < NR_SYS_REGS)
+			if (reg > 0 && reg < ARRAY_SIZE(vcpu->arch.ctxt.sys_regs))
 				set_bit(reg, bmap);
 		}
 }
@@ -4084,7 +4084,7 @@ void kvm_reset_sys_regs(struct kvm_vcpu *vcpu)
 {
 	size_t num;
 	const struct sys_reg_desc *table;
-	DECLARE_BITMAP(bmap, NR_SYS_REGS) = { 0, };
+	DECLARE_BITMAP(bmap,  ARRAY_SIZE(vcpu->arch.ctxt.sys_regs)) = { 0, };
 
 	/* Generic chip reset first (so target could override). */
 	reset_sys_reg_descs(vcpu, sys_reg_descs, ARRAY_SIZE(sys_reg_descs), bmap);
@@ -4092,7 +4092,7 @@ void kvm_reset_sys_regs(struct kvm_vcpu *vcpu)
 	table = get_target_table(vcpu->arch.target, true, &num);
 	reset_sys_reg_descs(vcpu, table, num, bmap);
 
-	for (num = 1; num < NR_SYS_REGS; num++) {
+	for (num = 1; num < ARRAY_SIZE(vcpu->arch.ctxt.sys_regs); num++) {
 		if (WARN(!test_bit(num, bmap),
 			 "Didn't reset __vcpu_sys_reg(%zi)\n", num))
 			break;

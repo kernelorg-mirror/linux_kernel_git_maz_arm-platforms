@@ -128,58 +128,55 @@ u64 translate_cnthctl(u64 cnthctl)
 	return ((cnthctl & 0x3) << 10) | (cnthctl & 0xfc);
 }
 
-#define EL2_SYSREG(el2, el1, translate)	\
-	[el2 - FIRST_EL2_SYSREG] = { el2, el1, translate }
-#define PURE_EL2_SYSREG(el2) \
-	[el2 - FIRST_EL2_SYSREG] = { el2,__INVALID_SYSREG__, NULL }
-/*
- * Associate vEL2 registers to their EL1 counterparts on the CPU.
- * The translate function can be NULL, when the register layout is identical.
- */
-struct el2_sysreg_map {
-	int sysreg;	/* EL2 register index into the array above */
-	int mapping;	/* associated EL1 register */
-	u64 (*translate)(u64 value);
-} nested_sysreg_map[] = {
-	PURE_EL2_SYSREG( VPIDR_EL2 ),
-	PURE_EL2_SYSREG( VMPIDR_EL2 ),
-	PURE_EL2_SYSREG( ACTLR_EL2 ),
-	PURE_EL2_SYSREG( HCR_EL2 ),
-	PURE_EL2_SYSREG( MDCR_EL2 ),
-	PURE_EL2_SYSREG( HSTR_EL2 ),
-	PURE_EL2_SYSREG( HACR_EL2 ),
-	PURE_EL2_SYSREG( VTTBR_EL2 ),
-	PURE_EL2_SYSREG( VTCR_EL2 ),
-	PURE_EL2_SYSREG( RVBAR_EL2 ),
-	PURE_EL2_SYSREG( RMR_EL2 ),
-	PURE_EL2_SYSREG( TPIDR_EL2 ),
-	PURE_EL2_SYSREG( CNTHCTL_EL2 ),
-	PURE_EL2_SYSREG( HPFAR_EL2 ),
-	EL2_SYSREG(      SCTLR_EL2,  SCTLR_EL1,      translate_sctlr ),
-	EL2_SYSREG(      CPTR_EL2,   CPACR_EL1,      translate_cptr  ),
-	EL2_SYSREG(      TTBR0_EL2,  TTBR0_EL1,      translate_ttbr0 ),
-	EL2_SYSREG(      TTBR1_EL2,  TTBR1_EL1,      NULL            ),
-	EL2_SYSREG(      TCR_EL2,    TCR_EL1,        translate_tcr   ),
-	EL2_SYSREG(      VBAR_EL2,   VBAR_EL1,       NULL            ),
-	EL2_SYSREG(      AFSR0_EL2,  AFSR0_EL1,      NULL            ),
-	EL2_SYSREG(      AFSR1_EL2,  AFSR1_EL1,      NULL            ),
-	EL2_SYSREG(      ESR_EL2,    ESR_EL1,        NULL            ),
-	EL2_SYSREG(      FAR_EL2,    FAR_EL1,        NULL            ),
-	EL2_SYSREG(      MAIR_EL2,   MAIR_EL1,       NULL            ),
-	EL2_SYSREG(      AMAIR_EL2,  AMAIR_EL1,      NULL            ),
-};
+#define	__PURE_EL2_SYSREG(el2)						\
+	case el2: {							\
+		*xlate = NULL;						\
+		*el1r = el2;						\
+		return true;						\
+	}
 
-static
-const struct el2_sysreg_map *find_el2_sysreg(const struct el2_sysreg_map *map,
-					     int reg)
+#define __MAPPED_EL2_SYSREG(el2, el1, fn)				\
+	case el2: {							\
+		*xlate = fn;						\
+		*el1r = el1;						\
+		return true;						\
+	}
+
+static bool get_el2_mapping(unsigned int reg,
+			    unsigned int *el1r, u64 (**xlate)(u64))
 {
-	const struct el2_sysreg_map *entry;
+	switch (reg) {
+		__PURE_EL2_SYSREG(	VPIDR_EL2	);
+		__PURE_EL2_SYSREG(	VMPIDR_EL2	);
+		__PURE_EL2_SYSREG(	ACTLR_EL2	);
+		__PURE_EL2_SYSREG(	HCR_EL2		);
+		__PURE_EL2_SYSREG(	MDCR_EL2	);
+		__PURE_EL2_SYSREG(	HSTR_EL2	);
+		__PURE_EL2_SYSREG(	HACR_EL2	);
+		__PURE_EL2_SYSREG(	VTTBR_EL2	);
+		__PURE_EL2_SYSREG(	VTCR_EL2	);
+		__PURE_EL2_SYSREG(	RVBAR_EL2	);
+		__PURE_EL2_SYSREG(	RMR_EL2		);
+		__PURE_EL2_SYSREG(	TPIDR_EL2	);
+		__PURE_EL2_SYSREG(	CNTHCTL_EL2	);
+		__PURE_EL2_SYSREG(	HPFAR_EL2	);
+		__PURE_EL2_SYSREG(	ELR_EL2	);
+		__PURE_EL2_SYSREG(	SPSR_EL2	);
+		__MAPPED_EL2_SYSREG(	SCTLR_EL2, SCTLR_EL1, translate_sctlr );
+		__MAPPED_EL2_SYSREG(	CPTR_EL2,  CPACR_EL1, translate_cptr  );
+		__MAPPED_EL2_SYSREG(	TTBR0_EL2, TTBR0_EL1, translate_ttbr0 );
+		__MAPPED_EL2_SYSREG(	TTBR1_EL2, TTBR1_EL1, NULL	      );
+		__MAPPED_EL2_SYSREG(	TCR_EL2,   TCR_EL1,   translate_tcr   );
+		__MAPPED_EL2_SYSREG(	VBAR_EL2,  VBAR_EL1,  NULL	      );
+		__MAPPED_EL2_SYSREG(	AFSR0_EL2, AFSR0_EL1, NULL	      );
+		__MAPPED_EL2_SYSREG(	AFSR1_EL2, AFSR1_EL1, NULL	      );
+		__MAPPED_EL2_SYSREG(	ESR_EL2,   ESR_EL1,   NULL	      );
+		__MAPPED_EL2_SYSREG(	FAR_EL2,   FAR_EL1,   NULL	      );
+		__MAPPED_EL2_SYSREG(	MAIR_EL2,  MAIR_EL1,  NULL	      );
+		__MAPPED_EL2_SYSREG(	AMAIR_EL2, AMAIR_EL1, NULL	      );
+	}
 
-	entry = &nested_sysreg_map[reg - FIRST_EL2_SYSREG];
-	if (entry->sysreg == __INVALID_SYSREG__)
-		return NULL;
-
-	return entry;
+	return false;
 }
 
 static bool __vcpu_read_sys_reg_from_cpu(int reg, u64 *val)
@@ -266,16 +263,19 @@ static bool __vcpu_write_sys_reg_to_cpu(u64 val, int reg)
 u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
 	u64 val = 0x8badf00d8badf00d;
+	u64 (*xlate)(u64);
+	unsigned int el1r;
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto memory_read;
 
-	if (unlikely(sysreg_is_el2(reg))) {
-		const struct el2_sysreg_map *el2_reg;
-
+	if (get_el2_mapping(reg, &el1r, &xlate)) {
 		if (!is_hyp_ctxt(vcpu))
 			goto memory_read;
 
+		/*
+		 * ELR_EL2 and SPSR_EL2 are special cased for now.
+		 */
 		switch (reg) {
 		case ELR_EL2:
 			return read_sysreg_el1(SYS_ELR);
@@ -284,23 +284,23 @@ u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 			return __fixup_spsr_el2_read(&vcpu->arch.ctxt, val);
 		}
 
-		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
-		BUG_ON(!el2_reg);
-
 		/*
 		 * If this register does not have an EL1 counterpart,
 		 * then read the stored EL2 version.
 		 */
-		if (el2_reg->mapping == __INVALID_SYSREG__)
+		if (reg == el1r)
 			goto memory_read;
 
-		if (!vcpu_el2_e2h_is_set(vcpu) &&
-		    el2_reg->translate)
+		/*
+		 * If we have a non-VHE guest and that the sysreg
+		 * requires translation to be used at EL1, use the
+		 * in-memory copy instead.
+		 */
+		if (!vcpu_el2_e2h_is_set(vcpu) && xlate)
 			goto memory_read;
 
 		/* Get the current version of the EL1 counterpart. */
-		reg = el2_reg->mapping;
-		WARN_ON(!__vcpu_read_sys_reg_from_cpu(reg, &val));
+		WARN_ON(!__vcpu_read_sys_reg_from_cpu(el1r, &val));
 		return val;
 	}
 
@@ -317,12 +317,13 @@ memory_read:
 
 void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 {
+	u64 (*xlate)(u64);
+	unsigned int el1r;
+
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto memory_write;
 
-	if (unlikely(sysreg_is_el2(reg))) {
-		const struct el2_sysreg_map *el2_reg;
-
+	if (get_el2_mapping(reg, &el1r, &xlate)) {
 		if (!is_hyp_ctxt(vcpu))
 			goto memory_write;
 
@@ -343,20 +344,15 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 			return;
 		}
 
-		el2_reg = find_el2_sysreg(nested_sysreg_map, reg);
-		WARN(!el2_reg, "reg: %d\n", reg);
-
 		/* Does this register have an EL1 counterpart? */
-		if (el2_reg->mapping == __INVALID_SYSREG__)
+		if (reg == el1r)
 			goto memory_write;
 
-		if (!vcpu_el2_e2h_is_set(vcpu) &&
-		    el2_reg->translate)
-			val = el2_reg->translate(val);
+		if (!vcpu_el2_e2h_is_set(vcpu) && xlate)
+			val = xlate(val);
 
 		/* Redirect this to the EL1 version of the register. */
-		reg = el2_reg->mapping;
-		WARN_ON(!__vcpu_write_sys_reg_to_cpu(val, reg));
+		WARN_ON(!__vcpu_write_sys_reg_to_cpu(val, el1r));
 		return;
 	}
 

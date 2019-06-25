@@ -212,9 +212,7 @@ enum vcpu_sysreg {
 	DBGVCR32_EL2,	/* Debug Vector Catch Register */
 
 	/* EL2 registers sorted ascending by Op0, Op1, CRn, CRm, Op2 */
-	FIRST_EL2_SYSREG,
-	VPIDR_EL2 = FIRST_EL2_SYSREG,
-			/* Virtualization Processor ID Register */
+	VPIDR_EL2,	/* Virtualization Processor ID Register */
 	VMPIDR_EL2,	/* Virtualization Multiprocessor ID Register */
 	SCTLR_EL2,	/* System Control Register (EL2) */
 	ACTLR_EL2,	/* Auxiliary Control Register (EL2) */
@@ -247,11 +245,6 @@ enum vcpu_sysreg {
 
 	NR_SYS_REGS	/* Nothing after this line! */
 };
-
-static inline bool sysreg_is_el2(int reg)
-{
-	return reg >= FIRST_EL2_SYSREG && reg < NR_SYS_REGS;
-}
 
 /* 32bit mapping */
 #define c0_MPIDR	(MPIDR_EL1 * 2)	/* MultiProcessor ID Register */

@@ -106,14 +106,16 @@ static inline void reset_unknown(struct kvm_vcpu *vcpu,
 				 const struct sys_reg_desc *r)
 {
 	BUG_ON(!r->reg);
-	BUG_ON(r->reg >= ARRAY_SIZE(vcpu->arch.ctxt.sys_regs));
+	BUG_ON((r->reg >= ARRAY_SIZE(vcpu->arch.ctxt.sys_regs) && r->reg < SZ_4K) ||
+	       (r->reg >= SZ_4K*2));
 	__vcpu_sys_reg(vcpu, r->reg) = 0x1de7ec7edbadc0deULL;
 }
 
 static inline void reset_val(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 {
 	BUG_ON(!r->reg);
-	BUG_ON(r->reg >= ARRAY_SIZE(vcpu->arch.ctxt.sys_regs));
+	BUG_ON((r->reg >= ARRAY_SIZE(vcpu->arch.ctxt.sys_regs) && r->reg < SZ_4K) ||
+	       (r->reg >= SZ_4K*2));
 	__vcpu_sys_reg(vcpu, r->reg) = r->val;
 }
 

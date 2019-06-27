@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
  * System register offsets in the VNCR page
+ * All offsets are *byte* displacements!
  */
 
 #ifndef __ARM64_VNCR_MAPPING_H__
@@ -39,9 +40,12 @@
 #define VNCR_ELR_EL1            0x230
 #define VNCR_SP_EL1             0x240
 #define VNCR_VBAR_EL1           0x250
-#define VNCR_ICH_LRN_EL2(n)     0x400+8*((n) & 7)
-#define VNCR_ICH_AP0RN_EL2(n)   0x480+8*((n) & 3)
-#define VNCR_ICH_AP1RN_EL2(n)   0x4A0+8*((n) & 3)
+#define VNCR_ICH_LR0_EL2        0x400
+//      VNCR_ICH_LRN_EL2(n)     VNCR_ICH_LR0_EL2+8*((n) & 7)
+#define VNCR_ICH_AP0R0_EL2      0x480
+//      VNCR_ICH_AP0RN_EL2(n)   VNCR_ICH_AP0R0_EL2+8*((n) & 3)
+#define VNCR_ICH_AP1R0_EL2      0x4A0
+//      VNCR_ICH_AP1RN_EL2(n)   VNCR_ICH_AP1R0_EL2+8*((n) & 3)
 #define VNCR_ICH_HCR_EL2        0x4C0
 #define VNCR_ICH_VMCR_EL2       0x4C8
 #define VNCR_VDISR_EL2          0x500

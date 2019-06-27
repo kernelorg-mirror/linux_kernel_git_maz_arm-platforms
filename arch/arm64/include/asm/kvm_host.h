@@ -258,6 +258,12 @@ enum vcpu_sysreg {
 	CNTHCTL_EL2,	/* Counter-timer Hypervisor Control register */
 	SP_EL2,		/* EL2 Stack Pointer */
 
+	VNCR(ICH_LR0_EL2),
+	VNCR(ICH_AP0R0_EL2),
+	VNCR(ICH_AP1R0_EL2),
+	VNCR(ICH_HCR_EL2),
+	VNCR(ICH_VMCR_EL2),
+
 	__NR_SYS_REGS	/* Nothing after this line! */
 };
 

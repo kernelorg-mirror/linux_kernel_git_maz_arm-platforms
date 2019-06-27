@@ -303,7 +303,7 @@ struct vgic_cpu {
 	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 
 	/* CPU vif control registers for the virtual GICH interface */
-	struct vgic_v3_cpu_if	nested_vgic_v3;
+//	struct vgic_v3_cpu_if	nested_vgic_v3;
 
 	/*
 	 * The shadow vif control register loaded to the hardware when

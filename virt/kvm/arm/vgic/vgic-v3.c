@@ -657,20 +657,14 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
 
 	/*
-	 * vgic_v3_load_nested only deals with the LRs in the shadow
-	 * state, so populate anything else early.
+	 * If the vgic is in nested state, populate the shadow state
+	 * from the guest's nested state. As vgic_v3_load_nested()
+	 * will only load LRs, let's deal with the rest of the state
+	 * here as if it was a non-nested state. Cunning.
 	 */
 	if (vgic_state_is_nested(vcpu)) {
-		int i;
-
+		vgic_v3_create_shadow_state(vcpu);
 		cpu_if = &vcpu->arch.vgic_cpu.shadow_vgic_v3;
-		cpu_if->vgic_hcr = __vcpu_sys_reg(vcpu, ICH_HCR_EL2);
-		cpu_if->vgic_vmcr = __vcpu_sys_reg(vcpu, ICH_VMCR_EL2);
-
-		for (i = 0; i < 4; i++) {
-			cpu_if->vgic_ap0r[i] = __vcpu_sys_reg(vcpu, ICH_AP0RN(i));
-			cpu_if->vgic_ap1r[i] = __vcpu_sys_reg(vcpu, ICH_AP1RN(i));
-		}
 	}
 
 	/*
@@ -711,5 +705,6 @@ void vgic_v3_put(struct kvm_vcpu *vcpu)
 
 __weak void vgic_v3_sync_nested(struct kvm_vcpu *vcpu) {}
 __weak void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu) {}
+__weak void vgic_v3_create_shadow_state(struct kvm_vcpu *vcpu) {}
 __weak void vgic_v3_load_nested(struct kvm_vcpu *vcpu) {}
 __weak void vgic_v3_put_nested(struct kvm_vcpu *vcpu) {}

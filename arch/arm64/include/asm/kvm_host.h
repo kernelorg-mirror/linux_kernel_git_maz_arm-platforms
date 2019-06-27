@@ -469,10 +469,10 @@ struct kvm_vcpu_arch {
  * for system registers that are never context switched, but only
  * emulated.
  */
-#define __ctxt_sys_reg(c,r)		       \
-	(((r) < SZ_4K) ?		       \
-	 (&(c)->sys_regs[(r)]) :		       \
-	 (&(c)->vncr_array[(r) - SZ_4K]))
+#define __ctxt_sys_reg(c,r)					\
+	(((r) < SZ_4K) ?					\
+	 (&(c)->sys_regs[(r)]) :				\
+	 (&(c)->vncr_array[((r) - SZ_4K) / sizeof(u64)]))
 
 #define ctxt_sys_reg(c,r)	(*__ctxt_sys_reg(c,r))
 	

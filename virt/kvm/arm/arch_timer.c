@@ -805,6 +805,11 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	struct arch_timer_context *hvtimer = vcpu_hvtimer(vcpu);
 	struct arch_timer_context *hptimer = vcpu_hptimer(vcpu);
 
+	vtimer->vcpu = vcpu;
+	ptimer->vcpu = vcpu;
+	hvtimer->vcpu = vcpu;
+	hptimer->vcpu = vcpu;
+
 	/* Synchronize cntvoff across all vtimers of a VM. */
 	update_vtimer_cntvoff(vcpu, kvm_phys_timer_read());
 	timer_set_offset(ptimer, 0);
@@ -838,11 +843,6 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	ptimer->host_timer_irq_flags = host_ptimer_irq_flags;
 	hvtimer->host_timer_irq_flags = host_vtimer_irq_flags;
 	hptimer->host_timer_irq_flags = host_ptimer_irq_flags;
-
-	vtimer->vcpu = vcpu;
-	ptimer->vcpu = vcpu;
-	hvtimer->vcpu = vcpu;
-	hptimer->vcpu = vcpu;
 }
 
 static void kvm_timer_init_interrupt(void *info)

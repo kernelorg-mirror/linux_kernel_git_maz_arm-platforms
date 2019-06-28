@@ -32,7 +32,7 @@ static void __hyp_text __sysreg_save_common_state(struct kvm_cpu_context *ctxt)
 	 * The host arm64 Linux uses sp_el0 to point to 'current' and it must
 	 * therefore be saved/restored on every entry/exit to/from the guest.
 	 */
-	ctxt->gp_regs.regs.sp		= read_sysreg(sp_el0);
+	ctxt->regs.sp			= read_sysreg(sp_el0);
 }
 
 static void __hyp_text __sysreg_save_user_state(struct kvm_cpu_context *ctxt)
@@ -58,9 +58,9 @@ static void __hyp_text __sysreg_save_vel1_state(struct kvm_cpu_context *ctxt)
 	ctxt_sys_reg(ctxt, AMAIR_EL1)	= read_sysreg_el1(SYS_AMAIR);
 	ctxt_sys_reg(ctxt, CNTKCTL_EL1)	= read_sysreg_el1(SYS_CNTKCTL);
 
-	ctxt->gp_regs.sp_el1		= read_sysreg(sp_el1);
-	ctxt->gp_regs.elr_el1		= read_sysreg_el1(SYS_ELR);
-	ctxt->gp_regs.spsr[KVM_SPSR_EL1]= read_sysreg_el1(SYS_SPSR);
+	ctxt->sp_el1			= read_sysreg(sp_el1);
+	ctxt->elr_el1			= read_sysreg_el1(SYS_ELR);
+	ctxt->spsr[KVM_SPSR_EL1]	= read_sysreg_el1(SYS_SPSR);
 }
 
 static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
@@ -133,8 +133,8 @@ static u64 __hyp_text from_hw_pstate(const struct kvm_cpu_context *ctxt)
 
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)
 {
-	ctxt->gp_regs.regs.pc		= read_sysreg_el2(SYS_ELR);
-	ctxt->gp_regs.regs.pstate	= from_hw_pstate(ctxt);
+	ctxt->regs.pc			= read_sysreg_el2(SYS_ELR);
+	ctxt->regs.pstate		= from_hw_pstate(ctxt);
 
 	if (cpus_have_const_cap(ARM64_HAS_RAS_EXTN))
 		ctxt_sys_reg(ctxt, DISR_EL1) = read_sysreg_s(SYS_VDISR_EL2);
@@ -169,7 +169,7 @@ static void __hyp_text __sysreg_restore_common_state(struct kvm_cpu_context *ctx
 	 * The host arm64 Linux uses sp_el0 to point to 'current' and it must
 	 * therefore be saved/restored on every entry/exit to/from the guest.
 	 */
-	write_sysreg(ctxt->gp_regs.regs.sp,	  sp_el0);
+	write_sysreg(ctxt->regs.sp,		  sp_el0);
 }
 
 static void __hyp_text __sysreg_restore_user_state(struct kvm_cpu_context *ctxt)
@@ -281,9 +281,9 @@ static void __hyp_text __sysreg_restore_vel1_state(struct kvm_cpu_context *ctxt)
 	write_sysreg(ctxt_sys_reg(ctxt, PAR_EL1),	par_el1);
 	write_sysreg(ctxt_sys_reg(ctxt, TPIDR_EL1),	tpidr_el1);
 
-	write_sysreg(ctxt->gp_regs.sp_el1,		sp_el1);
-	write_sysreg_el1(ctxt->gp_regs.elr_el1,		SYS_ELR);
-	write_sysreg_el1(ctxt->gp_regs.spsr[KVM_SPSR_EL1],SYS_SPSR);
+	write_sysreg(ctxt->sp_el1,			sp_el1);
+	write_sysreg_el1(ctxt->elr_el1,			SYS_ELR);
+	write_sysreg_el1(ctxt->spsr[KVM_SPSR_EL1],	SYS_SPSR);
 }
 
 static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
@@ -302,7 +302,7 @@ static void __hyp_text __sysreg_restore_el1_state(struct kvm_cpu_context *ctxt)
 /* Read the VCPU state's PSTATE, but translate (v)EL2 to EL1. */
 static u64 __hyp_text to_hw_pstate(const struct kvm_cpu_context *ctxt)
 {
-	u64 mode = ctxt->gp_regs.regs.pstate & PSR_MODE_MASK;
+	u64 mode = ctxt->regs.pstate & PSR_MODE_MASK;
 
 	switch (mode) {
 	case PSR_MODE_EL2t:
@@ -311,7 +311,7 @@ static u64 __hyp_text to_hw_pstate(const struct kvm_cpu_context *ctxt)
 		mode = PSR_MODE_EL1h;
 	}
 
-	return (ctxt->gp_regs.regs.pstate & ~PSR_MODE_MASK) | mode;
+	return (ctxt->regs.pstate & ~PSR_MODE_MASK) | mode;
 }
 
 static void __hyp_text
@@ -334,7 +334,7 @@ __sysreg_restore_el2_return_state(struct kvm_cpu_context *ctxt)
 	if (!(mode & PSR_MODE32_BIT) && mode >= PSR_MODE_EL2t)
 		pstate = PSR_MODE_EL2h | PSR_IL_BIT;
 
-	write_sysreg_el2(ctxt->gp_regs.regs.pc,		SYS_ELR);
+	write_sysreg_el2(ctxt->regs.pc,			SYS_ELR);
 	write_sysreg_el2(pstate,			SYS_SPSR);
 
 	if (cpus_have_const_cap(ARM64_HAS_RAS_EXTN))
@@ -369,7 +369,7 @@ void __hyp_text __sysreg32_save_state(struct kvm_vcpu *vcpu)
 	if (!vcpu_el1_is_32bit(vcpu))
 		return;
 
-	spsr = vcpu->arch.ctxt.gp_regs.spsr;
+	spsr = vcpu->arch.ctxt.spsr;
 	sysreg = vcpu->arch.ctxt.sys_regs;
 
 	spsr[KVM_SPSR_ABT] = read_sysreg(spsr_abt);
@@ -391,7 +391,7 @@ void __hyp_text __sysreg32_restore_state(struct kvm_vcpu *vcpu)
 	if (!vcpu_el1_is_32bit(vcpu))
 		return;
 
-	spsr = vcpu->arch.ctxt.gp_regs.spsr;
+	spsr = vcpu->arch.ctxt.spsr;
 	sysreg = vcpu->arch.ctxt.sys_regs;
 
 	write_sysreg(spsr[KVM_SPSR_ABT], spsr_abt);

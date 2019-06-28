@@ -1826,9 +1826,9 @@ static bool access_spsr(struct kvm_vcpu *vcpu,
 		return false;
 
 	if (p->is_write)
-		vcpu->arch.ctxt.spsr_el1 = p->regval;
+		__vcpu_sys_reg(vcpu, SPSR_EL1) = p->regval;
 	else
-		p->regval = vcpu->arch.ctxt.spsr_el1;
+		p->regval = __vcpu_sys_reg(vcpu, SPSR_EL1);
 
 	return true;
 }

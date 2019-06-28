@@ -1809,9 +1809,9 @@ static bool access_elr(struct kvm_vcpu *vcpu,
 		return false;
 
 	if (p->is_write)
-		vcpu->arch.ctxt.elr_el1 = p->regval;
+		*__vcpu_elr_el1(vcpu) = p->regval;
 	else
-		p->regval = vcpu->arch.ctxt.elr_el1;
+		p->regval = *__vcpu_elr_el1(vcpu);
 
 	return true;
 }

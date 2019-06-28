@@ -1779,11 +1779,10 @@ static bool access_sp_el1(struct kvm_vcpu *vcpu,
 			  struct sys_reg_params *p,
 			  const struct sys_reg_desc *r)
 {
-	/* SP_EL1 is NOT maintained in sys_regs array */
 	if (p->is_write)
-		vcpu->arch.ctxt.sp_el1 = p->regval;
+		__vcpu_sys_reg(vcpu, SP_EL1) = p->regval;
 	else
-		p->regval = vcpu->arch.ctxt.sp_el1;
+		p->regval = __vcpu_sys_reg(vcpu, SP_EL1);
 
 	return true;
 }

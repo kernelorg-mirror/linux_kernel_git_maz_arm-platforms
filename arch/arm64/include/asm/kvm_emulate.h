@@ -165,7 +165,7 @@ static inline unsigned long *vcpu_pc(const struct kvm_vcpu *vcpu)
 
 static inline unsigned long *__vcpu_elr_el1(const struct kvm_vcpu *vcpu)
 {
-	return (unsigned long *)&vcpu->arch.ctxt.elr_el1;
+	return (unsigned long *)__ctxt_sys_reg(&vcpu->arch.ctxt, ELR_EL1);
 }
 
 static inline unsigned long vcpu_read_elr_el1(const struct kvm_vcpu *vcpu)

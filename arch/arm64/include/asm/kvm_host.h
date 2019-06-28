@@ -192,6 +192,7 @@ enum vcpu_sysreg {
 	VNCR(MDSCR_EL1),/* Monitor Debug System Control Register */
 	MDCCINT_EL1,	/* Monitor Debug Comms Channel Interrupt Enable Reg */
 	DISR_EL1,	/* Deferred Interrupt Status Register */
+	VNCR(ELR_EL1),
 
 	/* Performance Monitors Registers */
 	PMCR_EL0,	/* Control Register */
@@ -318,7 +319,6 @@ struct kvm_cpu_context {
 	struct user_pt_regs regs;	/* sp = sp_el0 */
 
 	u64	sp_el1;
-	u64	elr_el1;
 
 	u64	spsr[KVM_NR_SPSR];
 

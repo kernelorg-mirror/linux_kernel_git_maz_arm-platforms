@@ -6,6 +6,7 @@
  * Override timer accessors to be nested-capable on ARMv8.4.
  */
 
+#include <linux/kernel.h>
 #include <linux/kvm_host.h>
 
 u32 timer_get_ctl(struct arch_timer_context *ctxt)
@@ -44,7 +45,7 @@ u64 timer_get_offset(struct arch_timer_context *ctxt)
 	case TIMER_VTIMER:
 		return __vcpu_sys_reg(vcpu, CNTVOFF_EL2);
 	default:
-		return ctxt->cntvoff;
+		return 0;
 	}
 }
 
@@ -55,8 +56,10 @@ void timer_set_ctl(struct arch_timer_context *ctxt, u32 ctl)
 	switch(arch_timer_ctx_index(ctxt)) {
 	case TIMER_VTIMER:
 		__vcpu_sys_reg(vcpu, CNTV_CTL_EL0) = ctl;
+		break;
 	case TIMER_PTIMER:
 		__vcpu_sys_reg(vcpu, CNTP_CTL_EL0) = ctl;
+		break;
 	default:
 		ctxt->cnt_ctl = ctl;
 	}
@@ -69,8 +72,10 @@ void timer_set_cval(struct arch_timer_context *ctxt, u64 cval)
 	switch(arch_timer_ctx_index(ctxt)) {
 	case TIMER_VTIMER:
 		__vcpu_sys_reg(vcpu, CNTV_CVAL_EL0) = cval;
+		break;
 	case TIMER_PTIMER:
 		__vcpu_sys_reg(vcpu, CNTP_CVAL_EL0) = cval;
+		break;
 	default:
 		ctxt->cnt_cval = cval;
 	}
@@ -83,7 +88,8 @@ void timer_set_offset(struct arch_timer_context *ctxt, u64 offset)
 	switch(arch_timer_ctx_index(ctxt)) {
 	case TIMER_VTIMER:
 		__vcpu_sys_reg(vcpu, CNTVOFF_EL2) = offset;
-	default:
 		break;
+	default:
+		WARN(offset, "timer %ld\n", arch_timer_ctx_index(ctxt));
 	}
 }

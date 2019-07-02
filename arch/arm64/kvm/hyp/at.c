@@ -46,7 +46,7 @@ static void __mmu_config_restore(struct mmu_config *config)
 	write_sysreg_el1(config->tcr,	SYS_TCR);
 	write_sysreg_el1(config->sctlr,	SYS_SCTLR);
 	write_sysreg(config->vttbr,	vttbr_el2);
-	write_sysreg(config->vtcr,	vttbr_el2);
+	write_sysreg(config->vtcr,	vtcr_el2);
 	write_sysreg(config->hcr,	hcr_el2);
 
 	isb();

@@ -711,6 +711,7 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 
 void kvm_timer_sync_nested(struct kvm_vcpu *vcpu)
 {
+#ifdef CONFIG_ARM64
 	if (!is_hyp_ctxt(vcpu))
 		return;
 
@@ -744,6 +745,7 @@ void kvm_timer_sync_nested(struct kvm_vcpu *vcpu)
 		timer_emulate(map.emul_vtimer);
 		timer_emulate(map.emul_ptimer);
 	}
+#endif
 }
 
 /*

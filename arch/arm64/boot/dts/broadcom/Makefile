@@ -6,3 +6,4 @@ dtb-$(CONFIG_ARCH_BCM2835) += bcm2837-rpi-3-a-plus.dtb \
 
 subdir-y	+= northstar2
 subdir-y	+= stingray
+subdir-y	+= rpi

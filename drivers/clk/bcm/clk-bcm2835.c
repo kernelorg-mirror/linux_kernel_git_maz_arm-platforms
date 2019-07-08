@@ -2179,10 +2179,7 @@ static int bcm2835_clk_probe(struct platform_device *pdev)
 	for (i = 0; i < asize; i++) {
 		desc = &clk_desc_array[i];
 		if (desc->clk_register && desc->data) {
-			if ((i != BCM2838_CLOCK_EMMC2) ||
-			    of_device_is_compatible(fw_node, "brcm,bcm2838-cprman")) {
-				hws[i] = desc->clk_register(cprman, desc->data);
-			}
+			hws[i] = desc->clk_register(cprman, desc->data);
 		}
 	}
 

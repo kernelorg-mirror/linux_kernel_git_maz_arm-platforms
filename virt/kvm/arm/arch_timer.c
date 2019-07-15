@@ -197,7 +197,8 @@ static u64 kvm_timer_compute_delta(struct arch_timer_context *timer_ctx)
 
 static bool kvm_timer_irq_can_fire(struct arch_timer_context *timer_ctx)
 {
-	WARN_ON(timer_ctx && timer_ctx->loaded);
+	WARN(timer_ctx && timer_ctx->loaded,
+	     "timer %ld loaded\n", arch_timer_ctx_index(timer_ctx));
 	return timer_ctx &&
 		((timer_get_ctl(timer_ctx) &
 		  (ARCH_TIMER_CTRL_IT_MASK | ARCH_TIMER_CTRL_ENABLE)) == ARCH_TIMER_CTRL_ENABLE);
@@ -726,6 +727,7 @@ void kvm_timer_sync_nested(struct kvm_vcpu *vcpu)
 		 * to the VNCR page and let the hardware take care of the
 		 * rest.
 		 */
+//		write_sysreg(__vcpu_sys_reg(vcpu, CNTVOFF_EL2),  cntvoff_el2);
 		write_sysreg_el0(__vcpu_sys_reg(vcpu, CNTV_CTL_EL0),  SYS_CNTV_CTL);
 		write_sysreg_el0(__vcpu_sys_reg(vcpu, CNTV_CVAL_EL0), SYS_CNTV_CVAL);
 		write_sysreg_el0(__vcpu_sys_reg(vcpu, CNTP_CTL_EL0),  SYS_CNTP_CTL);
@@ -849,7 +851,7 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	hptimer->vcpu = vcpu;
 
 	/* Synchronize cntvoff across all vtimers of a VM. */
-	update_vtimer_cntvoff(vcpu, kvm_phys_timer_read());
+	update_vtimer_cntvoff(vcpu, 0);
 	timer_set_offset(ptimer, 0);
 	timer_set_offset(hvtimer, 0);
 	timer_set_offset(hptimer, 0);

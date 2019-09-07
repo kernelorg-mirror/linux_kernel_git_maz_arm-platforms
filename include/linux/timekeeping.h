@@ -276,6 +276,11 @@ extern int get_device_system_crosststamp(
 			struct system_device_crosststamp *xtstamp);
 
 /*
+ * Obtain current monotonic clock and its counter value
+ */
+extern void get_current_counterval(struct system_counterval_t *sc);
+
+/*
  * Simultaneously snapshot realtime and monotonic raw clocks
  */
 extern void ktime_get_snapshot(struct system_time_snapshot *systime_snapshot);

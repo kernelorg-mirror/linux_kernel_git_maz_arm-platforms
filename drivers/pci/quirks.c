@@ -5147,6 +5147,8 @@ static const struct pci_dev_acs_enabled {
 	{ PCI_VENDOR_ID_ZHAOXIN, PCI_ANY_ID, pci_quirk_zhaoxin_pcie_ports_acs },
 	/* Wangxun nics */
 	{ PCI_VENDOR_ID_WANGXUN, PCI_ANY_ID, pci_quirk_wangxun_nic_acs },
+	/* Huawei */
+	{ PCI_VENDOR_ID_HUAWEI, 0x1610, pci_quirk_mf_endpoint_acs },
 	{ 0 }
 };
 

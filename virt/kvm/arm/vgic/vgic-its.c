@@ -354,15 +354,21 @@ static int update_affinity(struct vgic_irq *irq, struct kvm_vcpu *vcpu)
 	raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
 
 	if (irq->hw) {
-		struct its_vlpi_map map;
+		struct its_vlpi_map *map;
 
-		ret = its_get_vlpi(irq->host_irq, &map);
-		if (ret)
+		map = kmalloc(sizeof(*map), GFP_KERNEL);
+		if (!map)
+			return -ENOMEM;
+
+		ret = its_get_vlpi(irq->host_irq, map);
+		if (ret) {
+			kfree(map);
 			return ret;
+		}
 
-		map.vpe = &vcpu->arch.vgic_cpu.vgic_v3.its_vpe;
+		map->vpe = &vcpu->arch.vgic_cpu.vgic_v3.its_vpe;
 
-		ret = its_map_vlpi(irq->host_irq, &map);
+		ret = its_map_vlpi(irq->host_irq, map);
 	}
 
 	return ret;

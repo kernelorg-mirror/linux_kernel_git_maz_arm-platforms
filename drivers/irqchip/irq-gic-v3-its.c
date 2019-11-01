@@ -134,7 +134,6 @@ struct event_lpi_map {
 	int			nr_lpis;
 	raw_spinlock_t		vlpi_lock;
 	struct its_vm		*vm;
-	struct its_vlpi_map	*vlpi_maps;
 	int			nr_vlpis;
 };
 
@@ -152,6 +151,11 @@ struct its_device {
 	u32			nr_ites;
 	u32			device_id;
 	bool			shared;
+	/*
+	 * Notionally in event_map, but placed here for easy
+	 * allocation
+	 */
+	struct its_vlpi_map	*vlpi_maps[0];
 };
 
 static struct {
@@ -213,7 +217,7 @@ static struct its_vlpi_map *dev_event_to_vlpi_map(struct its_device *its_dev,
 	if (WARN_ON_ONCE(event >= its_dev->event_map.nr_lpis))
 		return NULL;
 
-	return &its_dev->event_map.vlpi_maps[event];
+	return its_dev->vlpi_maps[event];
 }
 
 static struct its_collection *irq_to_col(struct irq_data *d)
@@ -1435,25 +1439,17 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 
 	raw_spin_lock(&its_dev->event_map.vlpi_lock);
 
-	if (!its_dev->event_map.vm) {
-		struct its_vlpi_map *maps;
-
-		maps = kcalloc(its_dev->event_map.nr_lpis, sizeof(*maps),
-			       GFP_ATOMIC);
-		if (!maps) {
-			ret = -ENOMEM;
-			goto out;
-		}
-
-		its_dev->event_map.vm = info->map->vm;
-		its_dev->event_map.vlpi_maps = maps;
-	} else if (its_dev->event_map.vm != info->map->vm) {
+	if (its_dev->event_map.vm && its_dev->event_map.vm != info->map->vm) {
 		ret = -EINVAL;
 		goto out;
 	}
 
-	/* Get our private copy of the mapping information */
-	its_dev->event_map.vlpi_maps[event] = *info->map;
+	its_dev->event_map.vm = info->map->vm;
+
+	if (its_dev->vlpi_maps[event] &&
+	    its_dev->vlpi_maps[event] != info->map)
+		kfree(its_dev->vlpi_maps[event]);
+	its_dev->vlpi_maps[event] = info->map;
 
 	if (irqd_is_forwarded_to_vcpu(d)) {
 		/* Already mapped, move it around */
@@ -1532,6 +1528,10 @@ static int its_vlpi_unmap(struct irq_data *d)
 				    LPI_PROP_ENABLED |
 				    LPI_PROP_GROUP1));
 
+	/* Free the mapping data structure */
+	kfree(its_dev->vlpi_maps[event]);
+	its_dev->vlpi_maps[event] = NULL;
+
 	/* Potentially unmap the VM from this ITS */
 	its_unmap_vm(its_dev->its, its_dev->event_map.vm);
 
@@ -1539,10 +1539,8 @@ static int its_vlpi_unmap(struct irq_data *d)
 	 * Drop the refcount and make the device available again if
 	 * this was the last VLPI.
 	 */
-	if (!--its_dev->event_map.nr_vlpis) {
+	if (!--its_dev->event_map.nr_vlpis)
 		its_dev->event_map.vm = NULL;
-		kfree(its_dev->event_map.vlpi_maps);
-	}
 
 out:
 	raw_spin_unlock(&its_dev->event_map.vlpi_lock);
@@ -2568,7 +2566,6 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	if (WARN_ON(!is_power_of_2(nvecs)))
 		nvecs = roundup_pow_of_two(nvecs);
 
-	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
 	/*
 	 * Even if the device wants a single LPI, the ITT must be
 	 * sized as a power of two (and you need at least one bit...).
@@ -2587,6 +2584,8 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 		nr_lpis = 0;
 		lpi_base = 0;
 	}
+
+	dev = kzalloc(sizeof(*dev) + nr_lpis * sizeof_field(typeof(*dev), vlpi_maps), GFP_KERNEL);
 
 	if (!dev || !itt ||  !col_map || (!lpi_map && alloc_lpis)) {
 		kfree(dev);

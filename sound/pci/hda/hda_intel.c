@@ -1348,9 +1348,9 @@ static int azx_free(struct azx *chip)
 	}
 
 	if (bus->chip_init) {
-		azx_stop_chip(chip);
 		azx_clear_irq_pending(chip);
 		azx_stop_all_streams(chip);
+		azx_stop_chip(chip);
 	}
 
 	if (bus->irq >= 0)
@@ -2395,6 +2395,9 @@ static const struct pci_device_id azx_ids[] = {
 	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
 	/* CometLake-H */
 	{ PCI_DEVICE(0x8086, 0x06C8),
+	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
+	/* CometLake-S */
+	{ PCI_DEVICE(0x8086, 0xa3f0),
 	  .driver_data = AZX_DRIVER_SKL | AZX_DCAPS_INTEL_SKYLAKE},
 	/* Icelake */
 	{ PCI_DEVICE(0x8086, 0x34c8),

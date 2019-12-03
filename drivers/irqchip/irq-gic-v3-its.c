@@ -27,6 +27,7 @@
 #include <linux/of_platform.h>
 #include <linux/percpu.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 
 #include <linux/irqchip.h>
@@ -42,6 +43,7 @@
 #define ITS_FLAGS_WORKAROUND_CAVIUM_22375	(1ULL << 1)
 #define ITS_FLAGS_WORKAROUND_CAVIUM_23144	(1ULL << 2)
 #define ITS_FLAGS_SAVE_SUSPEND_STATE		(1ULL << 3)
+#define ITS_FLAGS_SAVE_HIBERNATE_STATE		(1ULL << 4)
 
 #define RDIST_FLAGS_PROPBASE_NEEDS_FLUSHING	(1 << 0)
 #define RDIST_FLAGS_RD_TABLES_PREALLOCATED	(1 << 1)
@@ -3517,8 +3519,16 @@ static int its_save_disable(void)
 	raw_spin_lock(&its_lock);
 	list_for_each_entry(its, &its_nodes, entry) {
 		void __iomem *base;
+		u64 flags;
 
-		if (!(its->flags & ITS_FLAGS_SAVE_SUSPEND_STATE))
+		if (system_entering_hibernation())
+			its->flags |= ITS_FLAGS_SAVE_HIBERNATE_STATE;
+
+		flags = its->flags;
+		flags &= (ITS_FLAGS_SAVE_SUSPEND_STATE |
+			  ITS_FLAGS_SAVE_HIBERNATE_STATE);
+
+		if (!flags)
 			continue;
 
 		base = its->base;
@@ -3559,10 +3569,16 @@ static void its_restore_enable(void)
 	raw_spin_lock(&its_lock);
 	list_for_each_entry(its, &its_nodes, entry) {
 		void __iomem *base;
+		u64 flags;
 		int i;
 
-		if (!(its->flags & ITS_FLAGS_SAVE_SUSPEND_STATE))
+		flags = its->flags;
+		flags &= (ITS_FLAGS_SAVE_SUSPEND_STATE |
+			  ITS_FLAGS_SAVE_HIBERNATE_STATE);
+		if (!flags)
 			continue;
+
+		its->flags &= ~ITS_FLAGS_SAVE_HIBERNATE_STATE;
 
 		base = its->base;
 

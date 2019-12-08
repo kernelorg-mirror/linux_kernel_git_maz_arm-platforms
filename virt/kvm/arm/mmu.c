@@ -1741,9 +1741,30 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 	pfn = gfn_to_pfn_prot(kvm, gfn, write_fault, &writable);
 	if (pfn == KVM_PFN_ERR_HWPOISON) {
-		kvm_send_hwpoison_signal(hva, vma);
-		return 0;
+		/*
+		 * Search for the VMA again, as it may have been
+		 * removed in the interval...
+		 */
+		down_read(&current->mm->mmap_sem);
+		vma = find_vma_intersection(current->mm, hva, hva + 1);
+		if (vma) {
+			/*
+			 * Recheck for a poisoned page. If something changed
+			 * behind our back, don't do a thing and take the
+			 * fault again.
+			 */
+			pfn = gfn_to_pfn_prot(kvm, gfn, write_fault, &writable);
+			if (pfn == KVM_PFN_ERR_HWPOISON)
+				kvm_send_hwpoison_signal(hva, vma);
+
+			ret = 0;
+		} else {
+			ret = -EFAULT;
+		}
+		up_read(&current->mm->mmap_sem);
+		return ret;
 	}
+
 	if (is_error_noslot_pfn(pfn))
 		return -EFAULT;
 

@@ -2035,14 +2035,14 @@ static int kvm_unmap_hva_handler(struct kvm *kvm, gpa_t gpa, u64 size, void *dat
 	return 0;
 }
 
-int kvm_unmap_hva_range(struct kvm *kvm,
-			unsigned long start, unsigned long end)
+int kvm_unmap_hva_range(struct kvm *kvm, const struct mmu_notifier_range *range)
 {
 	if (!kvm->arch.pgd)
 		return 0;
 
-	trace_kvm_unmap_hva_range(start, end);
-	handle_hva_to_gpa(kvm, start, end, &kvm_unmap_hva_handler, NULL);
+	trace_kvm_unmap_hva_range(range->start, range->end);
+	handle_hva_to_gpa(kvm, range->start, range->end,
+			  &kvm_unmap_hva_handler, NULL);
 	return 0;
 }
 

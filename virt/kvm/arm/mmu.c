@@ -1109,7 +1109,8 @@ retry:
 		 * get handled accordingly.
 		 */
 		if (!pmd_thp_or_huge(old_pmd)) {
-			unmap_stage2_range(kvm, addr & S2_PMD_MASK, S2_PMD_SIZE, 0);
+			unmap_stage2_range(kvm, addr & S2_PMD_MASK, S2_PMD_SIZE,
+					   KVM_UNMAP_ELIDE_CMO);
 			goto retry;
 		}
 		/*
@@ -1159,7 +1160,8 @@ retry:
 		 * the range for this block and retry.
 		 */
 		if (!stage2_pud_huge(kvm, old_pud)) {
-			unmap_stage2_range(kvm, addr & S2_PUD_MASK, S2_PUD_SIZE, 0);
+			unmap_stage2_range(kvm, addr & S2_PUD_MASK, S2_PUD_SIZE,
+					   KVM_UNMAP_ELIDE_CMO);
 			goto retry;
 		}
 

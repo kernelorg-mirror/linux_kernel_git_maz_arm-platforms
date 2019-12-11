@@ -1150,7 +1150,8 @@ or its flags may be modified, but it may not be resized.
 Memory for the region is taken starting at the address denoted by the
 field userspace_addr, which must point at user addressable memory for
 the entire memory slot size.  Any object may back this memory, including
-anonymous memory, ordinary files, and hugetlbfs.
+anonymous memory, ordinary files, and hugetlbfs.  It is a programming
+error to unmap the backing memory without deleting the slot first.
 
 It is recommended that the lower 21 bits of guest_phys_addr and userspace_addr
 be identical.  This allows large pages in the guest to be backed by large
@@ -1168,9 +1169,7 @@ the memory region are automatically reflected into the guest.  For example, an
 mmap() that affects the region will be made visible immediately.  Another
 example is madvise(MADV_DROP).
 
-It is recommended to use this API instead of the KVM_SET_MEMORY_REGION ioctl.
-The KVM_SET_MEMORY_REGION does not allow fine grained control over memory
-allocation and is deprecated.
+The KVM_SET_MEMORY_REGION ioctl, which this API replaces, has been removed.
 
 
 4.36 KVM_SET_TSS_ADDR

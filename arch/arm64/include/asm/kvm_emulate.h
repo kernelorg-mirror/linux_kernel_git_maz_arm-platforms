@@ -245,7 +245,7 @@ static inline bool vcpu_mode_el2(const struct kvm_vcpu *vcpu)
 
 static inline bool __vcpu_el2_e2h_is_set(const struct kvm_cpu_context *ctxt)
 {
-	return ctxt->sys_regs[HCR_EL2] & HCR_E2H;
+	return ctxt_sys_reg(ctxt, HCR_EL2) & HCR_E2H;
 }
 
 static inline bool vcpu_el2_e2h_is_set(const struct kvm_vcpu *vcpu)
@@ -255,7 +255,7 @@ static inline bool vcpu_el2_e2h_is_set(const struct kvm_vcpu *vcpu)
 
 static inline bool __vcpu_el2_tge_is_set(const struct kvm_cpu_context *ctxt)
 {
-	return ctxt->sys_regs[HCR_EL2] & HCR_TGE;
+	return ctxt_sys_reg(ctxt, HCR_EL2) & HCR_TGE;
 }
 
 static inline bool vcpu_el2_tge_is_set(const struct kvm_vcpu *vcpu)
@@ -304,7 +304,7 @@ static inline u64 __fixup_spsr_el2_read(const struct kvm_cpu_context *ctxt, u64 
 	 * register has still the value we saved on the last write.
 	 */
 	if ((val & 0xc) == 0)
-		return ctxt->sys_regs[SPSR_EL2];
+		return ctxt_sys_reg(ctxt, SPSR_EL2);
 
 	/*
 	 * Otherwise there was a "local" exception on the CPU,

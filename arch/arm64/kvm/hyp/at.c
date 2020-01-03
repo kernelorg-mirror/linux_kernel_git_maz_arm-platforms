@@ -83,10 +83,10 @@ void __kvm_at_s1e01(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	/* We've trapped, so everything is live on the CPU. */
 	__mmu_config_save(&config);
 
-	write_sysreg_el1(ctxt->sys_regs[TTBR0_EL1],	SYS_TTBR0);
-	write_sysreg_el1(ctxt->sys_regs[TTBR1_EL1],	SYS_TTBR1);
-	write_sysreg_el1(ctxt->sys_regs[TCR_EL1],	SYS_TCR);
-	write_sysreg_el1(ctxt->sys_regs[SCTLR_EL1],	SYS_SCTLR);
+	write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR0_EL1),	SYS_TTBR0);
+	write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR1_EL1),	SYS_TTBR1);
+	write_sysreg_el1(ctxt_sys_reg(ctxt, TCR_EL1),	SYS_TCR);
+	write_sysreg_el1(ctxt_sys_reg(ctxt, SCTLR_EL1),	SYS_SCTLR);
 	write_sysreg(kvm_get_vttbr(mmu),		vttbr_el2);
 	/*
 	 * REVISIT: do we need anything from the guest's VTCR_EL2? If
@@ -122,7 +122,7 @@ skip_mmu_switch:
 
 	isb();
 
-	ctxt->sys_regs[PAR_EL1] = read_sysreg(par_el1);
+	ctxt_sys_reg(ctxt, PAR_EL1) = read_sysreg(par_el1);
 
 	/*
 	 * Failed? let's leave the building now.
@@ -131,7 +131,7 @@ skip_mmu_switch:
 	 * wasn't populated? We may need to perform a SW PTW,
 	 * populating our shadow S2 and retry the instruction.
 	 */
-	if (ctxt->sys_regs[PAR_EL1] & 1)
+	if (ctxt_sys_reg(ctxt, PAR_EL1) & 1)
 		goto nopan;
 
 	/* No PAN? No problem. */
@@ -162,7 +162,7 @@ skip_mmu_switch:
 	 * should return the real fault level.
 	 */
 	if (!(read_sysreg(par_el1) & 1))
-		ctxt->sys_regs[PAR_EL1] = 0x1f;
+		ctxt_sys_reg(ctxt, PAR_EL1) = 0x1f;
 
 nopan:
 	if (!(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
@@ -187,17 +187,17 @@ void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	__mmu_config_save(&config);
 
 	if (vcpu_el2_e2h_is_set(vcpu)) {
-		write_sysreg_el1(ctxt->sys_regs[TTBR0_EL2],	SYS_TTBR0);
-		write_sysreg_el1(ctxt->sys_regs[TTBR1_EL2],	SYS_TTBR1);
-		write_sysreg_el1(ctxt->sys_regs[TCR_EL2],	SYS_TCR);
-		write_sysreg_el1(ctxt->sys_regs[SCTLR_EL2],	SYS_SCTLR);
+		write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR0_EL2),	SYS_TTBR0);
+		write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR1_EL2),	SYS_TTBR1);
+		write_sysreg_el1(ctxt_sys_reg(ctxt, TCR_EL2),	SYS_TCR);
+		write_sysreg_el1(ctxt_sys_reg(ctxt, SCTLR_EL2),	SYS_SCTLR);
 
 		val = config.hcr;
 	} else {
-		write_sysreg_el1(ctxt->sys_regs[TTBR0_EL2],	SYS_TTBR0);
-		write_sysreg_el1(translate_tcr(ctxt->sys_regs[TCR_EL2]),
+		write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR0_EL2),	SYS_TTBR0);
+		write_sysreg_el1(translate_tcr(ctxt_sys_reg(ctxt, TCR_EL2)),
 				 SYS_TCR);
-		write_sysreg_el1(translate_sctlr(ctxt->sys_regs[SCTLR_EL2]),
+		write_sysreg_el1(translate_sctlr(ctxt_sys_reg(ctxt, SCTLR_EL2)),
 				 SYS_SCTLR);
 
 		val = config.hcr | HCR_NV | HCR_NV1;
@@ -224,7 +224,7 @@ void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	isb();
 
 	/* FIXME: handle failed translation due to shadow S2 */
-	ctxt->sys_regs[PAR_EL1] = read_sysreg(par_el1);
+	ctxt_sys_reg(ctxt, PAR_EL1) = read_sysreg(par_el1);
 
 	__mmu_config_restore(&config);
 	spin_unlock(&vcpu->kvm->mmu_lock);

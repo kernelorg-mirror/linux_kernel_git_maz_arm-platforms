@@ -95,6 +95,26 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 	vcpu_write_sys_reg(vcpu, esr, ESR_EL1);
 }
 
+static bool __inject_prologue(struct kvm_vcpu *vcpu)
+{
+	preempt_disable();
+	if (vcpu->cpu != -1) {
+		kvm_arch_vcpu_put(vcpu);
+		return true;
+	}
+
+	preempt_enable();
+	return false;
+}
+
+static void __inject_epilogue(struct kvm_vcpu *vcpu, bool loaded)
+{
+	if (loaded) {
+		kvm_arch_vcpu_load(vcpu, smp_processor_id());
+		preempt_enable();
+	}
+}
+
 /**
  * kvm_inject_dabt - inject a data abort into the guest
  * @vcpu: The VCPU to receive the data abort
@@ -105,10 +125,14 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
  */
 void kvm_inject_dabt(struct kvm_vcpu *vcpu, unsigned long addr)
 {
+	bool loaded = __inject_prologue(vcpu);
+
 	if (vcpu_el1_is_32bit(vcpu))
 		kvm_inject_dabt32(vcpu, addr);
 	else
 		inject_abt64(vcpu, false, addr);
+
+	__inject_epilogue(vcpu, loaded);
 }
 
 /**
@@ -121,10 +145,14 @@ void kvm_inject_dabt(struct kvm_vcpu *vcpu, unsigned long addr)
  */
 void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr)
 {
+	bool loaded = __inject_prologue(vcpu);
+
 	if (vcpu_el1_is_32bit(vcpu))
 		kvm_inject_pabt32(vcpu, addr);
 	else
 		inject_abt64(vcpu, true, addr);
+
+	__inject_epilogue(vcpu, loaded);
 }
 
 /**
@@ -135,10 +163,14 @@ void kvm_inject_pabt(struct kvm_vcpu *vcpu, unsigned long addr)
  */
 void kvm_inject_undefined(struct kvm_vcpu *vcpu)
 {
+	bool loaded = __inject_prologue(vcpu);
+
 	if (vcpu_el1_is_32bit(vcpu))
 		kvm_inject_undef32(vcpu);
 	else
 		inject_undef64(vcpu);
+
+	__inject_epilogue(vcpu, loaded);
 }
 
 void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 esr)

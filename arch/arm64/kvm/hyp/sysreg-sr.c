@@ -109,32 +109,12 @@ static void __hyp_text __sysreg_save_el1_state(struct kvm_cpu_context *ctxt)
 		__sysreg_save_vel1_state(ctxt);
 }
 
-static u64 __hyp_text from_hw_pstate(const struct kvm_cpu_context *ctxt)
-{
-	u64 reg = read_sysreg_el2(SYS_SPSR);
-
-	if (__is_hyp_ctxt(ctxt)) {
-		u64 mode = reg & (PSR_MODE_MASK | PSR_MODE32_BIT);
-
-		switch (mode) {
-		case PSR_MODE_EL1t:
-			mode = PSR_MODE_EL2t;
-			break;
-		case PSR_MODE_EL1h:
-			mode = PSR_MODE_EL2h;
-			break;
-		}
-
-		return (reg & ~(PSR_MODE_MASK | PSR_MODE32_BIT)) | mode;
-	}
-
-	return reg;
-}
-
 static void __hyp_text __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)
 {
+	/* On VHE, PSTATE is saved in fixup_guest_exit() */
+	if (!has_vhe())
+		ctxt->regs.pstate 	= read_sysreg_el2(SYS_SPSR);
 	ctxt->regs.pc			= read_sysreg_el2(SYS_ELR);
-	ctxt->regs.pstate		= from_hw_pstate(ctxt);
 
 	if (cpus_have_const_cap(ARM64_HAS_RAS_EXTN))
 		ctxt_sys_reg(ctxt, DISR_EL1) = read_sysreg_s(SYS_VDISR_EL2);

@@ -95,6 +95,35 @@ void access_nested_id_reg(struct kvm_vcpu *v, struct sys_reg_params *p,
 		break;
 
 	case SYS_ID_AA64MMFR0_EL1:
+		/* Hide unsupported S2 page sizes */
+		switch (PAGE_SIZE) {
+		case SZ_64K:
+			val &= ~FEATURE(ID_AA64MMFR0_TGRAN16_2);
+			val |= FIELD_PREP(FEATURE(ID_AA64MMFR0_TGRAN16_2), 0b0001);
+			/* Fall through */
+		case SZ_16K:
+			val &= ~FEATURE(ID_AA64MMFR0_TGRAN4_2);
+			val |= FIELD_PREP(FEATURE(ID_AA64MMFR0_TGRAN4_2), 0b0001);
+			/* Fall through */
+		case SZ_4K:
+			/* Support everything */
+			break;
+		}
+		/* Advertize supported S2 page sizes */
+		switch (PAGE_SIZE) {
+		case SZ_4K:
+			val &= ~FEATURE(ID_AA64MMFR0_TGRAN4_2);
+			val |= FIELD_PREP(FEATURE(ID_AA64MMFR0_TGRAN4_2), 0b0010);
+			/* Fall through */
+		case SZ_16K:
+			val &= ~FEATURE(ID_AA64MMFR0_TGRAN16_2);
+			val |= FIELD_PREP(FEATURE(ID_AA64MMFR0_TGRAN16_2), 0b0010);
+			/* Fall through */
+		case SZ_64K:
+			val &= ~FEATURE(ID_AA64MMFR0_TGRAN64_2);
+			val |= FIELD_PREP(FEATURE(ID_AA64MMFR0_TGRAN64_2), 0b0010);
+			break;
+		}
 		/* Cap PARange to 40bits */
 		tmp = FIELD_GET(FEATURE(ID_AA64MMFR0_PARANGE), val);
 		if (tmp > 0b0010) {

@@ -609,8 +609,45 @@ static bool __hyp_text __hyp_handle_ptrauth(struct kvm_vcpu *vcpu)
  * the guest, false when we should restore the host state and return to the
  * main run loop.
  */
-static bool __hyp_text fixup_guest_exit(struct kvm_vcpu *vcpu, u64 *exit_code)
+static bool __hyp_text fixup_guest_exit(struct kvm_vcpu *vcpu, u64 *exit_code,
+					bool hyp_ctxt)
 {
+	/*
+	 * Sync pstate back as early as possible, so that is_hyp_ctxt()
+	 * reflects the exact context. It is otherwise possible to get
+	 * confused with a VHE guest and ARMv8.4-NV, such as:
+	 *
+	 * (1) enter guest in host EL0
+	 * (2) guest traps to guest vEL2 (no hypervisor intervention)
+	 * (3) guest clears virtual HCR_EL2.TGE (no trap either)
+	 * (4) host interrupt fires, exit
+	 * (5) is_hyp_ctxt() now says "guest" (pstate.M==EL1 and TGE==0)
+	 *
+	 * If host preemption occurs, vcpu_load/put() will be very confused.
+	 * This of course only matters to VHE.
+	 */
+
+	if (has_vhe()) {
+		u64 pstate = read_sysreg_el2(SYS_SPSR);
+
+		if (unlikely(hyp_ctxt)) {
+			u64 mode = pstate & PSR_MODE_MASK;
+
+			switch (mode) {
+			case PSR_MODE_EL1t:
+				mode = PSR_MODE_EL2t;
+				break;
+			case PSR_MODE_EL1h:
+				mode = PSR_MODE_EL2h;
+				break;
+			}
+
+			pstate = (pstate & ~PSR_MODE_MASK) | mode;
+		}
+
+		*vcpu_cpsr(vcpu) = pstate;
+	}
+
 	if (ARM_EXCEPTION_CODE(*exit_code) != ARM_EXCEPTION_IRQ)
 		vcpu->arch.fault.esr_el2 = read_sysreg_el2(SYS_ESR);
 
@@ -758,6 +795,7 @@ static int __kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 	struct kvm_cpu_context *host_ctxt;
 	struct kvm_cpu_context *guest_ctxt;
 	u64 exit_code;
+	bool hyp_ctxt;
 
 	host_ctxt = &__hyp_this_cpu_ptr(kvm_host_data)->host_ctxt;
 	host_ctxt->__hyp_running_vcpu = vcpu;
@@ -784,12 +822,19 @@ static int __kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 
 	__set_guest_arch_workaround_state(vcpu);
 
+	/*
+	 * Being in HYP context or not is an invariant here. If we enter in
+	 * a given context, we exit in the same context. We can thus only
+	 * sample the context once.
+	 */
+	WRITE_ONCE(hyp_ctxt, is_hyp_ctxt(vcpu));
+
 	do {
 		/* Jump in the fire! */
 		exit_code = __guest_enter(vcpu, host_ctxt);
 
 		/* And we're baaack! */
-	} while (fixup_guest_exit(vcpu, &exit_code));
+	} while (fixup_guest_exit(vcpu, &exit_code, READ_ONCE(hyp_ctxt)));
 
 	__set_host_arch_workaround_state(vcpu);
 
@@ -898,7 +943,7 @@ int __hyp_text __kvm_vcpu_run_nvhe(struct kvm_vcpu *vcpu)
 		exit_code = __guest_enter(vcpu, host_ctxt);
 
 		/* And we're baaack! */
-	} while (fixup_guest_exit(vcpu, &exit_code));
+	} while (fixup_guest_exit(vcpu, &exit_code, false));
 
 	__set_host_arch_workaround_state(vcpu);
 

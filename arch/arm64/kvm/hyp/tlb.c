@@ -278,7 +278,8 @@ void __hyp_text __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_enc
 	dsb(ishst);
 
 	/* Switch to requested VMID */
-	__tlb_switch_to_guest(mmu, &cxt);
+	if (mmu)
+		__tlb_switch_to_guest(mmu, &cxt);
 
 	/*
 	 * Execute the same instruction as the guest hypervisor did,
@@ -317,5 +318,6 @@ void __hyp_text __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_enc
 	dsb(ish);
 	isb();
 
-	__tlb_switch_to_host(mmu, &cxt);
+	if (mmu)
+		__tlb_switch_to_host(mmu, &cxt);
 }

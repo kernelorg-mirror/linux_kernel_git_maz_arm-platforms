@@ -1305,8 +1305,6 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 	return true;
 }
 
-#define FEATURE(x)	(GENMASK_ULL(x##_SHIFT + 3, x##_SHIFT))
-
 /* Read a sanitised cpufeature ID register by sys_reg_desc */
 static u64 read_id_reg(const struct kvm_vcpu *vcpu,
 		struct sys_reg_desc const *r, bool raz)
@@ -1316,6 +1314,10 @@ static u64 read_id_reg(const struct kvm_vcpu *vcpu,
 
 	switch (id) {
 	case SYS_ID_AA64PFR0_EL1:
+		if (nested_virt_in_use(vcpu)) {
+			val &= ~FEATURE(ID_AA64PFR0_EL3);
+			val |= FIELD_PREP(FEATURE(ID_AA64PFR0_EL3), ID_AA64PFR0_EL1_64BIT_ONLY);
+		}
 		if (!vcpu_has_sve(vcpu))
 			val &= ~FEATURE(ID_AA64PFR0_SVE);
 		val &= ~FEATURE(ID_AA64PFR0_AMU);
@@ -1388,8 +1390,10 @@ static bool access_id_reg(struct kvm_vcpu *vcpu,
 			  const struct sys_reg_desc *r)
 {
 	bool raz = sysreg_visible_as_raz(vcpu, r);
+	bool ret = __access_id_reg(vcpu, p, r, raz);
 
-	return __access_id_reg(vcpu, p, r, raz);
+	access_nested_id_reg(vcpu, p, r);
+	return ret;
 }
 
 static bool access_raz_id_reg(struct kvm_vcpu *vcpu,

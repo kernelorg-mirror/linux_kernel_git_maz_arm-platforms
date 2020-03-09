@@ -43,6 +43,7 @@
 #define ITS_FLAGS_WORKAROUND_CAVIUM_22375	(1ULL << 1)
 #define ITS_FLAGS_WORKAROUND_CAVIUM_23144	(1ULL << 2)
 #define ITS_FLAGS_SAVE_SUSPEND_STATE		(1ULL << 3)
+#define ITS_FLAGS_WORKAROUND_HISI_161600803		(1ULL << 4)
 
 #define RDIST_FLAGS_PROPBASE_NEEDS_FLUSHING	(1 << 0)
 #define RDIST_FLAGS_RD_TABLES_PREALLOCATED	(1 << 1)
@@ -1284,6 +1285,9 @@ static void its_send_vmapp(struct its_node *its,
 	its_send_single_vcommand(its, its_build_vmapp_cmd, &desc);
 }
 
+static void its_vmovp_quirk_prologue(struct its_node *its, struct its_vpe *vpe);
+static void its_vmovp_quirk_epilogue(struct its_node *its, struct its_vpe *vpe);
+
 static void its_send_vmovp(struct its_vpe *vpe)
 {
 	struct its_cmd_desc desc = {};
@@ -1321,8 +1325,10 @@ static void its_send_vmovp(struct its_vpe *vpe)
 		if (!require_its_list_vmovp(vpe->its_vm, its))
 			continue;
 
+		its_vmovp_quirk_prologue(its, vpe);
 		desc.its_vmovp_cmd.col = &its->collections[col_id];
 		its_send_single_vcommand(its, its_build_vmovp_cmd, &desc);
+		its_vmovp_quirk_epilogue(its, vpe);
 	}
 
 	raw_spin_unlock_irqrestore(&vmovp_lock, flags);
@@ -3642,6 +3648,111 @@ static void its_vpe_db_proxy_move(struct its_vpe *vpe, int from, int to)
 
 	raw_spin_unlock_irqrestore(&vpe_proxy.lock, flags);
 }
+
+#ifdef CONFIG_HISILICON_ERRATUM_161600803
+static void update_vlpis_dev(struct its_device *its_dev, struct its_vpe *vpe,
+			     bool disable)
+{
+	int i;
+
+	/*
+	 * We don't need to take the per-device VLPI lock, as we
+	 * already hold the vPE rwlock, which ensure that a new
+	 * mapping cannot be established for this vPE.
+	 *
+	 * An unmap can still happen in parallel, but that's not a
+	 * problem as it won't be able to free the VPE from this ITS,
+	 * as we hold the VMOVP lock (HIP07 uses the ITS list).
+	 */
+	for (i = 0; i < its_dev->event_map.nr_lpis; i++) {
+		struct its_vlpi_map *map = dev_event_to_vlpi_map(its_dev, i);
+		u8 *cfg;
+
+		if (!map->vm)
+			continue;
+		if (map->vpe != vpe)
+			continue;
+
+		cfg = page_address(map->vm->vprop_page);
+		cfg += map->vintid - 8192;
+
+		if (disable)
+			*cfg &= ~LPI_PROP_ENABLED;
+		else
+			*cfg = map->properties;
+
+		if (gic_rdists->flags & RDIST_FLAGS_PROPBASE_NEEDS_FLUSHING)
+			gic_flush_dcache_to_poc(cfg, sizeof(*cfg));
+		else
+			dsb(ishst);
+	}
+}
+
+static void update_vlpis(struct its_node *its, struct its_vpe *vpe,
+			 bool disable)
+{
+	struct its_device *its_dev;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(its_dev, &its->its_device_list, entry) {
+		if (its_dev->event_map.vm == vpe->its_vm)
+			update_vlpis_dev(its_dev, vpe, disable);
+	}
+	rcu_read_unlock();
+}
+
+static void its_vmovp_quirk_prologue(struct its_node *its, struct its_vpe *vpe)
+{
+	/*
+	 * Rule of the game for HISI_161600803:
+	 *
+	 * If a vLPI targetting a certain vPE is forwarded to the
+	 * vPE whilst it is being VMOVP'd to another RD, the ITS
+	 * is likely to lock up.
+	 *
+	 * On VMOVP:
+	 *
+	 * - Mark all vLPIs mapped to this vPE as disabled
+	 * - Issue a VINVALL
+	 * - Issue the VMOVP, knowing that no new vLPI will be
+	 *   forwarded, but marked pending instead
+	 * - Restore the vLPI configurations
+	 * - Issue a VINVALL
+	 *
+	 * During this sequence, we forbid:
+	 *
+	 * - VMOVI, as it could result in either a vLPI firing in
+	 *   the critical section (not disabled), or in a vLPI not
+	 *   firing anymore (not re-enabled).
+	 *
+	 * - VMAPI/VMAPTI, as it could result in a new vLPI firing in
+	 *   the critical section.
+	 *
+	 * - Property update, as they could enable a disabled vLPI in
+	 *   the critical section.
+	 */
+	if (its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803) {
+		update_vlpis(its, vpe, true);
+		its_send_vinvall(its, vpe);
+	}
+}
+
+static void its_vmovp_quirk_epilogue(struct its_node *its, struct its_vpe *vpe)
+{
+	if (its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803) {
+		update_vlpis(its, vpe, false);
+		its_send_vinvall(its, vpe);
+	}
+}
+#else
+static void its_vmovp_quirk_prologue(struct its_node *its, struct its_vpe *vpe)
+{
+}
+
+static void its_vmovp_quirk_epilogue(struct its_node *its, struct its_vpe *vpe)
+{
+}
+#endif
 
 static int its_vpe_set_affinity(struct irq_data *d,
 				const struct cpumask *mask_val,

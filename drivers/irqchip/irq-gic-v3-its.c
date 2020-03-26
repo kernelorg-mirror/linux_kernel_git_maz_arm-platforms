@@ -3084,21 +3084,14 @@ static void its_cpu_init_collections(void)
 
 static struct its_device *its_find_device(struct its_node *its, u32 dev_id)
 {
-	struct its_device *its_dev = NULL, *tmp;
-	unsigned long flags;
-
-	raw_spin_lock_irqsave(&its->lock, flags);
+	struct its_device *tmp;
 
 	list_for_each_entry(tmp, &its->its_device_list, entry) {
-		if (tmp->device_id == dev_id) {
-			its_dev = tmp;
-			break;
-		}
+		if (tmp->device_id == dev_id)
+			return tmp;
 	}
 
-	raw_spin_unlock_irqrestore(&its->lock, flags);
-
-	return its_dev;
+	return NULL;
 }
 
 static struct its_baser *its_get_baser(struct its_node *its, u32 type)
@@ -3214,7 +3207,7 @@ static bool its_alloc_vpe_table(u32 vpe_id)
 static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 					    int nvecs, bool alloc_lpis)
 {
-	struct its_device *dev;
+	struct its_device *dev, tmp;
 	unsigned long *lpi_map = NULL;
 	unsigned long flags;
 	u16 *col_map = NULL;
@@ -3251,12 +3244,24 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	}
 
 	if (!dev || !itt ||  !col_map || (!lpi_map && alloc_lpis)) {
-		kfree(dev);
-		kfree(itt);
-		if (lpi_map)
-			its_lpi_free(lpi_map, lpi_base, nr_lpis);
-		kfree(col_map);
-		return NULL;
+		tmp = NULL;
+		goto no_new_dev;
+	}
+
+	raw_spin_lock_irqsave(&its->lock, flags);
+
+	tmp = its_find_device(its, dev_id);
+	if (tmp) {
+		/*
+		 * We already have seen this ID, probably through
+		 * another alias (PCI bridge of some sort). No need to
+		 * create the device.
+		 */
+		tmp->shared = true;
+		raw_spin_unlock_irqrestore(&its->lock, flags);
+		pr_debug("Reusing ITT for devID %x\n", dev_id);
+
+		goto no_new_dev;
 	}
 
 	gic_flush_dcache_to_poc(itt, sz);
@@ -3272,7 +3277,6 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	dev->device_id = dev_id;
 	INIT_LIST_HEAD(&dev->entry);
 
-	raw_spin_lock_irqsave(&its->lock, flags);
 	list_add(&dev->entry, &its->its_device_list);
 	raw_spin_unlock_irqrestore(&its->lock, flags);
 
@@ -3280,6 +3284,15 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	its_send_mapd(dev, 1);
 
 	return dev;
+
+no_new_dev:
+	kfree(dev);
+	kfree(itt);
+	if (lpi_map)
+		its_lpi_free(lpi_map, lpi_base, nr_lpis);
+	kfree(col_map);
+
+	return tmp;
 }
 
 static void its_free_device(struct its_device *its_dev)
@@ -3341,17 +3354,6 @@ static int its_msi_prepare(struct irq_domain *domain, struct device *dev,
 	}
 
 	mutex_lock(&its->dev_alloc_lock);
-	its_dev = its_find_device(its, dev_id);
-	if (its_dev) {
-		/*
-		 * We already have seen this ID, probably through
-		 * another alias (PCI bridge of some sort). No need to
-		 * create the device.
-		 */
-		its_dev->shared = true;
-		pr_debug("Reusing ITT for devID %x\n", dev_id);
-		goto out;
-	}
 
 	its_dev = its_create_device(its, dev_id, nvec, true);
 	if (!its_dev) {

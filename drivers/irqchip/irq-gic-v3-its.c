@@ -88,9 +88,10 @@ struct its_device;
  * top-level MSI domain, the command queue, the collections, and the
  * list of devices writing to it.
  *
- * dev_alloc_lock has to be taken for device allocations, while the
- * spinlock must be taken to parse data structures such as the device
- * list.
+ * dev_alloc_lock has to be taken for device allocations, and the
+ * device list must otherwise be parsed using the RCU read-side lock.
+ *
+ * The spin_lock  is used to protect the command queue.
  */
 struct its_node {
 	raw_spinlock_t		lock;
@@ -159,6 +160,7 @@ struct event_lpi_map {
  */
 struct its_device {
 	struct list_head	entry;
+	struct rcu_head		rcu_head;
 	struct its_node		*its;
 	struct event_lpi_map	event_map;
 	void			*itt;
@@ -3207,15 +3209,27 @@ static bool its_alloc_vpe_table(u32 vpe_id)
 static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 					    int nvecs, bool alloc_lpis)
 {
-	struct its_device *dev, tmp;
+	struct its_device *dev, *tmp;
 	unsigned long *lpi_map = NULL;
-	unsigned long flags;
 	u16 *col_map = NULL;
 	void *itt;
 	int lpi_base;
 	int nr_lpis;
 	int nr_ites;
 	int sz;
+
+	dev = its_find_device(its, dev_id);
+	if (dev) {
+		/*
+		 * We already have seen this ID, probably through
+		 * another alias (PCI bridge of some sort). No need to
+		 * create the device.
+		 */
+		dev->shared = true;
+		pr_debug("Reusing ITT for devID %x\n", dev_id);
+
+		return dev;
+	}
 
 	if (!its_alloc_device_table(its, dev_id))
 		return NULL;
@@ -3248,22 +3262,6 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 		goto no_new_dev;
 	}
 
-	raw_spin_lock_irqsave(&its->lock, flags);
-
-	tmp = its_find_device(its, dev_id);
-	if (tmp) {
-		/*
-		 * We already have seen this ID, probably through
-		 * another alias (PCI bridge of some sort). No need to
-		 * create the device.
-		 */
-		tmp->shared = true;
-		raw_spin_unlock_irqrestore(&its->lock, flags);
-		pr_debug("Reusing ITT for devID %x\n", dev_id);
-
-		goto no_new_dev;
-	}
-
 	gic_flush_dcache_to_poc(itt, sz);
 
 	dev->its = its;
@@ -3277,8 +3275,8 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	dev->device_id = dev_id;
 	INIT_LIST_HEAD(&dev->entry);
 
-	list_add(&dev->entry, &its->its_device_list);
-	raw_spin_unlock_irqrestore(&its->lock, flags);
+	list_add_rcu(&dev->entry, &its->its_device_list);
+	synchronize_rcu();
 
 	/* Map device to its ITT */
 	its_send_mapd(dev, 1);
@@ -3292,16 +3290,13 @@ no_new_dev:
 		its_lpi_free(lpi_map, lpi_base, nr_lpis);
 	kfree(col_map);
 
-	return tmp;
+	return NULL;
 }
 
-static void its_free_device(struct its_device *its_dev)
+static void its_free_device_rcu(struct rcu_head *head)
 {
-	unsigned long flags;
+	struct its_device *its_dev = container_of(head, struct its_device, rcu_head);
 
-	raw_spin_lock_irqsave(&its_dev->its->lock, flags);
-	list_del(&its_dev->entry);
-	raw_spin_unlock_irqrestore(&its_dev->its->lock, flags);
 	kfree(its_dev->event_map.col_map);
 	kfree(its_dev->itt);
 	kfree(its_dev);
@@ -3503,10 +3498,16 @@ static void its_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 
 		/* Unmap device/itt */
 		its_send_mapd(its_dev, 0);
-		its_free_device(its_dev);
+
+		list_del_rcu(&its_dev->entry);
+	} else {
+		its_dev = NULL;
 	}
 
 	mutex_unlock(&its->dev_alloc_lock);
+
+	if (its_dev)
+		call_rcu(&its_dev->rcu_head, its_free_device_rcu);
 
 	irq_domain_free_irqs_parent(domain, virq, nr_irqs);
 }

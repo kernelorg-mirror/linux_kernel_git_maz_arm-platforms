@@ -252,15 +252,26 @@ static struct its_vlpi_map *get_vlpi_map(struct irq_data *d)
 	return NULL;
 }
 
-static int vpe_to_cpuid_lock(struct its_vpe *vpe, unsigned long *flags)
+#define VPE_LOCK_READ		0
+#define VPE_LOCK_WRITE		1
+
+static int vpe_to_cpuid_lock(struct its_vpe *vpe, int reason,
+			     unsigned long *flags)
 {
-	raw_spin_lock_irqsave(&vpe->vpe_lock, *flags);
+	if (likely(reason == VPE_LOCK_READ))
+		read_lock_irqsave(&vpe->vpe_rwlock, *flags);
+	else
+		write_lock_irqsave(&vpe->vpe_rwlock, *flags);
 	return vpe->col_idx;
 }
 
-static void vpe_to_cpuid_unlock(struct its_vpe *vpe, unsigned long flags)
+static void vpe_to_cpuid_unlock(struct its_vpe *vpe, int reason,
+				unsigned long flags)
 {
-	raw_spin_unlock_irqrestore(&vpe->vpe_lock, flags);
+	if (likely(reason == VPE_LOCK_READ))
+		read_unlock_irqrestore(&vpe->vpe_rwlock, flags);
+	else
+		write_unlock_irqrestore(&vpe->vpe_rwlock, flags);
 }
 
 static int irq_to_cpuid_lock(struct irq_data *d, unsigned long *flags)
@@ -269,7 +280,7 @@ static int irq_to_cpuid_lock(struct irq_data *d, unsigned long *flags)
 	int cpu;
 
 	if (map) {
-		cpu = vpe_to_cpuid_lock(map->vpe, flags);
+		cpu = vpe_to_cpuid_lock(map->vpe, VPE_LOCK_READ, flags);
 	} else {
 		/* Physical LPIs are already locked via the irq_desc lock */
 		struct its_device *its_dev = irq_data_get_irq_chip_data(d);
@@ -286,7 +297,7 @@ static void irq_to_cpuid_unlock(struct irq_data *d, unsigned long flags)
 	struct its_vlpi_map *map = get_vlpi_map(d);
 
 	if (map)
-		vpe_to_cpuid_unlock(map->vpe, flags);
+		vpe_to_cpuid_unlock(map->vpe, VPE_LOCK_READ, flags);
 }
 
 static struct its_collection *valid_col(struct its_collection *col)
@@ -3653,7 +3664,7 @@ static int its_vpe_set_affinity(struct irq_data *d,
 	 * during the update, hence the lock below which must also be
 	 * taken on any vLPI handling path that evaluates vpe->col_idx.
 	 */
-	from = vpe_to_cpuid_lock(vpe, &flags);
+	from = vpe_to_cpuid_lock(vpe, VPE_LOCK_WRITE, &flags);
 	if (from == cpu)
 		goto out;
 
@@ -3672,7 +3683,7 @@ static int its_vpe_set_affinity(struct irq_data *d,
 
 out:
 	irq_data_update_effective_affinity(d, cpumask_of(cpu));
-	vpe_to_cpuid_unlock(vpe, flags);
+	vpe_to_cpuid_unlock(vpe, VPE_LOCK_WRITE, flags);
 
 	return IRQ_SET_MASK_OK_DONE;
 }
@@ -4107,7 +4118,7 @@ static int its_sgi_get_irqchip_state(struct irq_data *d,
 	 * - Concurrent VSGIPENDR access: As it involves accessing two
 	 *   MMIO registers, this must be made atomic one way or another.
 	 */
-	cpu = vpe_to_cpuid_lock(vpe, &flags);
+	cpu = vpe_to_cpuid_lock(vpe, VPE_LOCK_READ, &flags);
 	raw_spin_lock(&gic_data_rdist_cpu(cpu)->rd_lock);
 	base = gic_data_rdist_cpu(cpu)->rd_base + SZ_128K;
 	writel_relaxed(vpe->vpe_id, base + GICR_VSGIR);
@@ -4127,7 +4138,7 @@ static int its_sgi_get_irqchip_state(struct irq_data *d,
 
 out:
 	raw_spin_unlock(&gic_data_rdist_cpu(cpu)->rd_lock);
-	vpe_to_cpuid_unlock(vpe, flags);
+	vpe_to_cpuid_unlock(vpe, VPE_LOCK_READ, flags);
 
 	if (!count)
 		return -ENXIO;
@@ -4262,7 +4273,7 @@ static int its_vpe_init(struct its_vpe *vpe)
 		return -ENOMEM;
 	}
 
-	raw_spin_lock_init(&vpe->vpe_lock);
+	rwlock_init(&vpe->vpe_rwlock);
 	vpe->vpe_id = vpe_id;
 	vpe->vpt_page = vpt_page;
 	if (gic_rdists->has_rvpeid)

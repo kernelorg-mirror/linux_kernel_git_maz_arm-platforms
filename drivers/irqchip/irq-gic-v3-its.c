@@ -3253,7 +3253,8 @@ static struct its_device *its_create_device(struct its_node *its, u32 dev_id,
 	if (!dev || !itt ||  !col_map || (!lpi_map && alloc_lpis)) {
 		kfree(dev);
 		kfree(itt);
-		kfree(lpi_map);
+		if (lpi_map)
+			its_lpi_free(lpi_map, lpi_base, nr_lpis);
 		kfree(col_map);
 		return NULL;
 	}

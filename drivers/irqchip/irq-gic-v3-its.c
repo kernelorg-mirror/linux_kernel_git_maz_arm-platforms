@@ -1395,7 +1395,7 @@ static void its_send_invdb(struct its_node *its, struct its_vpe *vpe)
 /*
  * irqchip functions - assumes MSI, mostly.
  */
-static void lpi_write_config(struct irq_data *d, u8 clr, u8 set)
+static void __lpi_write_config(struct irq_data *d, u8 clr, u8 set)
 {
 	struct its_vlpi_map *map = get_vlpi_map(d);
 	irq_hw_number_t hwirq;
@@ -1427,6 +1427,35 @@ static void lpi_write_config(struct irq_data *d, u8 clr, u8 set)
 		gic_flush_dcache_to_poc(cfg, sizeof(*cfg));
 	else
 		dsb(ishst);
+}
+
+static void lpi_write_config(struct irq_data *d, u8 clr, u8 set)
+{
+	unsigned long flags = 0;
+
+	/*
+	 * Another layer of ugliness thanks to HISI_161600803:
+	 *
+	 * We need to prevent any change to the virtual property table
+	 * whilst a VMOVP is in progress, so that no new interrupt can be
+	 * delivered in the critical section. Taking the vPE rwlock as a
+	 * reader is enough to avoid the deadlock.
+	 */
+	if (irqd_is_forwarded_to_vcpu(d)) {
+		struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803)
+			irq_to_cpuid_lock(d, &flags);
+	}
+
+	__lpi_write_config(d, clr, set);
+
+	if (irqd_is_forwarded_to_vcpu(d)) {
+		struct its_device *its_dev = irq_data_get_irq_chip_data(d);
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803)
+			irq_to_cpuid_unlock(d, flags);
+	}
 }
 
 static void wait_for_syncr(void __iomem *rdbase)
@@ -1775,7 +1804,7 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 		irqd_set_forwarded_to_vcpu(d);
 
 		/* Write out the property to the prop table */
-		lpi_write_config(d, 0xff, info->map->properties);
+		__lpi_write_config(d, 0xff, info->map->properties);
 
 		/* Drop the physical mapping */
 		its_send_discard(its_dev, event);

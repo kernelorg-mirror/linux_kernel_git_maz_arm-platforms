@@ -748,6 +748,18 @@ config HISILICON_ERRATUM_161600802
 
 	  If unsure, say Y.
 
+config HISILICON_ERRATUM_161600803
+	bool "Hip07 161600803: VMOVP locks up on VLPI forwarding"
+	default y
+	help
+	  The HiSilicon Hip07 SoC's ITSs can lock up when processing a
+	  VMOVP command that races with an VLPI targettinmg the VPE
+	  being moved. This requires disabling the VLPIs targetting
+	  this VPE on VMOVP and preventing other interrupts from
+	  targetting it during the move.
+
+	  If unsure, say Y.
+
 config QCOM_FALKOR_ERRATUM_E1041
 	bool "Falkor E1041: Speculative instruction fetches might cause errant memory access"
 	default y

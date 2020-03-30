@@ -4738,6 +4738,18 @@ static bool __maybe_unused its_enable_quirk_hip07_161600802(void *data)
 	return true;
 }
 
+static bool __maybe_unused its_enable_quirk_hip07_161600803(void *data)
+{
+	struct its_node *its = data;
+
+	/*
+	 * VMOVP on Hip07 locks up sometimes when VLPIs are in
+	 * flight. Make sure they are masked when issueing a VMOVP.
+	 */
+	its->flags |= ITS_FLAGS_WORKAROUND_HISI_161600803;
+	return true;
+}
+
 static const struct gic_quirk its_quirks[] = {
 #ifdef CONFIG_CAVIUM_ERRATUM_22375
 	{
@@ -4782,6 +4794,14 @@ static const struct gic_quirk its_quirks[] = {
 		.iidr	= 0x00000004,
 		.mask	= 0xffffffff,
 		.init	= its_enable_quirk_hip07_161600802,
+	},
+#endif
+#ifdef CONFIG_HISILICON_ERRATUM_161600803
+	{
+		.desc	= "ITS: Hip07 erratum 161600803",
+		.iidr	= 0x00000004,
+		.mask	= 0xffffffff,
+		.init	= its_enable_quirk_hip07_161600803,
 	},
 #endif
 	{

@@ -1716,13 +1716,55 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 		goto out;
 	}
 
-	/* Get our private copy of the mapping information */
-	its_dev->event_map.vlpi_maps[event] = *info->map;
-
 	if (irqd_is_forwarded_to_vcpu(d)) {
+		unsigned long flags_a = 0, flags_b = 0;
+		struct its_vpe *vpe_a, *vpe_b;
+
+		/* Move to the same VPE? Nothing to do */
+		if (its_dev->event_map.vlpi_maps[event].vpe == info->map->vpe)
+			goto out;
+
+		/*
+		 * This is pretty funky:
+		 *
+		 * Dealing with erratum 161600803 when issueing a VMOVI
+		 * requires that we lock both source and destination. In
+		 * order to avoid a deadlock, we need to lock them in the
+		 * same order, always. The VPEID is good way to discriminate
+		 * them, and we start by locking the smallest of the two.
+		 */
+		if (its_dev->event_map.vlpi_maps[event].vpe->vpe_id < info->map->vpe->vpe_id) {
+			vpe_a = its_dev->event_map.vlpi_maps[event].vpe;
+			vpe_b = info->map->vpe;
+		} else {
+			vpe_a = info->map->vpe;
+			vpe_b = its_dev->event_map.vlpi_maps[event].vpe;
+		}
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803) {
+			vpe_to_cpuid_lock(vpe_a, VPE_LOCK_READ, &flags_a);
+			vpe_to_cpuid_lock(vpe_b, VPE_LOCK_READ, &flags_b);
+		}
+
+		/* Get our private copy of the mapping information */
+		its_dev->event_map.vlpi_maps[event] = *info->map;
+
 		/* Already mapped, move it around */
 		its_send_vmovi(its_dev, event);
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803) {
+			vpe_to_cpuid_unlock(vpe_b, VPE_LOCK_READ, flags_b);
+			vpe_to_cpuid_unlock(vpe_a, VPE_LOCK_READ, flags_a);
+		}
 	} else {
+		unsigned long flags = 0;
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803)
+			vpe_to_cpuid_lock(info->map->vpe, VPE_LOCK_READ, &flags);
+
+		/* Get our private copy of the mapping information */
+		its_dev->event_map.vlpi_maps[event] = *info->map;
+
 		/* Ensure all the VPEs are mapped on this ITS */
 		its_map_vm(its_dev->its, info->map->vm);
 
@@ -1743,6 +1785,9 @@ static int its_vlpi_map(struct irq_data *d, struct its_cmd_info *info)
 
 		/* Increment the number of VLPIs */
 		its_dev->event_map.nr_vlpis++;
+
+		if (its_dev->its->flags & ITS_FLAGS_WORKAROUND_HISI_161600803)
+			vpe_to_cpuid_unlock(info->map->vpe, VPE_LOCK_READ, flags);
 	}
 
 out:

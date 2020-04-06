@@ -83,7 +83,7 @@
  * testing purposes, but instead rely on the firmware/bootloader to
  * update these nodes accordingly if PCIe mode is selected by the MCU.
  */
-/*
+/* */
 &pcie {
 	status = "okay";
 };
@@ -92,4 +92,4 @@
 	phys = <&usb2_phy0>, <&usb2_phy1>;
 	phy-names = "usb2-phy0", "usb2-phy1";
 };
- */
+/* */

@@ -15,15 +15,26 @@
 
 int dwmac_dma_reset(void __iomem *ioaddr)
 {
-	u32 value = readl(ioaddr + DMA_BUS_MODE);
+	u32 value;
+
+
+	writel(0, ioaddr + DMA_CONTROL);
+	writel(0, ioaddr + DMA_INTR_ENA);
+	dsb(sy);
+	value = readl(ioaddr + DMA_BUS_MODE);
 
 	/* DMA SW reset */
-	value |= DMA_BUS_MODE_SFT_RESET;
+	value = DMA_BUS_MODE_SFT_RESET;
 	writel(value, ioaddr + DMA_BUS_MODE);
 
-	return readl_poll_timeout(ioaddr + DMA_BUS_MODE, value,
-				 !(value & DMA_BUS_MODE_SFT_RESET),
-				 10000, 100000);
+	dsb(sy);
+
+	while (readl_poll_timeout(ioaddr + DMA_BUS_MODE, value,
+				  !(value & DMA_BUS_MODE_SFT_RESET),
+				  100000, 1000000))
+		pr_info("Reset failed\n");
+
+	return 0;
 }
 
 /* CSR1 enables the transmit DMA to check for new descriptor */

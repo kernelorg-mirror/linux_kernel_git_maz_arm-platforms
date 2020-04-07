@@ -129,4 +129,18 @@ config ARM_SPE_PMU
 	  Extension, which provides periodic sampling of operations in
 	  the CPU pipeline and reports this via the perf AUX interface.
 
+config SPI_PPI_REFLECTOR
+	depends on ARM64
+	bool "Work around terribly integrated SoCs"
+	default n
+	help
+	  Enable a terrible hack what will forward a single SPI to
+	  all CPUs on a single PPI, which helps for these broken
+	  systems where the integrator thought it'd be good to OR
+	  all the PMU PPIs together. This requires the firmware to
+	  have been hacked to expose a fake device and the PMU hanging
+	  off an unused PPI.
+
+	  Just say no.
+
 endmenu

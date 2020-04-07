@@ -87,6 +87,18 @@
 		};
 	};
 
+	pmu: pmu {
+		compatible = "arm,armv8-pmuv3";
+		/* interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>; */
+		interrupts = <GIC_PPI 15 (GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
+	};
+
+	pmu_redirect {
+		compatible = "uglyhack,spi-ppi-pmu-reflector";
+		interrupts = <GIC_SPI 137 IRQ_TYPE_LEVEL_HIGH>;
+		reflect-to = <&pmu>;
+	};
+
 	cpu_opp_table: opp-table {
 		compatible = "operating-points-v2";
 		opp-shared;

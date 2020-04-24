@@ -204,11 +204,21 @@ static bool __vcpu_write_sys_reg_to_cpu(u64 val, int reg)
 	return true;
 }
 
+static void __vcpu_check(const struct kvm_vcpu *vcpu)
+{
+	if (has_vhe()) {
+		struct kvm_vcpu *self = kvm_get_running_vcpu();
+		WARN_ON(self && vcpu != self);
+	}
+}
+
 u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 {
 	u64 val = 0x8badf00d8badf00d;
 	u64 (*xlate)(u64) = NULL;
 	unsigned int el1r;
+
+	__vcpu_check(vcpu);
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto memory_read;
@@ -263,6 +273,8 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 {
 	u64 (*xlate)(u64) = NULL;
 	unsigned int el1r;
+
+	__vcpu_check(vcpu);
 
 	if (!vcpu->arch.sysregs_loaded_on_cpu)
 		goto memory_write;

@@ -36,6 +36,9 @@
 #define FLAGS_WORKAROUND_GICR_WAKER_MSM8996	(1ULL << 0)
 #define FLAGS_WORKAROUND_CAVIUM_ERRATUM_38539	(1ULL << 1)
 
+#define GIC_IRQ_TYPE_PARTITION	(GIC_IRQ_TYPE_LPI + 1)
+#define GIC_IRQ_TYPE_SGI	(GIC_IRQ_TYPE_LPI + 2)
+
 struct redist_region {
 	void __iomem		*redist_base;
 	phys_addr_t		phys_base;
@@ -1155,8 +1158,52 @@ static void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	isb();
 }
 
+static void sgi_flow_handler(struct irq_desc *desc)
+{
+	struct irq_data *d = irq_desc_get_irq_data(desc);
+
+	/*
+	 * Contrarily to the normal IRQ flow, we need to EOI SGIs
+	 * early, as they may result in a context switch.
+	 */
+	if (static_branch_likely(&supports_deactivate_key))
+		gic_eoimode1_eoi_irq(d);
+	else
+		gic_eoi_irq(d);
+
+	do_handle_IPI(d->hwirq);
+}
+
 static void gic_smp_init(void)
 {
+	struct irq_fwspec sgi_fwspec = {
+		.fwnode		= gic_data.fwnode,
+	};
+	int base_sgi, i;
+
+	if (is_of_node(gic_data.fwnode)) {
+		/* DT */
+		sgi_fwspec.param_count = 3;
+		sgi_fwspec.param[0] = GIC_IRQ_TYPE_SGI;
+		sgi_fwspec.param[1] = 0;
+		sgi_fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	} else {
+		/* ACPI */
+		sgi_fwspec.param_count = 2;
+		sgi_fwspec.param[0] = 0;
+		sgi_fwspec.param[1] = IRQ_TYPE_EDGE_RISING;
+	}
+
+	base_sgi = __irq_domain_alloc_irqs(gic_data.domain, -1, NR_IPI,
+					   NUMA_NO_NODE, &sgi_fwspec,
+					   false, NULL);
+	if (WARN_ON(base_sgi <= 0))
+		return;
+
+	for (i = 0; i < NR_IPI; i++)
+		irq_set_chained_handler_and_data(base_sgi + i, sgi_flow_handler,
+						 NULL);
+
 	set_smp_cross_call(gic_raise_softirq);
 	cpuhp_setup_state_nocalls(CPUHP_AP_IRQ_GIC_STARTING,
 				  "irqchip/arm/gicv3:starting",
@@ -1313,8 +1360,6 @@ static int gic_irq_domain_map(struct irq_domain *d, unsigned int irq,
 	return 0;
 }
 
-#define GIC_IRQ_TYPE_PARTITION	(GIC_IRQ_TYPE_LPI + 1)
-
 static int gic_irq_domain_translate(struct irq_domain *d,
 				    struct irq_fwspec *fwspec,
 				    unsigned long *hwirq,
@@ -1346,6 +1391,9 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 				*hwirq += EPPI_BASE_INTID - 16;
 			else
 				*hwirq += 16;
+			break;
+		case GIC_IRQ_TYPE_SGI:
+			*hwirq = fwspec->param[1];
 			break;
 		default:
 			return -EINVAL;
@@ -1651,9 +1699,9 @@ static int __init gic_init_bases(void __iomem *dist_base,
 
 	gic_update_rdist_properties();
 
-	gic_smp_init();
 	gic_dist_init();
 	gic_cpu_init();
+	gic_smp_init();
 	gic_cpu_pm_init();
 
 	if (gic_dist_supports_lpis()) {

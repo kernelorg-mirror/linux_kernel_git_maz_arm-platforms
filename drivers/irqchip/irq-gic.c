@@ -47,6 +47,8 @@
 
 #include "irq-gic-common.h"
 
+#define GIC_IRQ_TYPE_SGI	0x561
+
 #ifdef CONFIG_ARM64
 #include <asm/cpufeature.h>
 
@@ -837,8 +839,59 @@ static int gic_starting_cpu(unsigned int cpu)
 	return 0;
 }
 
+static void sgi_flow_handler(struct irq_desc *desc)
+{
+	struct irq_data *d = irq_desc_get_irq_data(desc);
+
+	/*
+	 * Contrarily to the normal IRQ flow, we need to EOI SGIs
+	 * early, as they may result in a context switch.
+	 */
+	if (static_branch_likely(&supports_deactivate_key))
+		gic_eoimode1_eoi_irq(d);
+	else
+		gic_eoi_irq(d);
+
+	/*
+	 * Ensure any shared data written by the CPU sending the IPI
+	 * is read after we've read the ACK register on the GIC.
+	 *
+	 * Pairs with the write barrier in gic_raise_softirq
+	 */
+	smp_rmb();
+	do_handle_IPI(gic_irq(d));
+}
+
 static __init void gic_smp_init(void)
 {
+	struct irq_fwspec sgi_fwspec = {
+		.fwnode		= gic_data[0].domain->fwnode,
+	};
+	int base_sgi, i;
+
+	if (is_of_node(gic_data[0].domain->fwnode)) {
+		/* DT */
+		sgi_fwspec.param_count = 3;
+		sgi_fwspec.param[0] = GIC_IRQ_TYPE_SGI;
+		sgi_fwspec.param[1] = 0;
+		sgi_fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	} else {
+		/* ACPI */
+		sgi_fwspec.param_count = 2;
+		sgi_fwspec.param[0] = 0;
+		sgi_fwspec.param[1] = IRQ_TYPE_EDGE_RISING;
+	}
+
+	base_sgi = __irq_domain_alloc_irqs(gic_data[0].domain, -1, NR_IPI,
+					   NUMA_NO_NODE, &sgi_fwspec,
+					   false, NULL);
+	if (WARN_ON(base_sgi <= 0))
+		return;
+
+	for (i = 0; i < NR_IPI; i++)
+		irq_set_chained_handler_and_data(base_sgi + i, sgi_flow_handler,
+						 NULL);
+
 	set_smp_cross_call(gic_raise_softirq);
 	cpuhp_setup_state_nocalls(CPUHP_AP_IRQ_GIC_STARTING,
 				  "irqchip/arm/gic:starting",
@@ -1020,15 +1073,19 @@ static int gic_irq_domain_translate(struct irq_domain *d,
 		if (fwspec->param_count < 3)
 			return -EINVAL;
 
-		/* Get the interrupt number and add 16 to skip over SGIs */
-		*hwirq = fwspec->param[1] + 16;
-
-		/*
-		 * For SPIs, we need to add 16 more to get the GIC irq
-		 * ID number
-		 */
-		if (!fwspec->param[0])
-			*hwirq += 16;
+		switch (fwspec->param[0]) {
+		case 0:			/* SPI */
+			*hwirq = fwspec->param[1] + 32;
+			break;
+		case 1:			/* PPI */
+			*hwirq = fwspec->param[1] + 16;
+			break;
+		case GIC_IRQ_TYPE_SGI:	/* SGI, can't be set via DT */
+			*hwirq = fwspec->param[1];
+			break;
+		default:
+			return -EINVAL;
+		}
 
 		*type = fwspec->param[2] & IRQ_TYPE_SENSE_MASK;
 

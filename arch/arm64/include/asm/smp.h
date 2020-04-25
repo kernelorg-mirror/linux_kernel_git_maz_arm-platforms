@@ -67,6 +67,7 @@ extern void show_ipi_list(struct seq_file *p, int prec);
 /*
  * Called from C code, this handles an IPI.
  */
+extern void do_handle_IPI(int ipinr);
 extern void handle_IPI(int ipinr, struct pt_regs *regs);
 
 /*

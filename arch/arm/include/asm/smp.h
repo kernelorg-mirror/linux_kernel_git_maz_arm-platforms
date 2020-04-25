@@ -32,6 +32,7 @@ asmlinkage void do_IPI(int ipinr, struct pt_regs *regs);
 /*
  * Called from C code, this handles an IPI.
  */
+void do_handle_IPI(int ipinr);
 void handle_IPI(int ipinr, struct pt_regs *regs);
 
 /*

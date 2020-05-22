@@ -1725,6 +1725,10 @@ discard:
 
 static bool invalid_migration_vma(struct vm_area_struct *vma, void *arg)
 {
+	/* TODO */
+	if (vma_is_kvm_protected(vma))
+		return true;
+
 	return vma_is_temporary_stack(vma);
 }
 

@@ -528,6 +528,9 @@ static struct vm_area_struct *find_mergeable_vma(struct mm_struct *mm,
 		return NULL;
 	if (!(vma->vm_flags & VM_MERGEABLE) || !vma->anon_vma)
 		return NULL;
+	/* TODO */
+	if (vma_is_kvm_protected(vma))
+		return NULL;
 	return vma;
 }
 

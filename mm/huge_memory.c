@@ -33,6 +33,7 @@
 #include <linux/oom.h>
 #include <linux/numa.h>
 #include <linux/page_owner.h>
+#include <linux/kvm_host.h>
 
 #include <asm/tlb.h>
 #include <asm/pgalloc.h>
@@ -627,6 +628,10 @@ static vm_fault_t __do_huge_pmd_anonymous_page(struct vm_fault *vmf,
 		spin_unlock(vmf->ptl);
 		count_vm_event(THP_FAULT_ALLOC);
 		count_memcg_event_mm(vma->vm_mm, THP_FAULT_ALLOC);
+
+		/* Unmap page from direct mapping */
+		if (vma_is_kvm_protected(vma))
+			kvm_unmap_page(page, HPAGE_PMD_NR);
 	}
 
 	return 0;
@@ -1661,6 +1666,10 @@ int zap_huge_pmd(struct mmu_gather *tlb, struct vm_area_struct *vma,
 			page_remove_rmap(page, true);
 			VM_BUG_ON_PAGE(page_mapcount(page) < 0, page);
 			VM_BUG_ON_PAGE(!PageHead(page), page);
+
+			/* Map the page back to the direct mapping */
+			if (vma_is_kvm_protected(vma))
+				kvm_map_page(page, HPAGE_PMD_NR);
 		} else if (thp_migration_supported()) {
 			swp_entry_t entry;
 

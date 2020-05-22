@@ -706,6 +706,9 @@ int kvm_protect_all_memory(struct kvm *kvm);
 int kvm_protect_memory(struct kvm *kvm,
 		       unsigned long gfn, unsigned long npages, bool protect);
 
+void kvm_map_page(struct page *page, int nr_pages);
+void kvm_unmap_page(struct page *page, int nr_pages);
+
 int gfn_to_page_many_atomic(struct kvm_memory_slot *slot, gfn_t gfn,
 			    struct page **pages, int nr_pages);
 

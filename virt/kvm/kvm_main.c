@@ -51,6 +51,7 @@
 #include <linux/io.h>
 #include <linux/lockdep.h>
 #include <linux/kthread.h>
+#include <linux/pagewalk.h>
 
 #include <asm/processor.h>
 #include <asm/ioctl.h>
@@ -2792,6 +2793,72 @@ void kvm_vcpu_mark_page_dirty(struct kvm_vcpu *vcpu, gfn_t gfn)
 }
 EXPORT_SYMBOL_GPL(kvm_vcpu_mark_page_dirty);
 
+void kvm_map_page(struct page *page, int nr_pages)
+{
+	int i;
+
+	/* Clear page before returning it to the direct mapping */
+	for (i = 0; i < nr_pages; i++) {
+		void *p = map_page_atomic(page + i);
+		memset(p, 0, PAGE_SIZE);
+		unmap_page_atomic(p);
+	}
+
+	kernel_map_pages(page, nr_pages, 1);
+}
+EXPORT_SYMBOL_GPL(kvm_map_page);
+
+void kvm_unmap_page(struct page *page, int nr_pages)
+{
+	kernel_map_pages(page, nr_pages, 0);
+}
+EXPORT_SYMBOL_GPL(kvm_unmap_page);
+
+static int adjust_direct_mapping_pte_range(pmd_t *pmd, unsigned long addr,
+					   unsigned long end,
+					   struct mm_walk *walk)
+{
+	bool protect = (bool)walk->private;
+	pte_t *pte;
+	struct page *page;
+
+	if (pmd_trans_huge(*pmd)) {
+		page = pmd_page(*pmd);
+		if (is_huge_zero_page(page))
+			return 0;
+		VM_BUG_ON_PAGE(total_mapcount(page) != 1, page);
+		/* XXX: Would it fail with direct device assignment? */
+		VM_BUG_ON_PAGE(page_count(page) != 1, page);
+		kernel_map_pages(page, HPAGE_PMD_NR, !protect);
+		return 0;
+	}
+
+	pte = pte_offset_map(pmd, addr);
+	for (; addr != end; pte++, addr += PAGE_SIZE) {
+		pte_t entry = *pte;
+
+		if (!pte_present(entry))
+			continue;
+
+		if (is_zero_pfn(pte_pfn(entry)))
+			continue;
+
+		page = pte_page(entry);
+
+		VM_BUG_ON_PAGE(page_mapcount(page) != 1, page);
+		/* XXX: Would it fail with direct device assignment? */
+		VM_BUG_ON_PAGE(page_count(page) !=
+			       total_mapcount(compound_head(page)), page);
+		kernel_map_pages(page, 1, !protect);
+	}
+
+	return 0;
+}
+
+static const struct mm_walk_ops adjust_direct_mapping_ops = {
+	.pmd_entry	= adjust_direct_mapping_pte_range,
+};
+
 static int protect_memory(unsigned long start, unsigned long end, bool protect)
 {
 	struct mm_struct *mm = current->mm;
@@ -2837,6 +2904,13 @@ static int protect_memory(unsigned long start, unsigned long end, bool protect)
 		if (ret)
 			goto out;
 
+		if (vma_is_anonymous(vma)) {
+			ret = walk_page_range_novma(mm, start, tmp,
+					    &adjust_direct_mapping_ops, NULL,
+					    (void *) protect);
+			if (ret)
+				goto out;
+		}
 next:
 		start = tmp;
 		if (start < prev->vm_end)

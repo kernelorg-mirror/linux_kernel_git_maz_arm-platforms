@@ -2323,17 +2323,45 @@ static int next_segment(unsigned long len, int offset)
 		return len;
 }
 
+static pte_t **guest_map_ptes;
+static struct vm_struct *guest_map_area;
+
+static void *map_page_atomic(struct page *page)
+{
+	pte_t *pte;
+	void *vaddr;
+
+	preempt_disable();
+	pte = guest_map_ptes[smp_processor_id()];
+	vaddr = guest_map_area->addr + smp_processor_id() * PAGE_SIZE;
+	set_pte(pte, mk_pte(page, PAGE_KERNEL));
+	return vaddr;
+}
+
+static void unmap_page_atomic(void *vaddr)
+{
+	pte_t *pte = guest_map_ptes[smp_processor_id()];
+	set_pte(pte, __pte(0));
+	__flush_tlb_one_kernel((unsigned long)vaddr);
+	preempt_enable();
+}
+
 int copy_from_guest(void *data, unsigned long hva, int len)
 {
 	int offset = offset_in_page(hva);
 	struct page *page;
 	int npages, seg;
+	void *vaddr;
 
 	while ((seg = next_segment(len, offset)) != 0) {
 		npages = get_user_pages_unlocked(hva, 1, &page, FOLL_KVM);
 		if (npages != 1)
 			return -EFAULT;
-		memcpy(data, page_address(page) + offset, seg);
+
+		vaddr = map_page_atomic(page);
+		memcpy(data, vaddr + offset, seg);
+		unmap_page_atomic(vaddr);
+
 		put_page(page);
 		len -= seg;
 		hva += seg;
@@ -2348,13 +2376,18 @@ int copy_to_guest(unsigned long hva, const void *data, int len)
 	int offset = offset_in_page(hva);
 	struct page *page;
 	int npages, seg;
+	void *vaddr;
 
 	while ((seg = next_segment(len, offset)) != 0) {
 		npages = get_user_pages_unlocked(hva, 1, &page,
 						 FOLL_WRITE | FOLL_KVM);
 		if (npages != 1)
 			return -EFAULT;
-		memcpy(page_address(page) + offset, data, seg);
+
+		vaddr = map_page_atomic(page);
+		memcpy(vaddr + offset, data, seg);
+		unmap_page_atomic(vaddr);
+
 		put_page(page);
 		len -= seg;
 		hva += seg;
@@ -5011,6 +5044,18 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 	if (r)
 		goto out_free;
 
+	if (VM_KVM_PROTECTED) {
+		guest_map_ptes = kmalloc_array(num_possible_cpus(),
+					       sizeof(pte_t *), GFP_KERNEL);
+		if (!guest_map_ptes)
+			goto out_unreg;
+
+		guest_map_area = alloc_vm_area(PAGE_SIZE * num_possible_cpus(),
+					       guest_map_ptes);
+		if (!guest_map_ptes)
+			goto out_unreg;
+	}
+
 	kvm_chardev_ops.owner = module;
 	kvm_vm_fops.owner = module;
 	kvm_vcpu_fops.owner = module;
@@ -5034,6 +5079,10 @@ int kvm_init(void *opaque, unsigned vcpu_size, unsigned vcpu_align,
 	return 0;
 
 out_unreg:
+	if (guest_map_area)
+		free_vm_area(guest_map_area);
+	if (guest_map_ptes)
+		kfree(guest_map_ptes);
 	kvm_async_pf_deinit();
 out_free:
 	kmem_cache_destroy(kvm_vcpu_cache);
@@ -5055,6 +5104,10 @@ EXPORT_SYMBOL_GPL(kvm_init);
 
 void kvm_exit(void)
 {
+	if (guest_map_area)
+		free_vm_area(guest_map_area);
+	if (guest_map_ptes)
+		kfree(guest_map_ptes);
 	debugfs_remove_recursive(kvm_debugfs_dir);
 	misc_deregister(&kvm_dev);
 	kmem_cache_destroy(kvm_vcpu_cache);

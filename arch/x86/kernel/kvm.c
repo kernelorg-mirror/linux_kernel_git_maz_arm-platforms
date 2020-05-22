@@ -26,6 +26,7 @@
 #include <linux/kprobes.h>
 #include <linux/nmi.h>
 #include <linux/swait.h>
+#include <linux/swiotlb.h>
 #include <asm/timer.h>
 #include <asm/cpu.h>
 #include <asm/traps.h>
@@ -758,6 +759,7 @@ static void __init kvm_init_platform(void)
 		}
 
 		mem_protected = true;
+		swiotlb_force = SWIOTLB_FORCE;
 	}
 }
 

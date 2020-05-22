@@ -38,6 +38,12 @@
 #include <asm/cpuidle_haltpoll.h>
 
 DEFINE_STATIC_KEY_FALSE(kvm_async_pf_enabled);
+static bool mem_protected;
+
+bool kvm_mem_protected(void)
+{
+	return mem_protected;
+}
 
 static int kvmapf = 1;
 
@@ -744,6 +750,15 @@ static void __init kvm_init_platform(void)
 {
 	kvmclock_init();
 	x86_platform.apic_post_init = kvm_apic_init;
+
+	if (kvm_para_has_feature(KVM_FEATURE_MEM_PROTECTED)) {
+		if (kvm_hypercall0(KVM_HC_ENABLE_MEM_PROTECTED)) {
+			pr_err("Failed to enable KVM memory protection\n");
+			return;
+		}
+
+		mem_protected = true;
+	}
 }
 
 const __initconst struct hypervisor_x86 x86_hyper_kvm = {

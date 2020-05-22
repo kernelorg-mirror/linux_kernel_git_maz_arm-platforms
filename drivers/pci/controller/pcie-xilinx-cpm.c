@@ -5,8 +5,11 @@
  * (C) Copyright 2019 - 2020, Xilinx, Inc.
  */
 
+#include <linux/bitfield.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
+#include <linux/irqchip.h>
+#include <linux/irqchip/chained_irq.h>
 #include <linux/irqdomain.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -33,30 +36,55 @@
 #define XILINX_CPM_PCIE_MISC_IR_LOCAL	BIT(1)
 
 /* Interrupt registers definitions */
-#define XILINX_CPM_PCIE_INTR_LINK_DOWN		BIT(0)
-#define XILINX_CPM_PCIE_INTR_HOT_RESET		BIT(3)
-#define XILINX_CPM_PCIE_INTR_CFG_TIMEOUT	BIT(8)
-#define XILINX_CPM_PCIE_INTR_CORRECTABLE	BIT(9)
-#define XILINX_CPM_PCIE_INTR_NONFATAL		BIT(10)
-#define XILINX_CPM_PCIE_INTR_FATAL		BIT(11)
-#define XILINX_CPM_PCIE_INTR_INTX		BIT(16)
-#define XILINX_CPM_PCIE_INTR_MSI		BIT(17)
-#define XILINX_CPM_PCIE_INTR_SLV_UNSUPP		BIT(20)
-#define XILINX_CPM_PCIE_INTR_SLV_UNEXP		BIT(21)
-#define XILINX_CPM_PCIE_INTR_SLV_COMPL		BIT(22)
-#define XILINX_CPM_PCIE_INTR_SLV_ERRP		BIT(23)
-#define XILINX_CPM_PCIE_INTR_SLV_CMPABT		BIT(24)
-#define XILINX_CPM_PCIE_INTR_SLV_ILLBUR		BIT(25)
-#define XILINX_CPM_PCIE_INTR_MST_DECERR		BIT(26)
-#define XILINX_CPM_PCIE_INTR_MST_SLVERR		BIT(27)
-#define XILINX_CPM_PCIE_IMR_ALL_MASK		0x1FF39FF9
+#define XILINX_CPM_PCIE_INTR_LINK_DOWN		0
+#define XILINX_CPM_PCIE_INTR_HOT_RESET		3
+#define XILINX_CPM_PCIE_INTR_CFG_PCIE_TIMEOUT	4
+#define XILINX_CPM_PCIE_INTR_CFG_TIMEOUT	8
+#define XILINX_CPM_PCIE_INTR_CORRECTABLE	9
+#define XILINX_CPM_PCIE_INTR_NONFATAL		10
+#define XILINX_CPM_PCIE_INTR_FATAL		11
+#define XILINX_CPM_PCIE_INTR_CFG_ERR_POISON	12
+#define XILINX_CPM_PCIE_INTR_PME_TO_ACK_RCVD	15
+#define XILINX_CPM_PCIE_INTR_INTX		16
+#define XILINX_CPM_PCIE_INTR_PM_PME_RCVD	17
+#define XILINX_CPM_PCIE_INTR_SLV_UNSUPP		20
+#define XILINX_CPM_PCIE_INTR_SLV_UNEXP		21
+#define XILINX_CPM_PCIE_INTR_SLV_COMPL		22
+#define XILINX_CPM_PCIE_INTR_SLV_ERRP		23
+#define XILINX_CPM_PCIE_INTR_SLV_CMPABT		24
+#define XILINX_CPM_PCIE_INTR_SLV_ILLBUR		25
+#define XILINX_CPM_PCIE_INTR_MST_DECERR		26
+#define XILINX_CPM_PCIE_INTR_MST_SLVERR		27
+#define XILINX_CPM_PCIE_INTR_SLV_PCIE_TIMEOUT	28
+
+#define IMR(x)	BIT(XILINX_CPM_PCIE_INTR_ ##x)
+
+#define XILINX_CPM_PCIE_IMR_ALL_MASK			\
+	(						\
+		IMR(LINK_DOWN)		|		\
+		IMR(HOT_RESET)		|		\
+		IMR(CFG_PCIE_TIMEOUT)	|		\
+		IMR(CFG_TIMEOUT)	|		\
+		IMR(CORRECTABLE)	|		\
+		IMR(NONFATAL)		|		\
+		IMR(FATAL)		|		\
+		IMR(CFG_ERR_POISON)	|		\
+		IMR(PME_TO_ACK_RCVD)	|		\
+		IMR(INTX)		|		\
+		IMR(PM_PME_RCVD)	|		\
+		IMR(SLV_UNSUPP)		|		\
+		IMR(SLV_UNEXP)		|		\
+		IMR(SLV_COMPL)		|		\
+		IMR(SLV_ERRP)		|		\
+		IMR(SLV_CMPABT)		|		\
+		IMR(SLV_ILLBUR)		|		\
+		IMR(MST_DECERR)		|		\
+		IMR(MST_SLVERR)		|		\
+		IMR(SLV_PCIE_TIMEOUT)			\
+	)
+
 #define XILINX_CPM_PCIE_IDR_ALL_MASK		0xFFFFFFFF
 #define XILINX_CPM_PCIE_IDRN_MASK		GENMASK(19, 16)
-#define XILINX_CPM_PCIE_INTR_CFG_PCIE_TIMEOUT	BIT(4)
-#define XILINX_CPM_PCIE_INTR_CFG_ERR_POISON	BIT(12)
-#define XILINX_CPM_PCIE_INTR_PME_TO_ACK_RCVD	BIT(15)
-#define XILINX_CPM_PCIE_INTR_PM_PME_RCVD	BIT(17)
-#define XILINX_CPM_PCIE_INTR_SLV_PCIE_TIMEOUT	BIT(28)
 #define XILINX_CPM_PCIE_IDRN_SHIFT		16
 
 /* Root Port Error FIFO Read Register definitions */
@@ -75,36 +103,37 @@
  * @reg_base: Bridge Register Base
  * @cpm_base: CPM System Level Control and Status Register(SLCR) Base
  * @dev: Device pointer
- * @leg_domain: Legacy IRQ domain pointer
+ * @intx_domain: Legacy IRQ domain pointer
  * @cfg: Holds mappings of config space window
- * @irq_misc: Legacy and error interrupt number
- * @leg_mask_lock: lock for legacy interrupts
+ * @irq: INTx and error interrupt number
+ * @lock: lock protecting shared register access
  */
 struct xilinx_cpm_pcie_port {
-	void __iomem *reg_base;
-	void __iomem *cpm_base;
-	struct device *dev;
-	struct irq_domain *leg_domain;
-	struct pci_config_window *cfg;
-	int irq_misc;
-	raw_spinlock_t leg_mask_lock;
+	void __iomem			*reg_base;
+	void __iomem			*cpm_base;
+	struct device			*dev;
+	struct irq_domain		*intx_domain;
+	struct irq_domain		*cpm_domain;
+	struct pci_config_window	*cfg;
+	int				irq;
+	raw_spinlock_t			lock;
 };
 
 static inline u32 pcie_read(struct xilinx_cpm_pcie_port *port, u32 reg)
 {
-	return readl(port->reg_base + reg);
+	return readl_relaxed(port->reg_base + reg);
 }
 
 static inline void pcie_write(struct xilinx_cpm_pcie_port *port,
 			      u32 val, u32 reg)
 {
-	writel(val, port->reg_base + reg);
+	writel_relaxed(val, port->reg_base + reg);
 }
 
 static inline bool cpm_pcie_link_up(struct xilinx_cpm_pcie_port *port)
 {
 	return (pcie_read(port, XILINX_CPM_PCIE_REG_PSCR) &
-		XILINX_CPM_PCIE_REG_PSCR_LNKUP) ? 1 : 0;
+		XILINX_CPM_PCIE_REG_PSCR_LNKUP);
 }
 
 /**
@@ -125,43 +154,55 @@ static void cpm_pcie_clear_err_interrupts(struct xilinx_cpm_pcie_port *port)
 
 static void xilinx_cpm_mask_leg_irq(struct irq_data *data)
 {
-	struct irq_desc *desc = irq_to_desc(data->irq);
-	struct xilinx_cpm_pcie_port *port;
+	struct xilinx_cpm_pcie_port *port = irq_data_get_irq_chip_data(data);
 	unsigned long flags;
 	u32 mask;
 	u32 val;
 
-	port = irq_desc_get_chip_data(desc);
-	mask = (1 << data->hwirq) << XILINX_CPM_PCIE_IDRN_SHIFT;
-	raw_spin_lock_irqsave(&port->leg_mask_lock, flags);
+	mask = BIT(data->hwirq + XILINX_CPM_PCIE_IDRN_SHIFT);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	val = pcie_read(port, XILINX_CPM_PCIE_REG_IDRN_MASK);
 	pcie_write(port, (val & (~mask)), XILINX_CPM_PCIE_REG_IDRN_MASK);
-	raw_spin_unlock_irqrestore(&port->leg_mask_lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static void xilinx_cpm_unmask_leg_irq(struct irq_data *data)
 {
-	struct irq_desc *desc = irq_to_desc(data->irq);
-	struct xilinx_cpm_pcie_port *port;
+	struct xilinx_cpm_pcie_port *port = irq_data_get_irq_chip_data(data);
 	unsigned long flags;
 	u32 mask;
 	u32 val;
 
-	port = irq_desc_get_chip_data(desc);
-	mask = (1 << data->hwirq) << XILINX_CPM_PCIE_IDRN_SHIFT;
-	raw_spin_lock_irqsave(&port->leg_mask_lock, flags);
+	mask = BIT(data->hwirq + XILINX_CPM_PCIE_IDRN_SHIFT);
+	raw_spin_lock_irqsave(&port->lock, flags);
 	val = pcie_read(port, XILINX_CPM_PCIE_REG_IDRN_MASK);
 	pcie_write(port, (val | mask), XILINX_CPM_PCIE_REG_IDRN_MASK);
-	raw_spin_unlock_irqrestore(&port->leg_mask_lock, flags);
+	raw_spin_unlock_irqrestore(&port->lock, flags);
 }
 
 static struct irq_chip xilinx_cpm_leg_irq_chip = {
-	.name = "xilinx_cpm_pcie:legacy",
-	.irq_enable = xilinx_cpm_unmask_leg_irq,
-	.irq_disable = xilinx_cpm_mask_leg_irq,
-	.irq_mask = xilinx_cpm_mask_leg_irq,
-	.irq_unmask = xilinx_cpm_unmask_leg_irq,
+	.name		= "INTx",
+	.irq_mask	= xilinx_cpm_mask_leg_irq,
+	.irq_unmask	= xilinx_cpm_unmask_leg_irq,
 };
+
+static void xilinx_cpm_pcie_intx_flow(struct irq_desc *desc)
+{
+	struct xilinx_cpm_pcie_port *port = irq_desc_get_handler_data(desc);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
+	unsigned long val;
+	int i;
+
+	chained_irq_enter(chip, desc);
+
+	val = FIELD_GET(XILINX_CPM_PCIE_IDRN_MASK,
+			pcie_read(port, XILINX_CPM_PCIE_REG_IDRN));
+
+	for_each_set_bit(i, &val, PCI_NUM_INTX)
+		generic_handle_irq(irq_find_mapping(port->intx_domain, i));
+
+	chained_irq_exit(chip, desc);
+}
 
 /**
  * xilinx_cpm_pcie_intx_map - Set the handler for the INTx and mark IRQ as valid
@@ -187,111 +228,130 @@ static const struct irq_domain_ops intx_domain_ops = {
 	.map = xilinx_cpm_pcie_intx_map,
 };
 
-/**
- * xilinx_cpm_pcie_intr_handler - Interrupt Service Handler
- * @irq: IRQ number
- * @data: PCIe port information
- *
- * Return: IRQ_HANDLED on success and IRQ_NONE on failure
- */
-static irqreturn_t xilinx_cpm_pcie_intr_handler(int irq, void *data)
+static void xilinx_cpm_mask_event_irq(struct irq_data *d)
 {
-	struct xilinx_cpm_pcie_port *port = data;
-	struct device *dev = port->dev;
-	u32 val, mask, status, bit;
-	unsigned long intr_val;
 
-	/* Read interrupt decode and mask registers */
-	val = pcie_read(port, XILINX_CPM_PCIE_REG_IDR);
-	mask = pcie_read(port, XILINX_CPM_PCIE_REG_IMR);
+	struct xilinx_cpm_pcie_port *port = irq_data_get_irq_chip_data(d);
+	u32 val;
 
-	status = val & mask;
-	if (!status)
-		return IRQ_NONE;
+	raw_spin_lock(&port->lock);
+	val = pcie_read(port, XILINX_CPM_PCIE_REG_IMR);
+	val &= ~d->hwirq;
+	pcie_write(port, val, XILINX_CPM_PCIE_REG_IMR);
+	raw_spin_unlock(&port->lock);
+}
 
-	if (status & XILINX_CPM_PCIE_INTR_LINK_DOWN)
-		dev_warn(dev, "Link Down\n");
+static void xilinx_cpm_unmask_event_irq(struct irq_data *d)
+{
+	struct xilinx_cpm_pcie_port *port = irq_data_get_irq_chip_data(d);
+	u32 val;
 
-	if (status & XILINX_CPM_PCIE_INTR_HOT_RESET)
-		dev_info(dev, "Hot reset\n");
+	raw_spin_lock(&port->lock);
+	val = pcie_read(port, XILINX_CPM_PCIE_REG_IMR);
+	val |= d->hwirq;
+	pcie_write(port, val, XILINX_CPM_PCIE_REG_IMR);
+	raw_spin_unlock(&port->lock);
+}
 
-	if (status & XILINX_CPM_PCIE_INTR_CFG_TIMEOUT)
-		dev_warn(dev, "ECAM access timeout\n");
+static struct irq_chip xilinx_cpm_event_irq_chip = {
+	.name		= "RC-Event",
+	.irq_mask	= xilinx_cpm_mask_event_irq,
+	.irq_unmask	= xilinx_cpm_unmask_event_irq,
+};
 
-	if (status & XILINX_CPM_PCIE_INTR_CORRECTABLE) {
-		dev_warn(dev, "Correctable error message\n");
-		cpm_pcie_clear_err_interrupts(port);
-	}
+static int xilinx_cpm_pcie_event_map(struct irq_domain *domain,
+				    unsigned int irq, irq_hw_number_t hwirq)
+{
+	irq_set_chip_and_handler(irq, &xilinx_cpm_event_irq_chip,
+				 handle_level_irq);
+	irq_set_chip_data(irq, domain->host_data);
+	irq_set_status_flags(irq, IRQ_LEVEL);
 
-	if (status & XILINX_CPM_PCIE_INTR_NONFATAL) {
-		dev_warn(dev, "Non fatal error message\n");
-		cpm_pcie_clear_err_interrupts(port);
-	}
+	return 0;
+}
 
-	if (status & XILINX_CPM_PCIE_INTR_FATAL) {
-		dev_warn(dev, "Fatal error message\n");
-		cpm_pcie_clear_err_interrupts(port);
-	}
+static const struct irq_domain_ops event_domain_ops = {
+	.map = xilinx_cpm_pcie_event_map,
+};
 
-	if (status & XILINX_CPM_PCIE_INTR_INTX) {
-		/* Handle INTx Interrupt */
-		intr_val = pcie_read(port, XILINX_CPM_PCIE_REG_IDRN);
-		intr_val = intr_val >> XILINX_CPM_PCIE_IDRN_SHIFT;
+static void xilinx_cpm_pcie_event_flow(struct irq_desc *desc)
+{
+	struct xilinx_cpm_pcie_port *port = irq_desc_get_handler_data(desc);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
+	unsigned long val;
+	int i;
 
-		for_each_set_bit(bit, &intr_val, PCI_NUM_INTX)
-			generic_handle_irq(irq_find_mapping(port->leg_domain,
-							    bit));
-	}
+	chained_irq_enter(chip, desc);
 
-	if (status & XILINX_CPM_PCIE_INTR_SLV_UNSUPP)
-		dev_warn(dev, "Slave unsupported request\n");
+	val =  pcie_read(port, XILINX_CPM_PCIE_REG_IDR);
+	val &= pcie_read(port, XILINX_CPM_PCIE_REG_IMR);
 
-	if (status & XILINX_CPM_PCIE_INTR_SLV_UNEXP)
-		dev_warn(dev, "Slave unexpected completion\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_SLV_COMPL)
-		dev_warn(dev, "Slave completion timeout\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_SLV_ERRP)
-		dev_warn(dev, "Slave Error Poison\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_SLV_CMPABT)
-		dev_warn(dev, "Slave Completer Abort\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_SLV_ILLBUR)
-		dev_warn(dev, "Slave Illegal Burst\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_MST_DECERR)
-		dev_warn(dev, "Master decode error\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_MST_SLVERR)
-		dev_warn(dev, "Master slave error\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_CFG_PCIE_TIMEOUT)
-		dev_warn(dev, "PCIe ECAM access timeout\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_CFG_ERR_POISON)
-		dev_warn(dev, "ECAM poisoned completion received\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_PME_TO_ACK_RCVD)
-		dev_warn(dev, "PME_TO_ACK message received\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_PM_PME_RCVD)
-		dev_warn(dev, "PM_PME message received\n");
-
-	if (status & XILINX_CPM_PCIE_INTR_SLV_PCIE_TIMEOUT)
-		dev_warn(dev, "PCIe completion timeout received\n");
+	for_each_set_bit(i, &val, 32)
+		generic_handle_irq(irq_find_mapping(port->cpm_domain, i));
 
 	/* Clear the Interrupt Decode register */
-	pcie_write(port, status, XILINX_CPM_PCIE_REG_IDR);
+	pcie_write(port, val, XILINX_CPM_PCIE_REG_IDR);
 
 	/*
 	 * XILINX_CPM_PCIE_MISC_IR_STATUS register is mapped to
 	 * CPM SLCR block.
 	 */
-	val = readl(port->cpm_base + XILINX_CPM_PCIE_MISC_IR_STATUS);
+	val = readl_relaxed(port->cpm_base + XILINX_CPM_PCIE_MISC_IR_STATUS);
 	if (val)
-		writel(val, port->cpm_base + XILINX_CPM_PCIE_MISC_IR_STATUS);
+		writel_relaxed(val, port->cpm_base + XILINX_CPM_PCIE_MISC_IR_STATUS);
+
+	chained_irq_exit(chip, desc);
+}
+
+#define _IC(x, s)				\
+	[XILINX_CPM_PCIE_INTR_ ## x] = { __stringify(x), s }
+
+static const struct {
+	const char	*sym;
+	const char	*str;
+} intr_cause[32] = {
+	_IC(LINK_DOWN,		"Link Down"),
+	_IC(HOT_RESET,		"Hot reset"),
+	_IC(CFG_TIMEOUT,	"ECAM access timeout"),
+	_IC(CORRECTABLE,	"Correctable error message"),
+	_IC(NONFATAL,		"Non fatal error message"),
+	_IC(FATAL,		"Fatal error message"),
+	_IC(SLV_UNSUPP,		"Slave unsupported request"),
+	_IC(SLV_UNEXP,		"Slave unexpected completion"),
+	_IC(SLV_COMPL,		"Slave completion timeout"),
+	_IC(SLV_ERRP,		"Slave Error Poison"),
+	_IC(SLV_CMPABT,		"Slave Completer Abort"),
+	_IC(SLV_ILLBUR,		"Slave Illegal Burst"),
+	_IC(MST_DECERR,		"Master decode error"),
+	_IC(MST_SLVERR,		"Master slave error"),
+	_IC(CFG_PCIE_TIMEOUT,	"PCIe ECAM access timeout"),
+	_IC(CFG_ERR_POISON,	"ECAM poisoned completion received"),
+	_IC(PME_TO_ACK_RCVD,	"PME_TO_ACK message received"),
+	_IC(PM_PME_RCVD,	"PM_PME message received"),
+	_IC(SLV_PCIE_TIMEOUT,	"PCIe completion timeout received"),
+};
+
+static irqreturn_t xilinx_cpm_pcie_intr_handler(int irq, void *dev_id)
+{
+	struct xilinx_cpm_pcie_port *port = dev_id;
+	struct device *dev = port->dev;
+	struct irq_data *d;
+
+	d = irq_domain_get_irq_data(port->cpm_domain, irq);
+
+	switch(d->hwirq) {
+	case XILINX_CPM_PCIE_INTR_CORRECTABLE:
+	case XILINX_CPM_PCIE_INTR_NONFATAL:
+	case XILINX_CPM_PCIE_INTR_FATAL:
+		cpm_pcie_clear_err_interrupts(port);
+		fallthrough;
+
+	default:
+		if (intr_cause[d->hwirq].str)
+			dev_warn(dev, "%s\n", intr_cause[d->hwirq].str);
+		else
+			dev_warn(dev, "Unknown interrupt\n");
+	}
 
 	return IRQ_HANDLED;
 }
@@ -315,17 +375,41 @@ static int xilinx_cpm_pcie_init_irq_domain(struct xilinx_cpm_pcie_port *port)
 		return -EINVAL;
 	}
 
-	port->leg_domain = irq_domain_add_linear(pcie_intc_node, PCI_NUM_INTX,
+	port->cpm_domain = irq_domain_add_linear(pcie_intc_node, 32,
+						 &event_domain_ops,
+						 port);
+	if (!port->cpm_domain)
+		goto out;
+
+	irq_domain_update_bus_token(port->cpm_domain, DOMAIN_BUS_NEXUS);
+
+	port->intx_domain = irq_domain_add_linear(pcie_intc_node, PCI_NUM_INTX,
 						 &intx_domain_ops,
 						 port);
+	if (!port->intx_domain)
+		goto out;
+
+	irq_domain_update_bus_token(port->intx_domain, DOMAIN_BUS_WIRED);
+
 	of_node_put(pcie_intc_node);
-	if (!port->leg_domain) {
-		dev_err(dev, "Failed to get a INTx IRQ domain\n");
-		return -ENOMEM;
+	raw_spin_lock_init(&port->lock);
+
+	return 0;
+
+out:
+	of_node_put(pcie_intc_node);
+	if (port->intx_domain) {
+		irq_domain_remove(port->intx_domain);
+		port->intx_domain = NULL;
 	}
 
-	raw_spin_lock_init(&port->leg_mask_lock);
-	return 0;
+	if (port->cpm_domain) {
+		irq_domain_remove(port->cpm_domain);
+		port->cpm_domain = NULL;
+	}
+
+	dev_err(dev, "Failed to allocate IRQ domains\n");
+	return -ENOMEM;
 }
 
 /**
@@ -348,12 +432,6 @@ static void xilinx_cpm_pcie_init_port(struct xilinx_cpm_pcie_port *port)
 		   XILINX_CPM_PCIE_IMR_ALL_MASK,
 		   XILINX_CPM_PCIE_REG_IDR);
 
-	/* Enable all interrupts */
-	pcie_write(port, XILINX_CPM_PCIE_IMR_ALL_MASK,
-		   XILINX_CPM_PCIE_REG_IMR);
-	pcie_write(port, XILINX_CPM_PCIE_IDRN_MASK,
-		   XILINX_CPM_PCIE_REG_IDRN_MASK);
-
 	/*
 	 * XILINX_CPM_PCIE_MISC_IR_ENABLE register is mapped to
 	 * CPM SLCR block.
@@ -366,27 +444,44 @@ static void xilinx_cpm_pcie_init_port(struct xilinx_cpm_pcie_port *port)
 		   XILINX_CPM_PCIE_REG_RPSC);
 }
 
-static int xilinx_cpm_request_misc_irq(struct xilinx_cpm_pcie_port *port)
+static int xilinx_cpm_setup_irq(struct xilinx_cpm_pcie_port *port)
 {
 	struct device *dev = port->dev;
 	struct platform_device *pdev = to_platform_device(dev);
-	int err;
+	int i, irq;
 
-	port->irq_misc = platform_get_irq(pdev, 0);
-	if (port->irq_misc <= 0) {
-		dev_err(dev, "Unable to find misc IRQ line\n");
-		return port->irq_misc;
+	port->irq = platform_get_irq(pdev, 0);
+	if (port->irq < 0) {
+		dev_err(dev, "Unable to find IRQ line\n");
+		return port->irq;
 	}
 
-	err = devm_request_irq(dev, port->irq_misc,
-			       xilinx_cpm_pcie_intr_handler,
-			       IRQF_SHARED | IRQF_NO_THREAD,
-			       "xilinx-pcie", port);
-	if (err) {
-		dev_err(dev, "unable to request misc IRQ line %d\n",
-			port->irq_misc);
-		return err;
+	for (i = 0; i < ARRAY_SIZE(intr_cause); i++) {
+		int err;
+
+		if (!intr_cause[i].str)
+			continue;
+
+		irq = irq_create_mapping(port->cpm_domain, i);
+		if (WARN_ON(irq <= 0))
+			return -ENXIO;
+
+		err = devm_request_irq(dev, irq, xilinx_cpm_pcie_intr_handler,
+				       0, intr_cause[i].sym, port);
+		if (WARN_ON(err))
+			return err;
 	}
+
+	irq = irq_create_mapping(port->cpm_domain, XILINX_CPM_PCIE_INTR_INTX);
+	if (WARN_ON(irq <= 0))
+		return -ENXIO;
+
+	/* Plug the INTx chained handler */
+	irq_set_chained_handler_and_data(irq, xilinx_cpm_pcie_intx_flow, port);
+
+	/* Plug the main event chained handler */
+	irq_set_chained_handler_and_data(port->irq, xilinx_cpm_pcie_event_flow,
+					 port);
 
 	return 0;
 }
@@ -422,7 +517,7 @@ static int xilinx_cpm_pcie_parse_dt(struct xilinx_cpm_pcie_port *port,
 	if (IS_ERR(port->cpm_base))
 		return PTR_ERR(port->cpm_base);
 
-	err = xilinx_cpm_request_misc_irq(port);
+	err = xilinx_cpm_setup_irq(port);
 	if (err)
 		return err;
 
@@ -481,8 +576,10 @@ static int xilinx_cpm_pcie_probe(struct platform_device *pdev)
 
 	err = pci_host_probe(bridge);
 	if (err < 0) {
-		irq_domain_remove(port->leg_domain);
-		devm_free_irq(dev, port->irq_misc, port);
+		if (port->intx_domain)
+			irq_domain_remove(port->intx_domain);
+		if (port->cpm_domain)
+			irq_domain_remove(port->cpm_domain);
 		return err;
 	}
 

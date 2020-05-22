@@ -30,6 +30,8 @@
 #define KVM_HC_SEND_IPI			10
 #define KVM_HC_SCHED_YIELD		11
 #define KVM_HC_ENABLE_MEM_PROTECTED	12
+#define KVM_HC_MEM_SHARE		13
+#define KVM_HC_MEM_UNSHARE		14
 
 /*
  * hypercalls use architecture specific

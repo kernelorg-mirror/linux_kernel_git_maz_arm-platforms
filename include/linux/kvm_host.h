@@ -701,6 +701,10 @@ void kvm_arch_flush_shadow_all(struct kvm *kvm);
 void kvm_arch_flush_shadow_memslot(struct kvm *kvm,
 				   struct kvm_memory_slot *slot);
 
+int kvm_protect_all_memory(struct kvm *kvm);
+int kvm_protect_memory(struct kvm *kvm,
+		       unsigned long gfn, unsigned long npages, bool protect);
+
 int gfn_to_page_many_atomic(struct kvm_memory_slot *slot, gfn_t gfn,
 			    struct page **pages, int nr_pages);
 

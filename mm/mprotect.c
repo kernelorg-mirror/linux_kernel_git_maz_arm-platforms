@@ -505,6 +505,7 @@ fail:
 	vm_unacct_memory(charged);
 	return error;
 }
+EXPORT_SYMBOL_GPL(mprotect_fixup);
 
 /*
  * pkey==-1 when doing a legacy mprotect()

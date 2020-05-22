@@ -154,6 +154,8 @@ static void kvm_uevent_notify_change(unsigned int type, struct kvm *kvm);
 static unsigned long long kvm_createvm_count;
 static unsigned long long kvm_active_vms;
 
+static int protect_memory(unsigned long start, unsigned long end, bool protect);
+
 __weak void kvm_arch_mmu_notifier_invalidate_range(struct kvm *kvm,
 						   unsigned long start, unsigned long end)
 {
@@ -1370,6 +1372,14 @@ int __kvm_set_memory_region(struct kvm *kvm,
 	r = kvm_set_memslot(kvm, mem, &old, &new, as_id, change);
 	if (r)
 		goto out_bitmap;
+
+	if (mem->memory_size && kvm->mem_protected) {
+		r = protect_memory(new.userspace_addr,
+				   new.userspace_addr + new.npages * PAGE_SIZE,
+				   true);
+		if (r)
+			goto out_bitmap;
+	}
 
 	if (old.dirty_bitmap && !new.dirty_bitmap)
 		kvm_destroy_dirty_bitmap(&old);
@@ -2725,6 +2735,127 @@ void kvm_vcpu_mark_page_dirty(struct kvm_vcpu *vcpu, gfn_t gfn)
 	mark_page_dirty_in_slot(memslot, gfn);
 }
 EXPORT_SYMBOL_GPL(kvm_vcpu_mark_page_dirty);
+
+static int protect_memory(unsigned long start, unsigned long end, bool protect)
+{
+	struct mm_struct *mm = current->mm;
+	struct vm_area_struct *vma, *prev;
+	int ret;
+
+	if (down_write_killable(&mm->mmap_sem))
+		return -EINTR;
+
+	ret = -ENOMEM;
+	vma = find_vma(current->mm, start);
+	if (!vma)
+		goto out;
+
+	ret = -EINVAL;
+	if (vma->vm_start > start)
+		goto out;
+
+	if (start > vma->vm_start)
+		prev = vma;
+	else
+		prev = vma->vm_prev;
+
+	ret = 0;
+	while (true) {
+		unsigned long newflags, tmp;
+
+		tmp = vma->vm_end;
+		if (tmp > end)
+			tmp = end;
+
+		newflags = vma->vm_flags;
+		if (protect)
+			newflags |= VM_KVM_PROTECTED;
+		else
+			newflags &= ~VM_KVM_PROTECTED;
+
+		/* The VMA has been handled as part of other memslot */
+		if (newflags == vma->vm_flags)
+			goto next;
+
+		ret = mprotect_fixup(vma, &prev, start, tmp, newflags);
+		if (ret)
+			goto out;
+
+next:
+		start = tmp;
+		if (start < prev->vm_end)
+			start = prev->vm_end;
+
+		if (start >= end)
+			goto out;
+
+		vma = prev->vm_next;
+		if (!vma || vma->vm_start != start) {
+			ret = -ENOMEM;
+			goto out;
+		}
+	}
+out:
+	up_write(&mm->mmap_sem);
+	return ret;
+}
+
+int kvm_protect_memory(struct kvm *kvm,
+		       unsigned long gfn, unsigned long npages, bool protect)
+{
+	struct kvm_memory_slot *memslot;
+	unsigned long start, end;
+	gfn_t numpages;
+
+	if (!VM_KVM_PROTECTED)
+		return -KVM_ENOSYS;
+
+	if (!npages)
+		return 0;
+
+	memslot = gfn_to_memslot(kvm, gfn);
+	/* Not backed by memory. It's okay. */
+	if (!memslot)
+		return 0;
+
+	start = gfn_to_hva_many(memslot, gfn, &numpages);
+	end = start + npages * PAGE_SIZE;
+
+	/* XXX: Share range across memory slots? */
+	if (WARN_ON(numpages < npages))
+		return -EINVAL;
+
+	return protect_memory(start, end, protect);
+}
+EXPORT_SYMBOL_GPL(kvm_protect_memory);
+
+int kvm_protect_all_memory(struct kvm *kvm)
+{
+	struct kvm_memslots *slots;
+	struct kvm_memory_slot *memslot;
+	unsigned long start, end;
+	int i, ret = 0;;
+
+	if (!VM_KVM_PROTECTED)
+		return -KVM_ENOSYS;
+
+	mutex_lock(&kvm->slots_lock);
+	kvm->mem_protected = true;
+	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
+		slots = __kvm_memslots(kvm, i);
+		kvm_for_each_memslot(memslot, slots) {
+			start = memslot->userspace_addr;
+			end = start + memslot->npages * PAGE_SIZE;
+			ret = protect_memory(start, end, true);
+			if (ret)
+				goto out;
+		}
+	}
+out:
+	mutex_unlock(&kvm->slots_lock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(kvm_protect_all_memory);
 
 void kvm_sigset_activate(struct kvm_vcpu *vcpu)
 {

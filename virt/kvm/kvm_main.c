@@ -1794,7 +1794,7 @@ unsigned long kvm_vcpu_gfn_to_hva_prot(struct kvm_vcpu *vcpu, gfn_t gfn, bool *w
 
 static inline int check_user_page_hwpoison(unsigned long addr)
 {
-	int rc, flags = FOLL_HWPOISON | FOLL_WRITE;
+	int rc, flags = FOLL_HWPOISON | FOLL_WRITE | FOLL_KVM;
 
 	rc = get_user_pages(addr, 1, flags, NULL, NULL);
 	return rc == -EHWPOISON;
@@ -1836,7 +1836,7 @@ static bool hva_to_pfn_fast(unsigned long addr, bool write_fault,
 static int hva_to_pfn_slow(unsigned long addr, bool *async, bool write_fault,
 			   bool *writable, kvm_pfn_t *pfn)
 {
-	unsigned int flags = FOLL_HWPOISON;
+	unsigned int flags = FOLL_HWPOISON | FOLL_KVM;
 	struct page *page;
 	int npages = 0;
 
@@ -2320,7 +2320,7 @@ int copy_from_guest(void *data, unsigned long hva, int len)
 	int npages, seg;
 
 	while ((seg = next_segment(len, offset)) != 0) {
-		npages = get_user_pages_unlocked(hva, 1, &page, 0);
+		npages = get_user_pages_unlocked(hva, 1, &page, FOLL_KVM);
 		if (npages != 1)
 			return -EFAULT;
 		memcpy(data, page_address(page) + offset, seg);
@@ -2340,7 +2340,8 @@ int copy_to_guest(unsigned long hva, const void *data, int len)
 	int npages, seg;
 
 	while ((seg = next_segment(len, offset)) != 0) {
-		npages = get_user_pages_unlocked(hva, 1, &page, FOLL_WRITE);
+		npages = get_user_pages_unlocked(hva, 1, &page,
+						 FOLL_WRITE | FOLL_KVM);
 		if (npages != 1)
 			return -EFAULT;
 		memcpy(page_address(page) + offset, data, seg);

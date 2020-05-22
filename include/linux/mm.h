@@ -340,6 +340,8 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_MAPPED_COPY	VM_ARCH_1	/* T if mapped copy of data (nommu mmap) */
 #endif
 
+#define VM_KVM_PROTECTED 0
+
 #ifndef VM_GROWSUP
 # define VM_GROWSUP	VM_NONE
 #endif
@@ -654,6 +656,11 @@ static inline bool vma_is_foreign(struct vm_area_struct *vma)
 static inline bool vma_is_accessible(struct vm_area_struct *vma)
 {
 	return vma->vm_flags & VM_ACCESS_FLAGS;
+}
+
+static inline bool vma_is_kvm_protected(struct vm_area_struct *vma)
+{
+	return vma->vm_flags & VM_KVM_PROTECTED;
 }
 
 #ifdef CONFIG_SHMEM
@@ -2764,6 +2771,7 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 #define FOLL_SPLIT_PMD	0x20000	/* split huge pmd before returning */
 #define FOLL_PIN	0x40000	/* pages must be released via unpin_user_page */
 #define FOLL_FAST_ONLY	0x80000	/* gup_fast: prevent fall-back to slow gup */
+#define FOLL_KVM	0x100000 /* access to VM_KVM_PROTECTED VMAs */
 
 /*
  * FOLL_PIN and FOLL_LONGTERM may be used in various combinations with each

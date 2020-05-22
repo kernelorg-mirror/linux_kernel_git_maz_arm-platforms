@@ -1294,10 +1294,19 @@ fallback:
  * FOLL_FORCE can write to even unwritable pmd's, but only
  * after we've gone through a COW cycle and they are dirty.
  */
-static inline bool can_follow_write_pmd(pmd_t pmd, unsigned int flags)
+static inline bool can_follow_write_pmd(struct vm_area_struct *vma,
+					pmd_t pmd, unsigned int flags)
 {
-	return pmd_write(pmd) ||
-	       ((flags & FOLL_FORCE) && (flags & FOLL_COW) && pmd_dirty(pmd));
+	if (pmd_write(pmd))
+		return true;
+
+	if ((flags & FOLL_FORCE) && (flags & FOLL_COW) && pmd_dirty(pmd))
+		return true;
+
+	if (!vma_is_kvm_protected(vma) || !(vma->vm_flags & VM_WRITE))
+		return false;
+
+	return (vma->vm_flags & VM_SHARED) || page_mapcount(pmd_page(pmd)) == 1;
 }
 
 struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
@@ -1310,7 +1319,7 @@ struct page *follow_trans_huge_pmd(struct vm_area_struct *vma,
 
 	assert_spin_locked(pmd_lockptr(mm, pmd));
 
-	if (flags & FOLL_WRITE && !can_follow_write_pmd(*pmd, flags))
+	if (flags & FOLL_WRITE && !can_follow_write_pmd(vma, *pmd, flags))
 		goto out;
 
 	/* Avoid dumping huge zero page */
@@ -1383,6 +1392,9 @@ vm_fault_t do_huge_pmd_numa_page(struct vm_fault *vmf, pmd_t pmd)
 	bool migrated = false;
 	bool was_writable;
 	int flags = 0;
+
+	if (vma_is_kvm_protected(vma))
+		return VM_FAULT_SIGBUS;
 
 	vmf->ptl = pmd_lock(vma->vm_mm, vmf->pmd);
 	if (unlikely(!pmd_same(pmd, *vmf->pmd)))

@@ -807,6 +807,7 @@ config KVM_GUEST
 	select X86_HV_CALLBACK_VECTOR
 	select X86_MEM_ENCRYPT_COMMON
 	select SWIOTLB
+	select ARCH_USES_HIGH_VMA_FLAGS
 	default y
 	help
 	  This option enables various optimizations for running under the KVM

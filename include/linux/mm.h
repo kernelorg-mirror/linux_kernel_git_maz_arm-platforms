@@ -340,7 +340,11 @@ extern unsigned int kobjsize(const void *objp);
 # define VM_MAPPED_COPY	VM_ARCH_1	/* T if mapped copy of data (nommu mmap) */
 #endif
 
+#if defined(CONFIG_X86_64) && defined(CONFIG_KVM)
+#define VM_KVM_PROTECTED VM_HIGH_ARCH_4
+#else
 #define VM_KVM_PROTECTED 0
+#endif
 
 #ifndef VM_GROWSUP
 # define VM_GROWSUP	VM_NONE

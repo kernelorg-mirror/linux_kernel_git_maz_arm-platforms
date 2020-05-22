@@ -12,6 +12,7 @@
 #include <linux/hrtimer.h>
 #include <linux/dma-mapping.h>
 #include <xen/xen.h>
+#include <asm/kvm_para.h>
 
 #ifdef DEBUG
 /* For development, we want to crash whenever the ring is screwed. */
@@ -253,6 +254,9 @@ static bool vring_use_dma_api(struct virtio_device *vdev)
 	 * all of the sensible Xen configurations to work correctly.
 	 */
 	if (xen_domain())
+		return true;
+
+	if (kvm_mem_protected())
 		return true;
 
 	return false;

@@ -76,6 +76,9 @@ out:
 	return rc;
 }
 
+static DEFINE_MUTEX(pci_iov_bus_lock);
+
+/* pci_iov_bus_lock must be held */
 static struct pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
 {
 	struct pci_bus *child;
@@ -96,6 +99,7 @@ static struct pci_bus *virtfn_add_bus(struct pci_bus *bus, int busnr)
 	return child;
 }
 
+/* pci_iov_bus_lock must be held */
 static void virtfn_remove_bus(struct pci_bus *physbus, struct pci_bus *virtbus)
 {
 	if (physbus != virtbus && list_empty(&virtbus->devices))
@@ -167,6 +171,8 @@ int pci_iov_add_virtfn(struct pci_dev *dev, int id)
 	struct pci_sriov *iov = dev->sriov;
 	struct pci_bus *bus;
 
+	mutex_lock(&pci_iov_bus_lock);
+
 	bus = virtfn_add_bus(dev->bus, pci_iov_virtfn_bus(dev, id));
 	if (!bus)
 		goto failed;
@@ -212,6 +218,8 @@ int pci_iov_add_virtfn(struct pci_dev *dev, int id)
 
 	pci_bus_add_device(virtfn);
 
+	mutex_unlock(&pci_iov_bus_lock);
+
 	return 0;
 
 failed1:
@@ -220,6 +228,7 @@ failed1:
 failed0:
 	virtfn_remove_bus(dev->bus, bus);
 failed:
+	mutex_unlock(&pci_iov_bus_lock);
 
 	return rc;
 }
@@ -246,7 +255,10 @@ void pci_iov_remove_virtfn(struct pci_dev *dev, int id)
 		sysfs_remove_link(&virtfn->dev.kobj, "physfn");
 
 	pci_stop_and_remove_bus_device(virtfn);
+
+	mutex_lock(&pci_iov_bus_lock);
 	virtfn_remove_bus(dev->bus, virtfn->bus);
+	mutex_unlock(&pci_iov_bus_lock);
 
 	/* balance pci_get_domain_bus_and_slot() */
 	pci_dev_put(virtfn);

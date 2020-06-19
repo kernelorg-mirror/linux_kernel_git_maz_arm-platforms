@@ -457,19 +457,25 @@ static inline int kvm_write_guest_lock(struct kvm *kvm, gpa_t gpa,
 extern void *__kvm_bp_vect_base;
 extern int __kvm_harden_el2_vector_slot;
 
+#define get_hyp_vector_address(v)				\
+({								\
+	void *__v;						\
+	if (has_vhe())						\
+		__v = kvm_ksym_ref(v);				\
+	else							\
+		__v = kern_hyp_va(kvm_ksym_ref_nvhe(v));	\
+	__v;							\
+})
+
 /*  This is called on both VHE and !VHE systems */
 static inline void *kvm_get_hyp_vector(void)
 {
 	struct bp_hardening_data *data = arm64_get_bp_hardening_data();
+	void *vect = get_hyp_vector_address(__kvm_hyp_vector);
 	int slot = -1;
-	void *vect = kern_hyp_va(has_vhe()
-		? kvm_ksym_ref(__kvm_hyp_vector)
-		: kvm_ksym_ref_nvhe(__kvm_hyp_vector));
 
 	if (cpus_have_const_cap(ARM64_HARDEN_BRANCH_PREDICTOR) && data->fn) {
-		vect = kern_hyp_va(has_vhe()
-			? kvm_ksym_ref(__bp_harden_hyp_vecs)
-			: kvm_ksym_ref_nvhe(__bp_harden_hyp_vecs));
+		vect = get_hyp_vector_address(__bp_harden_hyp_vecs);
 		slot = data->hyp_vectors_slot;
 	}
 

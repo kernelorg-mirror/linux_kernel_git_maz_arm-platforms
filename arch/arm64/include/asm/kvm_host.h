@@ -457,9 +457,7 @@ u64 __kvm_call_hyp(void *hypfn, ...);
 #define kvm_call_hyp_nvhe_ret(f, ...)					\
 	({								\
 		DECLARE_KVM_NVHE_SYM(f);				\
-		typeof(f(__VA_ARGS__)) ret;				\
-		ret = __kvm_call_hyp(kvm_ksym_ref_nvhe(f),		\
-				     ##__VA_ARGS__);			\
+		__kvm_call_hyp(kvm_ksym_ref_nvhe(f), ##__VA_ARGS__);	\
 	})
 
 /*

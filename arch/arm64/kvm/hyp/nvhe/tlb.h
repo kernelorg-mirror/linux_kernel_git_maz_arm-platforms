@@ -4,13 +4,12 @@
  * Author: Marc Zyngier <marc.zyngier@arm.com>
  */
 
-#include <linux/irqflags.h>
-
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
-#include <asm/tlbflush.h>
 
-#include "../tlb.h"
+struct tlb_inv_context {
+	u64		tcr;
+};
 
 static void __tlb_switch_to_guest(struct kvm *kvm, struct tlb_inv_context *cxt)
 {
@@ -45,24 +44,4 @@ static void __tlb_switch_to_host(struct kvm *kvm, struct tlb_inv_context *cxt)
 		/* Restore the host's TCR_EL1 */
 		write_sysreg_el1(cxt->tcr, SYS_TCR);
 	}
-}
-
-void __kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa)
-{
-	__tlb_flush_vmid_ipa(kvm, ipa);
-}
-
-void __kvm_tlb_flush_vmid(struct kvm *kvm)
-{
-	__tlb_flush_vmid(kvm);
-}
-
-void __kvm_tlb_flush_local_vmid(struct kvm_vcpu *vcpu)
-{
-	__tlb_flush_local_vmid(vcpu);
-}
-
-void __kvm_flush_vm_context(void)
-{
-	__tlb_flush_vm_context();
 }

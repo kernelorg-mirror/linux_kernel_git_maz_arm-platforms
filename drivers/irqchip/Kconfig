@@ -67,6 +67,12 @@ config ARM_RVIC
 	select IRQ_DOMAIN_HIERARCHY
 	select GENERIC_IRQ_EFFECTIVE_AFF_MASK
 
+config ARM_RVID
+	bool
+	default ARM64
+	select IRQ_DOMAIN_HIERARCHY
+	select GENERIC_IRQ_EFFECTIVE_AFF_MASK
+
 config ARM_VIC
 	bool
 	select IRQ_DOMAIN

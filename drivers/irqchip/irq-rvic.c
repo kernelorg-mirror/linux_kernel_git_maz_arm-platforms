@@ -37,6 +37,8 @@ static DEFINE_PER_CPU(unsigned long *, trusted_masked);
 struct rvic_data {
 	struct fwnode_handle	*fwnode;
 	struct irq_domain	*domain;
+	unsigned long 		*bitmap;
+	struct mutex		lock;
 	unsigned int		nr_trusted;
 	unsigned int		nr_untrusted;
 };
@@ -356,9 +358,26 @@ static int rvic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	irq_hw_number_t hwirq;
 	int i, ret;
 
-	ret = irq_domain_translate_twocell(domain, fwspec, &hwirq, &type);
-	if (ret)
-		return ret;
+	if (fwspec) {
+		ret = irq_domain_translate_twocell(domain, fwspec,
+						   &hwirq, &type);
+		if (ret)
+			return ret;
+	} else {
+		/* rVID wants untrusted interrupts */
+		mutex_lock(&rvic.lock);
+		hwirq = bitmap_find_next_zero_area(rvic.bitmap,
+						   rvic.nr_untrusted,
+						   0, nr_irqs, 0);
+		if (hwirq < rvic.nr_untrusted)
+			bitmap_set(rvic.bitmap, hwirq, nr_irqs);
+		mutex_unlock(&rvic.lock);
+
+		if (hwirq >= rvic.nr_untrusted)
+			return -ENOSPC;
+
+		hwirq += rvic.nr_trusted;
+	}
 
 	for (i = 0; i < nr_irqs; i++) {
 		unsigned int intid = hwirq + i;
@@ -376,6 +395,12 @@ static int rvic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 					    domain->host_data,
 					    handle_percpu_devid_irq,
 					    NULL, NULL);
+		} else if (intid < (rvic.nr_trusted + rvic.nr_untrusted)) {
+			irqd_set_single_target(irq_desc_get_irq_data(irq_to_desc(irq)));
+			irq_domain_set_info(domain, irq, intid, &rvic_chip,
+					    domain->host_data,
+					    handle_fasteoi_irq,
+					    NULL, NULL);
 		} else {
 			return -EINVAL;
 		}
@@ -391,6 +416,11 @@ static void rvic_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 
 	for (i = 0; i < nr_irqs; i++) {
 		struct irq_data *d = irq_domain_get_irq_data(domain, virq + i);
+		if (d->hwirq >= rvic.nr_trusted) {
+			mutex_lock(&rvic.lock);
+			__clear_bit(d->hwirq, rvic.bitmap);
+			mutex_unlock(&rvic.lock);
+		}
 		irq_set_handler(virq + i, NULL);
 		irq_domain_reset_irq_data(d);
 	}
@@ -523,6 +553,12 @@ static int __init rvic_init(struct device_node *node,
 		return -ENOMEM;
 	}
 
+	rvic.bitmap = bitmap_alloc(rvic.nr_untrusted, GFP_KERNEL | __GFP_ZERO);
+	if (!rvic.bitmap) {
+		pr_warn("Failed to allocate untrusted bitmap\n");
+		goto free_domain;
+	}
+
 	for_each_possible_cpu(cpu) {
 		unsigned long *map = bitmap_alloc(rvic.nr_trusted, GFP_KERNEL);
 
@@ -537,6 +573,8 @@ static int __init rvic_init(struct device_node *node,
 		per_cpu(trusted_masked, cpu) = map;
 	}
 
+	mutex_init(&rvic.lock);
+
 	rvic_smp_init(rvic.fwnode);
 	set_handle_irq(rvic_handle_irq);
 
@@ -546,6 +584,9 @@ free_percpu:
 	for_each_possible_cpu(cpu)
 		kfree(per_cpu(trusted_masked, cpu));
 
+	kfree(rvic.bitmap);
+
+free_domain:
 	irq_domain_remove(rvic.domain);
 
 	return -ENOMEM;

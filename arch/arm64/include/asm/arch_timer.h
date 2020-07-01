@@ -18,6 +18,8 @@
 #include <linux/smp.h>
 #include <linux/types.h>
 
+#include <vdso/clocksource.h>
+
 #include <clocksource/arm_arch_timer.h>
 
 #if IS_ENABLED(CONFIG_ARM_ARCH_TIMER_OOL_WORKAROUND)
@@ -58,6 +60,7 @@ struct arch_timer_erratum_workaround {
 	u64 (*read_cntvct_el0)(void);
 	int (*set_next_event_phys)(unsigned long, struct clock_event_device *);
 	int (*set_next_event_virt)(unsigned long, struct clock_event_device *);
+	enum vdso_clock_mode vdso_clock_mode;
 };
 
 DECLARE_PER_CPU(const struct arch_timer_erratum_workaround *,

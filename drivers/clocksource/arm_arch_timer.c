@@ -566,6 +566,9 @@ void arch_timer_enable_workaround(const struct arch_timer_erratum_workaround *wa
 	if (wa->read_cntvct_el0) {
 		clocksource_counter.vdso_clock_mode = VDSO_CLOCKMODE_NONE;
 		vdso_default = VDSO_CLOCKMODE_NONE;
+	} else {
+		clocksource_counter.vdso_clock_mode = wa->vdso_clock_mode;
+		vdso_default = wa->vdso_clock_mode;
 	}
 }
 

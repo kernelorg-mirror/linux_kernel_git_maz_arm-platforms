@@ -24,6 +24,7 @@
 #include <asm/fpsimd.h>
 #include <asm/kvm.h>
 #include <asm/kvm_asm.h>
+#include <asm/kvm_irq.h>
 #include <asm/thread_info.h>
 
 #define __KVM_HAVE_ARCH_INTC_INITIALIZED
@@ -98,6 +99,7 @@ struct kvm_arch {
 	int max_vcpus;
 
 	/* Interrupt controller */
+	enum kvm_irqchip_type	irqchip_type;
 	struct vgic_dist	vgic;
 
 	/* Mandated version of PSCI */

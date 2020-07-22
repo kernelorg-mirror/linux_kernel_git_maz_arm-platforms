@@ -263,8 +263,7 @@ unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
 
 static bool is_vgic_v2_sgi(struct kvm_vcpu *vcpu, struct vgic_irq *irq)
 {
-	return (vgic_irq_is_sgi(irq->intid) &&
-		vcpu->kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V2);
+	return (vgic_irq_is_sgi(irq->intid) && irqchip_is_gic_v2(vcpu->kvm));
 }
 
 void vgic_mmio_write_spending(struct kvm_vcpu *vcpu,
@@ -450,7 +449,7 @@ int vgic_uaccess_write_cpending(struct kvm_vcpu *vcpu,
  */
 static void vgic_access_active_prepare(struct kvm_vcpu *vcpu, u32 intid)
 {
-	if (vcpu->kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3 ||
+	if (irqchip_is_gic_v3(vcpu->kvm) ||
 	    intid >= VGIC_NR_PRIVATE_IRQS)
 		kvm_arm_halt_guest(vcpu->kvm);
 }
@@ -458,7 +457,7 @@ static void vgic_access_active_prepare(struct kvm_vcpu *vcpu, u32 intid)
 /* See vgic_access_active_prepare */
 static void vgic_access_active_finish(struct kvm_vcpu *vcpu, u32 intid)
 {
-	if (vcpu->kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3 ||
+	if (irqchip_is_gic_v3(vcpu->kvm) ||
 	    intid >= VGIC_NR_PRIVATE_IRQS)
 		kvm_arm_resume_guest(vcpu->kvm);
 }
@@ -539,7 +538,6 @@ static void vgic_mmio_change_active(struct kvm_vcpu *vcpu, struct vgic_irq *irq,
 		 */
 		irq->active = false;
 	} else {
-		u32 model = vcpu->kvm->arch.vgic.vgic_model;
 		u8 active_source;
 
 		irq->active = active;
@@ -557,7 +555,7 @@ static void vgic_mmio_change_active(struct kvm_vcpu *vcpu, struct vgic_irq *irq,
 		 */
 		active_source = (requester_vcpu) ? requester_vcpu->vcpu_id : 0;
 
-		if (model == KVM_DEV_TYPE_ARM_VGIC_V2 &&
+		if (irqchip_is_gic_v2(vcpu->kvm) &&
 		    active && vgic_irq_is_sgi(irq->intid))
 			irq->active_source = active_source;
 	}

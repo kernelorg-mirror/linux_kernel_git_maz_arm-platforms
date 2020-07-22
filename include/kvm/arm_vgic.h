@@ -201,12 +201,8 @@ struct vgic_redist_region {
 };
 
 struct vgic_dist {
-	bool			in_kernel;
 	bool			ready;
 	bool			initialized;
-
-	/* vGIC model the kernel emulates for the guest (GICv2 or GICv3) */
-	u32			vgic_model;
 
 	/* Implementation revision as reported in the GICD_IIDR */
 	u32			implementation_rev;
@@ -361,7 +357,6 @@ void kvm_vgic_load(struct kvm_vcpu *vcpu);
 void kvm_vgic_put(struct kvm_vcpu *vcpu);
 void kvm_vgic_vmcr_sync(struct kvm_vcpu *vcpu);
 
-#define irqchip_in_kernel(k)	(!!((k)->arch.vgic.in_kernel))
 #define vgic_initialized(k)	((k)->arch.vgic.initialized)
 #define vgic_ready(k)		((k)->arch.vgic.ready)
 #define vgic_valid_spi(k, i)	(((i) >= VGIC_NR_PRIVATE_IRQS) && \

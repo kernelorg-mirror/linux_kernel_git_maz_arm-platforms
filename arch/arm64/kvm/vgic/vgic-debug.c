@@ -61,7 +61,7 @@ static void iter_init(struct kvm *kvm, struct vgic_state_iter *iter,
 
 	iter->nr_cpus = nr_cpus;
 	iter->nr_spis = kvm->arch.vgic.nr_spis;
-	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+	if (irqchip_is_gic_v3(kvm)) {
 		iter->nr_lpis = vgic_copy_lpi_list(kvm, NULL, &iter->lpi_array);
 		if (iter->nr_lpis < 0)
 			iter->nr_lpis = 0;
@@ -142,7 +142,8 @@ static void vgic_debug_stop(struct seq_file *s, void *v)
 
 static void print_dist_state(struct seq_file *s, struct vgic_dist *dist)
 {
-	bool v3 = dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3;
+	struct kvm *kvm = container_of(dist, struct kvm, arch.vgic);
+	bool v3 = irqchip_is_gic_v3(kvm);
 
 	seq_printf(s, "Distributor\n");
 	seq_printf(s, "===========\n");

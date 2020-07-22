@@ -32,7 +32,7 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_v3_cpu_if *cpuif = &vgic_cpu->vgic_v3;
-	u32 model = vcpu->kvm->arch.vgic.vgic_model;
+	bool is_v3 = irqchip_is_gic_v3(vcpu->kvm);
 	int lr;
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
@@ -48,7 +48,7 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 		cpuid = val & GICH_LR_PHYSID_CPUID;
 		cpuid >>= GICH_LR_PHYSID_CPUID_SHIFT;
 
-		if (model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+		if (is_v3) {
 			intid = val & ICH_LR_VIRTUAL_ID_MASK;
 		} else {
 			intid = val & GICH_LR_VIRTUALID;
@@ -117,12 +117,11 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 /* Requires the irq to be locked already */
 void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 {
-	u32 model = vcpu->kvm->arch.vgic.vgic_model;
+	bool is_v2 = irqchip_is_gic_v2(vcpu->kvm);
 	u64 val = irq->intid;
 	bool allow_pending = true, is_v2_sgi;
 
-	is_v2_sgi = (vgic_irq_is_sgi(irq->intid) &&
-		     model == KVM_DEV_TYPE_ARM_VGIC_V2);
+	is_v2_sgi = (vgic_irq_is_sgi(irq->intid) && is_v2);
 
 	if (irq->active) {
 		val |= ICH_LR_ACTIVE_BIT;
@@ -163,8 +162,7 @@ void vgic_v3_populate_lr(struct kvm_vcpu *vcpu, struct vgic_irq *irq, int lr)
 		if (irq->config == VGIC_CONFIG_EDGE)
 			irq->pending_latch = false;
 
-		if (vgic_irq_is_sgi(irq->intid) &&
-		    model == KVM_DEV_TYPE_ARM_VGIC_V2) {
+		if (vgic_irq_is_sgi(irq->intid) && is_v2) {
 			u32 src = ffs(irq->source);
 
 			if (WARN_RATELIMIT(!src, "No SGI source for INTID %d\n",
@@ -205,10 +203,9 @@ void vgic_v3_clear_lr(struct kvm_vcpu *vcpu, int lr)
 void vgic_v3_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
-	u32 model = vcpu->kvm->arch.vgic.vgic_model;
 	u32 vmcr;
 
-	if (model == KVM_DEV_TYPE_ARM_VGIC_V2) {
+	if (irqchip_is_gic_v2(vcpu->kvm)) {
 		vmcr = (vmcrp->ackctl << ICH_VMCR_ACK_CTL_SHIFT) &
 			ICH_VMCR_ACK_CTL_MASK;
 		vmcr |= (vmcrp->fiqen << ICH_VMCR_FIQ_EN_SHIFT) &
@@ -235,12 +232,11 @@ void vgic_v3_set_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 void vgic_v3_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
-	u32 model = vcpu->kvm->arch.vgic.vgic_model;
 	u32 vmcr;
 
 	vmcr = cpu_if->vgic_vmcr;
 
-	if (model == KVM_DEV_TYPE_ARM_VGIC_V2) {
+	if (irqchip_is_gic_v2(vcpu->kvm)) {
 		vmcrp->ackctl = (vmcr & ICH_VMCR_ACK_CTL_MASK) >>
 			ICH_VMCR_ACK_CTL_SHIFT;
 		vmcrp->fiqen = (vmcr & ICH_VMCR_FIQ_EN_MASK) >>
@@ -285,7 +281,7 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu)
 	 * Also, we don't support any form of IRQ/FIQ bypass.
 	 * This goes with the spec allowing the value to be RAO/WI.
 	 */
-	if (vcpu->kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+	if (irqchip_is_gic_v3(vcpu->kvm)) {
 		vgic_v3->vgic_sre = (ICC_SRE_EL1_DIB |
 				     ICC_SRE_EL1_DFB |
 				     ICC_SRE_EL1_SRE);

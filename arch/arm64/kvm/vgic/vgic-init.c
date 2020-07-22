@@ -106,8 +106,8 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		goto out_unlock;
 	}
 
-	kvm->arch.vgic.in_kernel = true;
-	kvm->arch.vgic.vgic_model = type;
+	kvm->arch.irqchip_type = (type == KVM_DEV_TYPE_ARM_VGIC_V2 ?
+				  IRQCHIP_GICv2 : IRQCHIP_GICv3);
 
 	kvm->arch.vgic.vgic_dist_base = VGIC_ADDR_UNDEF;
 
@@ -155,12 +155,12 @@ static int kvm_vgic_dist_init(struct kvm *kvm, unsigned int nr_spis)
 		irq->vcpu = NULL;
 		irq->target_vcpu = vcpu0;
 		kref_init(&irq->refcount);
-		switch (dist->vgic_model) {
-		case KVM_DEV_TYPE_ARM_VGIC_V2:
+		switch (kvm->arch.irqchip_type) {
+		case IRQCHIP_GICv2:
 			irq->targets = 0;
 			irq->group = 0;
 			break;
-		case KVM_DEV_TYPE_ARM_VGIC_V3:
+		case IRQCHIP_GICv3:
 			irq->mpidr = 0;
 			irq->group = 1;
 			break;
@@ -185,7 +185,6 @@ static int kvm_vgic_dist_init(struct kvm *kvm, unsigned int nr_spis)
 int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-	struct vgic_dist *dist = &vcpu->kvm->arch.vgic;
 	int ret = 0;
 	int i;
 
@@ -225,7 +224,7 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 	 * If we are creating a VCPU with a GICv3 we must also register the
 	 * KVM io device for the redistributor that belongs to this VCPU.
 	 */
-	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+	if (irqchip_is_gic_v3(vcpu->kvm)) {
 		mutex_lock(&vcpu->kvm->lock);
 		ret = vgic_register_redist_iodev(vcpu);
 		mutex_unlock(&vcpu->kvm->lock);
@@ -278,12 +277,12 @@ int vgic_init(struct kvm *kvm)
 
 		for (i = 0; i < VGIC_NR_PRIVATE_IRQS; i++) {
 			struct vgic_irq *irq = &vgic_cpu->private_irqs[i];
-			switch (dist->vgic_model) {
-			case KVM_DEV_TYPE_ARM_VGIC_V3:
+			switch (kvm->arch.irqchip_type) {
+			case IRQCHIP_GICv3:
 				irq->group = 1;
 				irq->mpidr = kvm_vcpu_get_mpidr_aff(vcpu);
 				break;
-			case KVM_DEV_TYPE_ARM_VGIC_V2:
+			case IRQCHIP_GICv2:
 				irq->group = 0;
 				irq->targets = 1U << idx;
 				break;
@@ -336,7 +335,7 @@ static void kvm_vgic_dist_destroy(struct kvm *kvm)
 	dist->spis = NULL;
 	dist->nr_spis = 0;
 
-	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
+	if (irqchip_is_gic_v3(kvm)) {
 		list_for_each_entry_safe(rdreg, next, &dist->rd_regions, list) {
 			list_del(&rdreg->list);
 			kfree(rdreg);
@@ -402,7 +401,7 @@ int vgic_lazy_init(struct kvm *kvm)
 		 * be explicitly initialized once setup with the respective
 		 * KVM device call.
 		 */
-		if (kvm->arch.vgic.vgic_model != KVM_DEV_TYPE_ARM_VGIC_V2)
+		if (!irqchip_is_gic_v2(kvm))
 			return -EBUSY;
 
 		mutex_lock(&kvm->lock);
@@ -425,14 +424,13 @@ int vgic_lazy_init(struct kvm *kvm)
  */
 int kvm_vgic_map_resources(struct kvm *kvm)
 {
-	struct vgic_dist *dist = &kvm->arch.vgic;
 	int ret = 0;
 
 	mutex_lock(&kvm->lock);
 	if (!irqchip_in_kernel(kvm))
 		goto out;
 
-	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V2)
+	if (irqchip_is_gic_v2(kvm))
 		ret = vgic_v2_map_resources(kvm);
 	else
 		ret = vgic_v3_map_resources(kvm);

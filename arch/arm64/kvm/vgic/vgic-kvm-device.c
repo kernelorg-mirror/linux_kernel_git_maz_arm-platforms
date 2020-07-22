@@ -31,10 +31,18 @@ int vgic_check_ioaddr(struct kvm *kvm, phys_addr_t *ioaddr,
 
 static int vgic_check_type(struct kvm *kvm, int type_needed)
 {
-	if (kvm->arch.vgic.vgic_model != type_needed)
-		return -ENODEV;
-	else
-		return 0;
+	switch (type_needed) {
+	case KVM_DEV_TYPE_ARM_VGIC_V2:
+		if (irqchip_is_gic_v2(kvm))
+			return 0;
+		break;
+	case KVM_DEV_TYPE_ARM_VGIC_V3:
+		if (irqchip_is_gic_v3(kvm))
+			return 0;
+		break;
+	}
+
+	return -ENODEV;
 }
 
 /**

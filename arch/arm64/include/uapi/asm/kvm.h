@@ -335,6 +335,15 @@ struct kvm_vcpu_events {
 #define KVM_ARM_VCPU_PVTIME_CTRL	2
 #define   KVM_ARM_VCPU_PVTIME_IPA	0
 
+/*
+ * Device Control API: ARM RVIC. We only use the group, not the group
+ * attributes. They must be set to 0 for now.
+ */
+#define KVM_DEV_ARM_RVIC_GRP_NR_IRQS	0
+#define   KVM_DEV_ARM_RVIC_GRP_NR_TRUSTED_MASK	0xffff
+#define   KVM_DEV_ARM_RVIC_GRP_NR_TOTAL_MASK	(0xffff << 16)
+#define KVM_DEV_ARM_RVIC_GRP_INIT	1
+
 /* KVM_IRQ_LINE irq field index values */
 #define KVM_ARM_IRQ_VCPU2_SHIFT		28
 #define KVM_ARM_IRQ_VCPU2_MASK		0xf

@@ -41,6 +41,7 @@
 #include <kvm/arm_hypercalls.h>
 #include <kvm/arm_pmu.h>
 #include <kvm/arm_psci.h>
+#include <kvm/arm_rvic.h>
 
 #ifdef REQUIRES_VIRT
 __asm__(".arch_extension	virt");
@@ -1402,6 +1403,8 @@ static int init_subsystems(void)
 	switch (err) {
 	case 0:
 		vgic_present = true;
+		if (kvm_register_rvic_device())
+			kvm_err("Failed to register rvic device type\n");
 		break;
 	case -ENODEV:
 	case -ENXIO:

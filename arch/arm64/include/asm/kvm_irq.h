@@ -11,11 +11,13 @@ enum kvm_irqchip_type {
 	IRQCHIP_USER,		/* Implemented in userspace */
 	IRQCHIP_GICv2,		/* v2 on v2, or v2 on v3 */
 	IRQCHIP_GICv3,		/* v3 on v3 */
+	IRQCHIP_RVIC,		/* PV irqchip */
 };
 
 #define irqchip_in_kernel(k)	((k)->arch.irqchip_type != IRQCHIP_USER)
 #define irqchip_is_gic_v2(k)	((k)->arch.irqchip_type == IRQCHIP_GICv2)
 #define irqchip_is_gic_v3(k)	((k)->arch.irqchip_type == IRQCHIP_GICv3)
+#define irqchip_is_rvic(k)	((k)->arch.irqchip_type == IRQCHIP_RVIC)
 
 #define irqchip_finalized(k)	((k)->arch.irqchip_finalized)
 

@@ -8,6 +8,9 @@
 
 #include <kvm/arm_hypercalls.h>
 #include <kvm/arm_psci.h>
+#include <kvm/arm_rvic.h>
+
+#include <linux/irqchip/irq-rvic.h>
 
 int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 {
@@ -62,6 +65,10 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 		if (gpa != GPA_INVALID)
 			val = gpa;
 		break;
+	case SMC64_RVIC_BASE ... SMC64_RVIC_LAST:
+		return kvm_rvic_handle_hcall(vcpu);
+	case SMC64_RVID_BASE ... SMC64_RVID_LAST:
+		return kvm_rvid_handle_hcall(vcpu);
 	default:
 		return kvm_psci_call(vcpu);
 	}

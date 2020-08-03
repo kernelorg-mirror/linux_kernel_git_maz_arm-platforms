@@ -35,6 +35,7 @@
 #include <kvm/arm_vgic.h>
 #include <kvm/arm_arch_timer.h>
 #include <kvm/arm_pmu.h>
+#include <kvm/arm_rvic.h>
 
 #define KVM_MAX_VCPUS VGIC_V3_MAX_CPUS
 
@@ -102,6 +103,7 @@ struct kvm_arch {
 	enum kvm_irqchip_type	irqchip_type;
 	bool			irqchip_finalized;
 	struct kvm_irqchip_flow	irqchip_flow;
+	void			*irqchip_data;
 	struct vgic_dist	vgic;
 
 	/* Mandated version of PSCI */
@@ -324,7 +326,10 @@ struct kvm_vcpu_arch {
 	} host_debug_state;
 
 	/* VGIC state */
-	struct vgic_cpu vgic_cpu;
+	union {
+		struct vgic_cpu vgic_cpu;
+		struct rvic rvic;
+	};
 	struct arch_timer_cpu timer_cpu;
 	struct kvm_pmu pmu;
 

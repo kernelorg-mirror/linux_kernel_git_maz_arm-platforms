@@ -6,6 +6,7 @@
  * Author: Marc Zyngier <maz@kernel.org>
  */
 
+#include <linux/debugfs.h>
 #include <linux/kernel.h>
 #include <linux/kvm_host.h>
 #include <linux/list.h>
@@ -707,6 +708,8 @@ static int rvic_inject_userspace_irq(struct kvm *kvm, unsigned int type,
 	}
 }
 
+static void rvic_create_debugfs(struct kvm_vcpu *vcpu);
+
 static int rvic_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct rvic_vm_data *data = vcpu->kvm->arch.irqchip_data;
@@ -742,6 +745,8 @@ static int rvic_vcpu_init(struct kvm_vcpu *vcpu)
 		irq->masked		= true;
 		irq->line_level		= false;
 	}
+
+	rvic_create_debugfs(vcpu);
 
 	return 0;
 }
@@ -913,6 +918,8 @@ static void rvic_device_destroy(struct kvm_device *dev)
 	kfree(dev);
 }
 
+static void rvid_create_debugfs(struct kvm *kvm);
+
 static int rvic_set_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 {
 	struct rvic_vm_data *data;
@@ -969,6 +976,7 @@ static int rvic_set_attr(struct kvm_device *dev, struct kvm_device_attr *attr)
 		}
 
 		dev->kvm->arch.irqchip_data = data;
+		rvid_create_debugfs(dev->kvm);
 
 		ret = 0;
 		break;
@@ -1070,4 +1078,136 @@ static const struct kvm_device_ops rvic_dev_ops = {
 int kvm_register_rvic_device(void)
 {
 	return kvm_register_device_ops(&rvic_dev_ops, KVM_DEV_TYPE_ARM_RVIC);
+}
+
+static void rvic_irq_debug_show_one(struct seq_file *s, struct rvic_irq *irq)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&irq->lock, flags);
+
+	seq_printf(s, "%d: [%d] %c %c %ps %c %c\n",
+		   irq->intid, irq->host_irq,
+		   irq->pending ? 'P' : 'p',
+		   irq->masked ? 'M' : 'm',
+		   irq->get_line_level,
+		   irq->get_line_level ? 'x' : (irq->line_level ? 'H' : 'L'),
+		   rvic_irq_queued(irq) ? 'Q' : 'i');
+
+	spin_unlock_irqrestore(&irq->lock, flags);
+}
+
+static int rvic_irq_debug_show(struct seq_file *s, void *p)
+{
+	rvic_irq_debug_show_one(s, s->private);
+	return 0;
+}
+
+static int rvic_irq_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, rvic_irq_debug_show, inode->i_private);
+}
+
+static const struct file_operations rvic_irq_debug_fops = {
+	.open		= rvic_irq_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int rvic_debug_show(struct seq_file *s, void *p)
+{
+	struct kvm_vcpu *vcpu = s->private;
+	struct rvic *rvic = kvm_vcpu_to_rvic(vcpu);
+	struct rvic_irq *irq;
+	unsigned long flags;
+
+	spin_lock_irqsave(&rvic->lock, flags);
+
+	seq_printf(s, "%s\n", rvic->enabled ? "Enabled" : "Disabled");
+	seq_printf(s, "%d Trusted\n", rvic->nr_trusted);
+	seq_printf(s, "%d Total\n", rvic->nr_total);
+	list_for_each_entry(irq, &rvic->delivery, delivery_entry)
+		rvic_irq_debug_show_one(s, irq);
+
+	spin_unlock_irqrestore(&rvic->lock, flags);
+
+	return 0;
+}
+
+static int rvic_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, rvic_debug_show, inode->i_private);
+}
+
+static const struct file_operations rvic_debug_fops = {
+	.open		= rvic_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static void rvic_create_debugfs(struct kvm_vcpu *vcpu)
+{
+	struct rvic *rvic = kvm_vcpu_to_rvic(vcpu);
+	struct dentry *rvic_root;
+	char dname[128];
+	int i;
+
+	snprintf(dname, sizeof(dname), "rvic-%d", vcpu->vcpu_id);
+	rvic_root = debugfs_create_dir(dname, vcpu->kvm->debugfs_dentry);
+	if (!rvic_root)
+		return;
+
+	debugfs_create_file("state", 0444, rvic_root, vcpu, &rvic_debug_fops);
+	for (i = 0; i < rvic->nr_total; i++) {
+		snprintf(dname, sizeof(dname), "%d", i);
+		debugfs_create_file(dname, 0444, rvic_root,
+				    rvic_get_irq(rvic, i),
+				    &rvic_irq_debug_fops);
+	}
+}
+
+static int rvid_debug_show(struct seq_file *s, void *p)
+{
+	struct kvm *kvm = s->private;
+	struct rvic_vm_data *data = kvm->arch.irqchip_data;
+	unsigned long flags;
+	int i;
+
+	spin_lock_irqsave(&data->lock, flags);
+
+	seq_printf(s, "%d Trusted\n", data->nr_trusted);
+	seq_printf(s, "%d Total\n", data->nr_total);
+
+	for (i = 0; i < rvic_nr_untrusted(data); i++) {
+		if (data->rvid_map[i].intid < data->nr_trusted)
+			continue;
+
+		seq_printf(s, "%4u: vcpu-%u %u\n",
+			   i, data->rvid_map[i].target_vcpu,
+			   data->rvid_map[i].intid);
+	}
+
+	spin_unlock_irqrestore(&data->lock, flags);
+
+	return 0;
+}
+
+static int rvid_debug_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, rvid_debug_show, inode->i_private);
+}
+
+static const struct file_operations rvid_debug_fops = {
+	.open		= rvid_debug_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static void rvid_create_debugfs(struct kvm *kvm)
+{
+	debugfs_create_file("rvid", 0444, kvm->debugfs_dentry,
+			    kvm, &rvid_debug_fops);
 }

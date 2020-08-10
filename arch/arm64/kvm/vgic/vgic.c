@@ -577,7 +577,7 @@ int kvm_vgic_unmap_phys_irq(struct kvm_vcpu *vcpu, unsigned int vintid)
 	struct vgic_irq *irq;
 	unsigned long flags;
 
-	if (!vgic_initialized(vcpu->kvm))
+	if (!irqchip_finalized(vcpu->kvm))
 		return -EAGAIN;
 
 	irq = vgic_get_irq(vcpu->kvm, vcpu, vintid);
@@ -607,7 +607,7 @@ int kvm_vgic_set_owner(struct kvm_vcpu *vcpu, unsigned int intid, void *owner)
 	unsigned long flags;
 	int ret = 0;
 
-	if (!vgic_initialized(vcpu->kvm))
+	if (!irqchip_finalized(vcpu->kvm))
 		return -EAGAIN;
 
 	/* SGIs and LPIs cannot be wired up to any device */
@@ -937,7 +937,7 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 void kvm_vgic_load(struct kvm_vcpu *vcpu)
 {
-	if (unlikely(!vgic_initialized(vcpu->kvm)))
+	if (unlikely(!irqchip_finalized(vcpu->kvm)))
 		return;
 
 	if (kvm_vgic_global_state.type == VGIC_V2)
@@ -948,7 +948,7 @@ void kvm_vgic_load(struct kvm_vcpu *vcpu)
 
 void kvm_vgic_put(struct kvm_vcpu *vcpu)
 {
-	if (unlikely(!vgic_initialized(vcpu->kvm)))
+	if (unlikely(!irqchip_finalized(vcpu->kvm)))
 		return;
 
 	if (kvm_vgic_global_state.type == VGIC_V2)
@@ -1044,7 +1044,7 @@ bool kvm_vgic_map_is_active(struct kvm_vcpu *vcpu, unsigned int vintid)
 	bool map_is_active;
 	unsigned long flags;
 
-	if (!vgic_initialized(vcpu->kvm))
+	if (!irqchip_finalized(vcpu->kvm))
 		return false;
 
 	irq = vgic_get_irq(vcpu->kvm, vcpu, vintid);

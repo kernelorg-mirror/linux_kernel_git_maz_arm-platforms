@@ -1892,7 +1892,7 @@ static int vgic_its_create(struct kvm_device *dev, u32 type)
 	if (!its)
 		return -ENOMEM;
 
-	if (vgic_initialized(dev->kvm)) {
+	if (irqchip_finalized(dev->kvm)) {
 		int ret = vgic_v4_init(dev->kvm);
 		if (ret < 0) {
 			kfree(its);

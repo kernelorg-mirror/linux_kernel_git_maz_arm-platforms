@@ -235,7 +235,7 @@ void kvm_arch_free_vm(struct kvm *kvm)
 
 int kvm_arch_vcpu_precreate(struct kvm *kvm, unsigned int id)
 {
-	if (irqchip_in_kernel(kvm) && vgic_initialized(kvm))
+	if (irqchip_in_kernel(kvm) && irqchip_finalized(kvm))
 		return -EBUSY;
 
 	if (id >= kvm->arch.max_vcpus)
@@ -525,7 +525,7 @@ static int kvm_vcpu_first_run_init(struct kvm_vcpu *vcpu)
 
 bool kvm_arch_intc_initialized(struct kvm *kvm)
 {
-	return vgic_initialized(kvm);
+	return (irqchip_in_kernel(kvm) && irqchip_finalized(kvm));
 }
 
 void kvm_arm_halt_guest(struct kvm *kvm)

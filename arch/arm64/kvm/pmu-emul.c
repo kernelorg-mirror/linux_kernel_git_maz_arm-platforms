@@ -752,7 +752,7 @@ static int kvm_arm_pmu_v3_init(struct kvm_vcpu *vcpu)
 		 * implementation, we require the GIC to be already
 		 * initialized when initializing the PMU.
 		 */
-		if (!vgic_initialized(vcpu->kvm))
+		if (!irqchip_finalized(vcpu->kvm))
 			return -ENODEV;
 
 		if (!kvm_arm_pmu_irq_initialized(vcpu))

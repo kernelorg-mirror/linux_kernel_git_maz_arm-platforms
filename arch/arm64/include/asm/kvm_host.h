@@ -100,6 +100,7 @@ struct kvm_arch {
 
 	/* Interrupt controller */
 	enum kvm_irqchip_type	irqchip_type;
+	bool			irqchip_finalized;
 	struct kvm_irqchip_flow	irqchip_flow;
 	struct vgic_dist	vgic;
 

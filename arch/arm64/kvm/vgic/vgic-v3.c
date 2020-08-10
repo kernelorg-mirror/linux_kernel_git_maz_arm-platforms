@@ -522,7 +522,7 @@ int vgic_v3_map_resources(struct kvm *kvm)
 	 * For a VGICv3 we require the userland to explicitly initialize
 	 * the VGIC before we need to use it.
 	 */
-	if (!vgic_initialized(kvm)) {
+	if (!irqchip_finalized(kvm)) {
 		ret = -EBUSY;
 		goto out;
 	}

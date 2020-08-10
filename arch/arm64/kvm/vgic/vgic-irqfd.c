@@ -124,7 +124,7 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 		 * Injecting SPIs is always possible in atomic context
 		 * as long as the damn vgic is initialized.
 		 */
-		if (unlikely(!vgic_initialized(kvm)))
+		if (unlikely(!irqchip_finalized(kvm)))
 			break;
 		return vgic_irqfd_set_irq(e, kvm, irq_source_id, 1, line_status);
 	}

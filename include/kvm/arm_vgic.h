@@ -202,7 +202,6 @@ struct vgic_redist_region {
 
 struct vgic_dist {
 	bool			ready;
-	bool			initialized;
 
 	/* Implementation revision as reported in the GICD_IIDR */
 	u32			implementation_rev;
@@ -339,7 +338,6 @@ int kvm_vgic_create(struct kvm *kvm, u32 type);
 int kvm_vgic_hyp_init(void);
 void kvm_vgic_init_cpu_hardware(void);
 
-#define vgic_initialized(k)	((k)->arch.vgic.initialized)
 #define vgic_valid_spi(k, i)	(((i) >= VGIC_NR_PRIVATE_IRQS) && \
 			((i) < (k)->arch.vgic.nr_spis + VGIC_NR_PRIVATE_IRQS))
 

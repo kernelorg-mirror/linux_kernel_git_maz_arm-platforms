@@ -241,7 +241,7 @@ static int vgic_debug_show(struct seq_file *s, void *v)
 		return 0;
 	}
 
-	if (!kvm->arch.vgic.initialized)
+	if (!irqchip_finalized(kvm))
 		return 0;
 
 	if (iter->vcpu_id < iter->nr_cpus)

@@ -532,7 +532,7 @@ static int vgic_v3_attr_regs_access(struct kvm_device *dev,
 
 	mutex_lock(&dev->kvm->lock);
 
-	if (unlikely(!vgic_initialized(dev->kvm))) {
+	if (unlikely(!irqchip_finalized(dev->kvm))) {
 		ret = -EBUSY;
 		goto out;
 	}

@@ -1129,7 +1129,7 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 	if (!irqchip_in_kernel(vcpu->kvm))
 		goto no_vgic;
 
-	if (!vgic_initialized(vcpu->kvm))
+	if (!irqchip_finalized(vcpu->kvm))
 		return -ENODEV;
 
 	if (!timer_irqs_are_valid(vcpu)) {

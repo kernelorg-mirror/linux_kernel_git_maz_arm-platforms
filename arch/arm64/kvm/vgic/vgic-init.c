@@ -278,7 +278,7 @@ static void kvm_vgic_vcpu_enable(struct kvm_vcpu *vcpu)
  * - the number of vcpus
  * The function is generally called when nr_spis has been explicitly set
  * by the guest through the KVM DEVICE API. If not nr_spis is set to 256.
- * vgic_initialized() returns true when this function has succeeded.
+ * irqchip_finalized() returns true when this function has succeeded.
  * Must be called with kvm->lock held!
  */
 int vgic_init(struct kvm *kvm)
@@ -287,7 +287,7 @@ int vgic_init(struct kvm *kvm)
 	struct kvm_vcpu *vcpu;
 	int ret = 0, i, idx;
 
-	if (vgic_initialized(kvm))
+	if (irqchip_finalized(kvm))
 		return 0;
 
 	/* Are we also in the middle of creating a VCPU? */
@@ -348,7 +348,7 @@ int vgic_init(struct kvm *kvm)
 	vgic_debug_init(kvm);
 
 	dist->implementation_rev = 2;
-	dist->initialized = true;
+	kvm->arch.irqchip_finalized = true;
 
 out:
 	return ret;
@@ -359,8 +359,8 @@ static void kvm_vgic_dist_destroy(struct kvm *kvm)
 	struct vgic_dist *dist = &kvm->arch.vgic;
 	struct vgic_redist_region *rdreg, *next;
 
+	kvm->arch.irqchip_finalized = false;
 	dist->ready = false;
-	dist->initialized = false;
 
 	kfree(dist->spis);
 	dist->spis = NULL;
@@ -425,7 +425,7 @@ int vgic_lazy_init(struct kvm *kvm)
 {
 	int ret = 0;
 
-	if (unlikely(!vgic_initialized(kvm))) {
+	if (unlikely(!irqchip_finalized(kvm))) {
 		/*
 		 * We only provide the automatic initialization of the VGIC
 		 * for the legacy case of a GICv2. Any other type must

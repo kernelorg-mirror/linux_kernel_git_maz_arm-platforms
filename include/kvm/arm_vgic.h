@@ -362,8 +362,6 @@ static inline int kvm_vgic_get_max_vcpus(void)
  */
 int kvm_vgic_setup_default_irq_routing(struct kvm *kvm);
 
-int kvm_vgic_set_owner(struct kvm_vcpu *vcpu, unsigned int intid, void *owner);
-
 struct kvm_kernel_irq_routing_entry;
 
 int kvm_vgic_v4_set_forwarding(struct kvm *kvm, int irq,

@@ -33,6 +33,7 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_reset_mapped_irq	= kvm_vgic_reset_mapped_irq,
 	.irqchip_map_phys_irq		= kvm_vgic_map_phys_irq,
 	.irqchip_unmap_phys_irq		= kvm_vgic_unmap_phys_irq,
+	.irqchip_set_owner		= kvm_vgic_set_owner,
 };
 
 /*

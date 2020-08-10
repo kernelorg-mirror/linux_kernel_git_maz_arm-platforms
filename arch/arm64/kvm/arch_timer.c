@@ -1083,12 +1083,12 @@ static bool timer_irqs_are_valid(struct kvm_vcpu *vcpu)
 	int i, ret;
 
 	vtimer_irq = vcpu_vtimer(vcpu)->irq.irq;
-	ret = kvm_vgic_set_owner(vcpu, vtimer_irq, vcpu_vtimer(vcpu));
+	ret = kvm_irqchip_set_owner(vcpu, vtimer_irq, vcpu_vtimer(vcpu));
 	if (ret)
 		return false;
 
 	ptimer_irq = vcpu_ptimer(vcpu)->irq.irq;
-	ret = kvm_vgic_set_owner(vcpu, ptimer_irq, vcpu_ptimer(vcpu));
+	ret = kvm_irqchip_set_owner(vcpu, ptimer_irq, vcpu_ptimer(vcpu));
 	if (ret)
 		return false;
 

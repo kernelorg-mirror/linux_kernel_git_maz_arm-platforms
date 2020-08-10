@@ -38,6 +38,7 @@ struct kvm_irqchip_flow {
 	int  (*irqchip_map_phys_irq)(struct kvm_vcpu *, unsigned int,
 				     u32, bool (*)(int));
 	int  (*irqchip_unmap_phys_irq)(struct kvm_vcpu *, unsigned int);
+	int  (*irqchip_set_owner)(struct kvm_vcpu *, unsigned int, void *);
 };
 
 /*
@@ -113,5 +114,8 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_unmap_phys_irq(v, ...)		\
 	__vcpu_irqchip_action_ret((v), unmap_phys_irq, (v), __VA_ARGS__)
+
+#define kvm_irqchip_set_owner(v, ...)		\
+	__vcpu_irqchip_action_ret((v), set_owner, (v), __VA_ARGS__)
 
 #endif

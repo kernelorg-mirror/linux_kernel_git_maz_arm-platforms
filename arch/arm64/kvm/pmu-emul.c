@@ -758,8 +758,8 @@ static int kvm_arm_pmu_v3_init(struct kvm_vcpu *vcpu)
 		if (!kvm_arm_pmu_irq_initialized(vcpu))
 			return -ENXIO;
 
-		ret = kvm_vgic_set_owner(vcpu, vcpu->arch.pmu.irq_num,
-					 &vcpu->arch.pmu);
+		ret = kvm_irqchip_set_owner(vcpu, vcpu->arch.pmu.irq_num,
+					    &vcpu->arch.pmu);
 		if (ret)
 			return ret;
 	}

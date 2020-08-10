@@ -12,6 +12,9 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+static struct kvm_irqchip_flow vgic_irqchip_flow = {
+};
+
 /*
  * Initialization rules: there are multiple stages to the vgic
  * initialization, both for the distributor and the CPU interfaces.  The basic
@@ -97,6 +100,8 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
 	else
 		INIT_LIST_HEAD(&kvm->arch.vgic.rd_regions);
+
+	kvm->arch.irqchip_flow = vgic_irqchip_flow;
 
 	INIT_LIST_HEAD(&dist->lpi_list_head);
 	INIT_LIST_HEAD(&dist->lpi_translation_cache);

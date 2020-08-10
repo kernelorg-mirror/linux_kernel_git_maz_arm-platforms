@@ -100,6 +100,7 @@ struct kvm_arch {
 
 	/* Interrupt controller */
 	enum kvm_irqchip_type	irqchip_type;
+	struct kvm_irqchip_flow	irqchip_flow;
 	struct vgic_dist	vgic;
 
 	/* Mandated version of PSCI */

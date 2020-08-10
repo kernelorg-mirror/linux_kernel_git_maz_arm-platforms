@@ -434,7 +434,7 @@ retry:
  * level-sensitive interrupts.  You can think of the level parameter as 1
  * being HIGH and 0 being LOW and all devices being active-HIGH.
  */
-int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
+int kvm_vgic_inject_irq(struct kvm *kvm, unsigned int cpuid, unsigned int intid,
 			bool level, void *owner)
 {
 	struct kvm_vcpu *vcpu;
@@ -474,6 +474,24 @@ int kvm_vgic_inject_irq(struct kvm *kvm, int cpuid, unsigned int intid,
 	vgic_put_irq(kvm, irq);
 
 	return 0;
+}
+
+int kvm_vgic_inject_userspace_irq(struct kvm *kvm, unsigned int type,
+				  unsigned int cpuid, unsigned int intid,
+				  bool level)
+{
+	switch (type) {
+	case KVM_ARM_IRQ_TYPE_PPI:
+		if (intid < VGIC_NR_SGIS || intid >= VGIC_NR_PRIVATE_IRQS)
+			return -EINVAL;
+		return kvm_vgic_inject_irq(kvm, cpuid, intid, level, NULL);
+	case KVM_ARM_IRQ_TYPE_SPI:
+		if (intid < VGIC_NR_PRIVATE_IRQS)
+			return -EINVAL;
+		return kvm_vgic_inject_irq(kvm, 0, intid, level, NULL);
+	default:
+		return -EINVAL;
+	}
 }
 
 /* @irq->irq_lock must be held */

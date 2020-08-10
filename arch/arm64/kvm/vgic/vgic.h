@@ -232,6 +232,12 @@ void vgic_v3_vmcr_sync(struct kvm_vcpu *vcpu);
 void kvm_vgic_vcpu_blocking(struct kvm_vcpu *vcpu);
 void kvm_vgic_vcpu_unblocking(struct kvm_vcpu *vcpu);
 
+int kvm_vgic_inject_irq(struct kvm *kvm, unsigned int cpuid, unsigned int intid,
+			bool level, void *owner);
+int kvm_vgic_inject_userspace_irq(struct kvm *kvm, unsigned int type,
+				  unsigned int cpuid, unsigned int intid,
+				  bool level);
+
 bool vgic_has_its(struct kvm *kvm);
 int kvm_vgic_register_its_device(void);
 void vgic_enable_lpis(struct kvm_vcpu *vcpu);

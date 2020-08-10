@@ -28,6 +28,11 @@ struct kvm_irqchip_flow {
 	int  (*irqchip_vcpu_first_run)(struct kvm_vcpu *);
 	void (*irqchip_vcpu_flush_hwstate)(struct kvm_vcpu *);
 	void (*irqchip_vcpu_sync_hwstate)(struct kvm_vcpu *);
+	int  (*irqchip_inject_irq)(struct kvm *, unsigned int cpu,
+				   unsigned int intid, bool, void *);
+	int  (*irqchip_inject_userspace_irq)(struct kvm *, unsigned int type,
+					     unsigned int cpu,
+					     unsigned int intid, bool);
 };
 
 /*
@@ -85,5 +90,11 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_vcpu_sync_hwstate(v)		\
 	__vcpu_irqchip_action((v), vcpu_sync_hwstate, (v))
+
+#define kvm_irqchip_inject_irq(k, ...)			\
+	__kvm_irqchip_action_ret((k), inject_irq, (k), __VA_ARGS__)
+
+#define kvm_irqchip_inject_userspace_irq(k, ...)	\
+	__kvm_irqchip_action_ret((k), inject_userspace_irq, (k), __VA_ARGS__)
 
 #endif

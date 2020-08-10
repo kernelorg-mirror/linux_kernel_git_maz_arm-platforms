@@ -661,7 +661,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 
 		local_irq_disable();
 
-		kvm_vgic_flush_hwstate(vcpu);
+		kvm_irqchip_vcpu_flush_hwstate(vcpu);
 
 		/*
 		 * Exit if we have a signal pending so that we can deliver the
@@ -702,7 +702,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 			kvm_pmu_sync_hwstate(vcpu);
 			if (static_branch_unlikely(&userspace_irqchip_in_use))
 				kvm_timer_sync_user(vcpu);
-			kvm_vgic_sync_hwstate(vcpu);
+			kvm_irqchip_vcpu_sync_hwstate(vcpu);
 			local_irq_enable();
 			preempt_enable();
 			continue;
@@ -738,7 +738,7 @@ int kvm_arch_vcpu_ioctl_run(struct kvm_vcpu *vcpu)
 		 * the timer code needs to know if the virtual timer
 		 * interrupts are active.
 		 */
-		kvm_vgic_sync_hwstate(vcpu);
+		kvm_irqchip_vcpu_sync_hwstate(vcpu);
 
 		/*
 		 * Sync the timer hardware state before enabling interrupts as

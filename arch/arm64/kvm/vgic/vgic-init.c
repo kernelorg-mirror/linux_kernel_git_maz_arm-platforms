@@ -25,6 +25,8 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_vcpu_put		= kvm_vgic_put,
 	.irqchip_vcpu_pending_irq	= kvm_vgic_vcpu_pending_irq,
 	.irqchip_vcpu_first_run		= kvm_vgic_vcpu_first_run,
+	.irqchip_vcpu_flush_hwstate	= kvm_vgic_flush_hwstate,
+	.irqchip_vcpu_sync_hwstate	= kvm_vgic_sync_hwstate,
 };
 
 /*

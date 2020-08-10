@@ -39,25 +39,6 @@
  *   allocation is allowed there.
  */
 
-/* EARLY INIT */
-
-/**
- * kvm_vgic_early_init() - Initialize static VGIC VCPU data structures
- * @kvm: The VM whose VGIC districutor should be initialized
- *
- * Only do initialization of static structures that don't require any
- * allocation or sizing information from userspace.  vgic_init() called
- * kvm_vgic_dist_init() which takes care of the rest.
- */
-void kvm_vgic_early_init(struct kvm *kvm)
-{
-	struct vgic_dist *dist = &kvm->arch.vgic;
-
-	INIT_LIST_HEAD(&dist->lpi_list_head);
-	INIT_LIST_HEAD(&dist->lpi_translation_cache);
-	raw_spin_lock_init(&dist->lpi_list_lock);
-}
-
 /* CREATION */
 
 /**
@@ -72,6 +53,7 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 {
 	int i, ret;
 	struct kvm_vcpu *vcpu;
+	struct vgic_dist *dist = &kvm->arch.vgic;
 
 	if (irqchip_in_kernel(kvm))
 		return -EEXIST;
@@ -115,6 +97,10 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		kvm->arch.vgic.vgic_cpu_base = VGIC_ADDR_UNDEF;
 	else
 		INIT_LIST_HEAD(&kvm->arch.vgic.rd_regions);
+
+	INIT_LIST_HEAD(&dist->lpi_list_head);
+	INIT_LIST_HEAD(&dist->lpi_translation_cache);
+	raw_spin_lock_init(&dist->lpi_list_lock);
 
 out_unlock:
 	unlock_all_vcpus(kvm);

@@ -227,6 +227,9 @@ void vgic_v3_load(struct kvm_vcpu *vcpu);
 void vgic_v3_put(struct kvm_vcpu *vcpu);
 void vgic_v3_vmcr_sync(struct kvm_vcpu *vcpu);
 
+void kvm_vgic_vcpu_blocking(struct kvm_vcpu *vcpu);
+void kvm_vgic_vcpu_unblocking(struct kvm_vcpu *vcpu);
+
 bool vgic_has_its(struct kvm *kvm);
 int kvm_vgic_register_its_device(void);
 void vgic_enable_lpis(struct kvm_vcpu *vcpu);

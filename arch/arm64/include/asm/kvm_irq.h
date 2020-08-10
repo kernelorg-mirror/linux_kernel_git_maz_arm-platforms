@@ -20,6 +20,8 @@ enum kvm_irqchip_type {
 struct kvm_irqchip_flow {
 	void (*irqchip_destroy)(struct kvm *);
 	int  (*irqchip_vcpu_init)(struct kvm_vcpu *);
+	void (*irqchip_vcpu_blocking)(struct kvm_vcpu *);
+	void (*irqchip_vcpu_unblocking)(struct kvm_vcpu *);
 };
 
 /*
@@ -53,5 +55,11 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_vcpu_init(v)			\
 	__vcpu_irqchip_action_ret((v), vcpu_init, (v))
+
+#define kvm_irqchip_vcpu_blocking(v)			\
+	__vcpu_irqchip_action((v), vcpu_blocking, (v))
+
+#define kvm_irqchip_vcpu_unblocking(v)			\
+	__vcpu_irqchip_action((v), vcpu_unblocking, (v))
 
 #endif

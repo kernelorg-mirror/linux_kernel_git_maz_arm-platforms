@@ -939,15 +939,34 @@ void kvm_vgic_put(struct kvm_vcpu *vcpu)
 		vgic_v3_put(vcpu);
 }
 
-void kvm_vgic_vmcr_sync(struct kvm_vcpu *vcpu)
+void kvm_vgic_vcpu_blocking(struct kvm_vcpu *vcpu)
 {
-	if (unlikely(!irqchip_in_kernel(vcpu->kvm)))
-		return;
+	/*
+	 * If we're about to block (most likely because we've just hit a
+	 * WFI), we need to sync back the state of the GIC CPU interface
+	 * so that we have the latest PMR and group enables. This ensures
+	 * that kvm_arch_vcpu_runnable has up-to-date data to decide
+	 * whether we have pending interrupts.
+	 *
+	 * For the same reason, we want to tell GICv4 that we need
+	 * doorbells to be signalled, should an interrupt become pending.
+	 */
+	preempt_disable();
 
 	if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_vmcr_sync(vcpu);
 	else
 		vgic_v3_vmcr_sync(vcpu);
+
+	vgic_v4_put(vcpu, true);
+	preempt_enable();
+}
+
+void kvm_vgic_vcpu_unblocking(struct kvm_vcpu *vcpu)
+{
+	preempt_disable();
+	vgic_v4_load(vcpu);
+	preempt_enable();
 }
 
 int kvm_vgic_vcpu_pending_irq(struct kvm_vcpu *vcpu)

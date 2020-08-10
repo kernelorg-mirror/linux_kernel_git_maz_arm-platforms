@@ -18,6 +18,8 @@ static void kvm_vgic_destroy(struct kvm *kvm);
 static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_destroy		= kvm_vgic_destroy,
 	.irqchip_vcpu_init		= kvm_vgic_vcpu_init,
+	.irqchip_vcpu_blocking		= kvm_vgic_vcpu_blocking,
+	.irqchip_vcpu_unblocking	= kvm_vgic_vcpu_unblocking,
 };
 
 /*

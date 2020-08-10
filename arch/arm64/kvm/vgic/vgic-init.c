@@ -20,6 +20,8 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_vcpu_init		= kvm_vgic_vcpu_init,
 	.irqchip_vcpu_blocking		= kvm_vgic_vcpu_blocking,
 	.irqchip_vcpu_unblocking	= kvm_vgic_vcpu_unblocking,
+	.irqchip_vcpu_load		= kvm_vgic_load,
+	.irqchip_vcpu_put		= kvm_vgic_put,
 };
 
 /*

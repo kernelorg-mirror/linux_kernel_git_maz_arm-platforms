@@ -322,7 +322,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 
 	vcpu->cpu = cpu;
 
-	kvm_vgic_load(vcpu);
+	kvm_irqchip_vcpu_load(vcpu);
 	kvm_timer_vcpu_load(vcpu);
 	if (has_vhe())
 		kvm_vcpu_load_sysregs_vhe(vcpu);
@@ -346,7 +346,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	if (has_vhe())
 		kvm_vcpu_put_sysregs_vhe(vcpu);
 	kvm_timer_vcpu_put(vcpu);
-	kvm_vgic_put(vcpu);
+	kvm_irqchip_vcpu_put(vcpu);
 	kvm_vcpu_pmu_restore_host(vcpu);
 
 	vcpu->cpu = -1;

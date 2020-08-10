@@ -22,6 +22,8 @@ struct kvm_irqchip_flow {
 	int  (*irqchip_vcpu_init)(struct kvm_vcpu *);
 	void (*irqchip_vcpu_blocking)(struct kvm_vcpu *);
 	void (*irqchip_vcpu_unblocking)(struct kvm_vcpu *);
+	void (*irqchip_vcpu_load)(struct kvm_vcpu *);
+	void (*irqchip_vcpu_put)(struct kvm_vcpu *);
 };
 
 /*
@@ -61,5 +63,11 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_vcpu_unblocking(v)			\
 	__vcpu_irqchip_action((v), vcpu_unblocking, (v))
+
+#define kvm_irqchip_vcpu_load(v)			\
+	__vcpu_irqchip_action((v), vcpu_load, (v))
+
+#define kvm_irqchip_vcpu_put(v)				\
+	__vcpu_irqchip_action((v), vcpu_put, (v))
 
 #endif

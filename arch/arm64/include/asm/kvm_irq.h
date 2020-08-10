@@ -25,6 +25,7 @@ struct kvm_irqchip_flow {
 	void (*irqchip_vcpu_load)(struct kvm_vcpu *);
 	void (*irqchip_vcpu_put)(struct kvm_vcpu *);
 	int  (*irqchip_vcpu_pending_irq)(struct kvm_vcpu *);
+	int  (*irqchip_vcpu_first_run)(struct kvm_vcpu *);
 };
 
 /*
@@ -73,5 +74,8 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_vcpu_pending_irq(v)			\
 	__vcpu_irqchip_action_ret((v), vcpu_pending_irq, (v))
+
+#define kvm_irqchip_vcpu_first_run(v)			\
+	__vcpu_irqchip_action_ret((v), vcpu_first_run, (v))
 
 #endif

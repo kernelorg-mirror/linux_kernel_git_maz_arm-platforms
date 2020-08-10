@@ -98,6 +98,8 @@
 #define DEBUG_SPINLOCK_BUG_ON(p)
 #endif
 
+#define vgic_ready(k)		((k)->arch.vgic.ready)
+
 /* Requires the irq_lock to be held by the caller. */
 static inline bool irq_is_pending(struct vgic_irq *irq)
 {

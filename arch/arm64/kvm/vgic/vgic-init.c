@@ -12,6 +12,7 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+static int kvm_vgic_vcpu_first_run(struct kvm_vcpu *vcpu);
 static int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu);
 static void kvm_vgic_destroy(struct kvm *kvm);
 
@@ -23,6 +24,7 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_vcpu_load		= kvm_vgic_load,
 	.irqchip_vcpu_put		= kvm_vgic_put,
 	.irqchip_vcpu_pending_irq	= kvm_vgic_vcpu_pending_irq,
+	.irqchip_vcpu_first_run		= kvm_vgic_vcpu_first_run,
 };
 
 /*
@@ -440,14 +442,17 @@ int vgic_lazy_init(struct kvm *kvm)
  * Also map the virtual CPU interface into the VM.
  * v2/v3 derivatives call vgic_init if not already done.
  * vgic_ready() returns true if this function has succeeded.
- * @kvm: kvm struct pointer
+ * @vcpu: vcpu struct pointer
  */
-int kvm_vgic_map_resources(struct kvm *kvm)
+static int kvm_vgic_vcpu_first_run(struct kvm_vcpu *vcpu)
 {
+	struct kvm *kvm = vcpu->kvm;
+	struct vgic_dist *dist = &kvm->arch.vgic;
 	int ret = 0;
 
 	mutex_lock(&kvm->lock);
-	if (!irqchip_in_kernel(kvm))
+
+	if (vgic_ready(kvm))
 		goto out;
 
 	if (irqchip_is_gic_v2(kvm))
@@ -457,6 +462,8 @@ int kvm_vgic_map_resources(struct kvm *kvm)
 
 	if (ret)
 		__kvm_vgic_destroy(kvm);
+	else
+		dist->ready = true;
 
 out:
 	mutex_unlock(&kvm->lock);

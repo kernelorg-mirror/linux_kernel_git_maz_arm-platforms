@@ -562,7 +562,7 @@ static void kvm_timer_vcpu_load_gic(struct arch_timer_context *ctx)
 	kvm_timer_update_irq(ctx->vcpu, kvm_timer_should_fire(ctx), ctx);
 
 	if (irqchip_in_kernel(vcpu->kvm))
-		phys_active = kvm_vgic_map_is_active(vcpu, ctx->irq.irq);
+		phys_active = kvm_irqchip_map_is_active(vcpu, ctx->irq.irq);
 
 	phys_active |= ctx->irq.level;
 
@@ -734,9 +734,9 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 		kvm_timer_update_irq(vcpu, false, vcpu_ptimer(vcpu));
 
 		if (irqchip_in_kernel(vcpu->kvm)) {
-			kvm_vgic_reset_mapped_irq(vcpu, map.direct_vtimer->irq.irq);
+			kvm_irqchip_reset_mapped_irq(vcpu, map.direct_vtimer->irq.irq);
 			if (map.direct_ptimer)
-				kvm_vgic_reset_mapped_irq(vcpu, map.direct_ptimer->irq.irq);
+				kvm_irqchip_reset_mapped_irq(vcpu, map.direct_ptimer->irq.irq);
 		}
 	}
 
@@ -1139,18 +1139,18 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 
 	get_timer_map(vcpu, &map);
 
-	ret = kvm_vgic_map_phys_irq(vcpu,
-				    map.direct_vtimer->host_timer_irq,
-				    map.direct_vtimer->irq.irq,
-				    kvm_arch_timer_get_input_level);
+	ret = kvm_irqchip_map_phys_irq(vcpu,
+				       map.direct_vtimer->host_timer_irq,
+				       map.direct_vtimer->irq.irq,
+				       kvm_arch_timer_get_input_level);
 	if (ret)
 		return ret;
 
 	if (map.direct_ptimer) {
-		ret = kvm_vgic_map_phys_irq(vcpu,
-					    map.direct_ptimer->host_timer_irq,
-					    map.direct_ptimer->irq.irq,
-					    kvm_arch_timer_get_input_level);
+		ret = kvm_irqchip_map_phys_irq(vcpu,
+					       map.direct_ptimer->host_timer_irq,
+					       map.direct_ptimer->irq.irq,
+					       kvm_arch_timer_get_input_level);
 	}
 
 	if (ret)

@@ -33,6 +33,11 @@ struct kvm_irqchip_flow {
 	int  (*irqchip_inject_userspace_irq)(struct kvm *, unsigned int type,
 					     unsigned int cpu,
 					     unsigned int intid, bool);
+	bool (*irqchip_map_is_active)(struct kvm_vcpu *, unsigned in);
+	void (*irqchip_reset_mapped_irq)(struct kvm_vcpu *, u32);
+	int  (*irqchip_map_phys_irq)(struct kvm_vcpu *, unsigned int,
+				     u32, bool (*)(int));
+	int  (*irqchip_unmap_phys_irq)(struct kvm_vcpu *, unsigned int);
 };
 
 /*
@@ -96,5 +101,17 @@ struct kvm_irqchip_flow {
 
 #define kvm_irqchip_inject_userspace_irq(k, ...)	\
 	__kvm_irqchip_action_ret((k), inject_userspace_irq, (k), __VA_ARGS__)
+
+#define kvm_irqchip_map_is_active(v, ...)		\
+	__vcpu_irqchip_action_ret((v), map_is_active, (v), __VA_ARGS__)
+
+#define kvm_irqchip_reset_mapped_irq(v, ...)		\
+	__vcpu_irqchip_action((v), reset_mapped_irq, (v), __VA_ARGS__)
+
+#define kvm_irqchip_map_phys_irq(v, ...)		\
+	__vcpu_irqchip_action_ret((v), map_phys_irq, (v), __VA_ARGS__)
+
+#define kvm_irqchip_unmap_phys_irq(v, ...)		\
+	__vcpu_irqchip_action_ret((v), unmap_phys_irq, (v), __VA_ARGS__)
 
 #endif

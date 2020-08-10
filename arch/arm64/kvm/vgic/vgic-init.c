@@ -29,6 +29,10 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_vcpu_sync_hwstate	= kvm_vgic_sync_hwstate,
 	.irqchip_inject_irq		= kvm_vgic_inject_irq,
 	.irqchip_inject_userspace_irq	= kvm_vgic_inject_userspace_irq,
+	.irqchip_map_is_active		= kvm_vgic_map_is_active,
+	.irqchip_reset_mapped_irq	= kvm_vgic_reset_mapped_irq,
+	.irqchip_map_phys_irq		= kvm_vgic_map_phys_irq,
+	.irqchip_unmap_phys_irq		= kvm_vgic_unmap_phys_irq,
 };
 
 /*

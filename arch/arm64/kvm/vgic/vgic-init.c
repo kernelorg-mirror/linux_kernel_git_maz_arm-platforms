@@ -12,10 +12,12 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+static int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu);
 static void kvm_vgic_destroy(struct kvm *kvm);
 
 static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_destroy		= kvm_vgic_destroy,
+	.irqchip_vcpu_init		= kvm_vgic_vcpu_init,
 };
 
 /*
@@ -44,6 +46,8 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
  *   doesn't depend on any sizing information or emulation type. No
  *   allocation is allowed there.
  */
+
+static int __kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu);
 
 /* CREATION */
 
@@ -109,6 +113,17 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 	INIT_LIST_HEAD(&dist->lpi_list_head);
 	INIT_LIST_HEAD(&dist->lpi_translation_cache);
 	raw_spin_lock_init(&dist->lpi_list_lock);
+
+	/*
+	 * vcpus may have been created before the GIC. Initialize
+	 * them. Careful that kvm->lock is held already on the
+	 * KVM_CREATE_DEVICE path, so use the non-locking version.
+	 */
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		ret = __kvm_vgic_vcpu_init(vcpu);
+		if (ret)
+			break;
+	}
 
 out_unlock:
 	unlock_all_vcpus(kvm);
@@ -176,7 +191,7 @@ static int kvm_vgic_dist_init(struct kvm *kvm, unsigned int nr_spis)
  * Only do initialization, but do not actually enable the
  * VGIC CPU interface
  */
-int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
+static int __kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	int ret = 0;
@@ -211,18 +226,24 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 		}
 	}
 
-	if (!irqchip_in_kernel(vcpu->kvm))
-		return 0;
-
 	/*
 	 * If we are creating a VCPU with a GICv3 we must also register the
 	 * KVM io device for the redistributor that belongs to this VCPU.
 	 */
-	if (irqchip_is_gic_v3(vcpu->kvm)) {
-		mutex_lock(&vcpu->kvm->lock);
+	if (irqchip_is_gic_v3(vcpu->kvm))
 		ret = vgic_register_redist_iodev(vcpu);
-		mutex_unlock(&vcpu->kvm->lock);
-	}
+
+	return ret;
+}
+
+static int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
+{
+	int ret;
+
+	mutex_lock(&vcpu->kvm->lock);
+	ret = __kvm_vgic_vcpu_init(vcpu);
+	mutex_unlock(&vcpu->kvm->lock);
+
 	return ret;
 }
 

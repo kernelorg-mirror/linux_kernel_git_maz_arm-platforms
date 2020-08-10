@@ -265,7 +265,7 @@ int kvm_arch_vcpu_create(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.hw_mmu = &vcpu->kvm->arch.mmu;
 
-	err = kvm_vgic_vcpu_init(vcpu);
+	err = kvm_irqchip_vcpu_init(vcpu);
 	if (err)
 		return err;
 

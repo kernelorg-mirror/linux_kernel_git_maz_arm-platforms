@@ -18,6 +18,7 @@ enum kvm_irqchip_type {
 #define irqchip_is_gic_v3(k)	((k)->arch.irqchip_type == IRQCHIP_GICv3)
 
 struct kvm_irqchip_flow {
+	void (*irqchip_destroy)(struct kvm *);
 };
 
 /*
@@ -45,5 +46,8 @@ struct kvm_irqchip_flow {
 
 #define __vcpu_irqchip_action_ret(v, ...)		\
 	__kvm_irqchip_action_ret((v)->kvm, __VA_ARGS__)
+
+#define kvm_irqchip_destroy(k)				\
+	__kvm_irqchip_action((k), destroy, (k))
 
 #endif

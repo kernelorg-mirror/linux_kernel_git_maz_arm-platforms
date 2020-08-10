@@ -12,7 +12,10 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+static void kvm_vgic_destroy(struct kvm *kvm);
+
 static struct kvm_irqchip_flow vgic_irqchip_flow = {
+	.irqchip_destroy		= kvm_vgic_destroy,
 };
 
 /*
@@ -341,7 +344,7 @@ static void kvm_vgic_dist_destroy(struct kvm *kvm)
 		vgic_v4_teardown(kvm);
 }
 
-void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu)
+static void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 
@@ -368,7 +371,7 @@ static void __kvm_vgic_destroy(struct kvm *kvm)
 	kvm_vgic_dist_destroy(kvm);
 }
 
-void kvm_vgic_destroy(struct kvm *kvm)
+static void kvm_vgic_destroy(struct kvm *kvm)
 {
 	mutex_lock(&kvm->lock);
 	__kvm_vgic_destroy(kvm);

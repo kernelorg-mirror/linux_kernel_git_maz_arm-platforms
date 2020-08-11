@@ -195,7 +195,8 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		if (!kvm)
 			r = -EINVAL;
 		else
-			r = kvm->arch.vgic.msis_require_devid;
+			r = (irqchip_is_gic_v3(kvm) &&
+			     kvm->arch.vgic.msis_require_devid);
 		break;
 	case KVM_CAP_ARM_USER_IRQ:
 		/*

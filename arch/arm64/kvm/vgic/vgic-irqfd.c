@@ -15,55 +15,15 @@
  *
  * This is the entry point for irqfd IRQ injection
  */
-static int vgic_irqfd_set_irq(struct kvm_kernel_irq_routing_entry *e,
-			struct kvm *kvm, int irq_source_id,
-			int level, bool line_status)
+int vgic_irqfd_set_irq(struct kvm_kernel_irq_routing_entry *e,
+		       struct kvm *kvm, int irq_source_id,
+		       int level, bool line_status)
 {
 	unsigned int spi_id = e->irqchip.pin + VGIC_NR_PRIVATE_IRQS;
 
 	if (!vgic_valid_spi(kvm, spi_id))
 		return -EINVAL;
 	return kvm_vgic_inject_irq(kvm, 0, spi_id, level, NULL);
-}
-
-/**
- * kvm_set_routing_entry: populate a kvm routing entry
- * from a user routing entry
- *
- * @kvm: the VM this entry is applied to
- * @e: kvm kernel routing entry handle
- * @ue: user api routing entry handle
- * return 0 on success, -EINVAL on errors.
- */
-int kvm_set_routing_entry(struct kvm *kvm,
-			  struct kvm_kernel_irq_routing_entry *e,
-			  const struct kvm_irq_routing_entry *ue)
-{
-	int r = -EINVAL;
-
-	switch (ue->type) {
-	case KVM_IRQ_ROUTING_IRQCHIP:
-		e->set = vgic_irqfd_set_irq;
-		e->irqchip.irqchip = ue->u.irqchip.irqchip;
-		e->irqchip.pin = ue->u.irqchip.pin;
-		if ((e->irqchip.pin >= KVM_IRQCHIP_NUM_PINS) ||
-		    (e->irqchip.irqchip >= KVM_NR_IRQCHIPS))
-			goto out;
-		break;
-	case KVM_IRQ_ROUTING_MSI:
-		e->set = kvm_set_msi;
-		e->msi.address_lo = ue->u.msi.address_lo;
-		e->msi.address_hi = ue->u.msi.address_hi;
-		e->msi.data = ue->u.msi.data;
-		e->msi.flags = ue->flags;
-		e->msi.devid = ue->u.msi.devid;
-		break;
-	default:
-		goto out;
-	}
-	r = 0;
-out:
-	return r;
 }
 
 static void kvm_populate_msi(struct kvm_kernel_irq_routing_entry *e,
@@ -75,16 +35,17 @@ static void kvm_populate_msi(struct kvm_kernel_irq_routing_entry *e,
 	msi->flags = e->msi.flags;
 	msi->devid = e->msi.devid;
 }
+
 /**
- * kvm_set_msi: inject the MSI corresponding to the
+ * vgic_set_msi: inject the MSI corresponding to the
  * MSI routing entry
  *
  * This is the entry point for irqfd MSI injection
  * and userspace MSI injection.
  */
-int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
-		struct kvm *kvm, int irq_source_id,
-		int level, bool line_status)
+int vgic_set_msi(struct kvm_kernel_irq_routing_entry *e,
+		 struct kvm *kvm, int irq_source_id,
+		 int level, bool line_status)
 {
 	struct kvm_msi msi;
 
@@ -99,15 +60,12 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 }
 
 /**
- * kvm_arch_set_irq_inatomic: fast-path for irqfd injection
+ * vgic_set_irq_inatomic: fast-path for irqfd injection
  */
-int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
-			      struct kvm *kvm, int irq_source_id, int level,
-			      bool line_status)
+int vgic_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
+			  struct kvm *kvm, int irq_source_id, int level,
+			  bool line_status)
 {
-	if (!level)
-		return -EWOULDBLOCK;
-
 	switch (e->type) {
 	case KVM_IRQ_ROUTING_MSI: {
 		struct kvm_msi msi;
@@ -120,12 +78,6 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 	}
 
 	case KVM_IRQ_ROUTING_IRQCHIP:
-		/*
-		 * Injecting SPIs is always possible in atomic context
-		 * as long as the damn vgic is initialized.
-		 */
-		if (unlikely(!irqchip_finalized(kvm)))
-			break;
 		return vgic_irqfd_set_irq(e, kvm, irq_source_id, 1, line_status);
 	}
 

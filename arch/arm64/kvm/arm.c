@@ -1593,6 +1593,74 @@ void kvm_arch_irq_bypass_start(struct irq_bypass_consumer *cons)
 }
 
 /**
+ * kvm_set_routing_entry: populate a kvm routing entry
+ * from a user routing entry
+ *
+ * @kvm: the VM this entry is applied to
+ * @e: kvm kernel routing entry handle
+ * @ue: user api routing entry handle
+ * return 0 on success, -EINVAL on errors.
+ */
+int kvm_set_routing_entry(struct kvm *kvm,
+			  struct kvm_kernel_irq_routing_entry *e,
+			  const struct kvm_irq_routing_entry *ue)
+{
+	int r = -EINVAL;
+
+	switch (ue->type) {
+	case KVM_IRQ_ROUTING_IRQCHIP:
+		e->set = kvm->arch.irqchip_flow.irqchip_irqfd_set_irq;
+		e->irqchip.irqchip = ue->u.irqchip.irqchip;
+		e->irqchip.pin = ue->u.irqchip.pin;
+		if ((e->irqchip.pin >= KVM_IRQCHIP_NUM_PINS) ||
+		    (e->irqchip.irqchip >= KVM_NR_IRQCHIPS))
+			goto out;
+		break;
+	case KVM_IRQ_ROUTING_MSI:
+		e->set = kvm->arch.irqchip_flow.irqchip_set_msi;
+		e->msi.address_lo = ue->u.msi.address_lo;
+		e->msi.address_hi = ue->u.msi.address_hi;
+		e->msi.data = ue->u.msi.data;
+		e->msi.flags = ue->flags;
+		e->msi.devid = ue->u.msi.devid;
+		break;
+	default:
+		goto out;
+	}
+
+	if (!e->set)
+		goto out;
+
+	r = 0;
+out:
+	return r;
+}
+
+int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
+		struct kvm *kvm, int irq_source_id,
+		int level, bool line_status)
+{
+	if (!kvm->arch.irqchip_flow.irqchip_set_msi)
+		return -ENODEV;
+	return kvm->arch.irqchip_flow.irqchip_set_msi(e, kvm, irq_source_id,
+						      level, line_status);
+}
+
+int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
+			      struct kvm *kvm, int irq_source_id, int level,
+			      bool line_status)
+{
+	if (!level || !irqchip_finalized(kvm) ||
+	    !kvm->arch.irqchip_flow.irqchip_set_irq_inatomic)
+		return -EWOULDBLOCK;
+
+	return kvm->arch.irqchip_flow.irqchip_set_irq_inatomic(e, kvm,
+							       irq_source_id,
+							       level,
+							       line_status);
+}
+
+/**
  * Initialize Hyp-mode and memory mappings on all CPUs.
  */
 int kvm_arch_init(void *opaque)

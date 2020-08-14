@@ -34,6 +34,9 @@ static struct kvm_irqchip_flow vgic_irqchip_flow = {
 	.irqchip_map_phys_irq		= kvm_vgic_map_phys_irq,
 	.irqchip_unmap_phys_irq		= kvm_vgic_unmap_phys_irq,
 	.irqchip_set_owner		= kvm_vgic_set_owner,
+	.irqchip_irqfd_set_irq		= vgic_irqfd_set_irq,
+	.irqchip_set_msi		= vgic_set_msi,
+	.irqchip_set_irq_inatomic	= vgic_set_irq_inatomic,
 };
 
 /*

@@ -324,6 +324,16 @@ void vgic_lpi_translation_cache_init(struct kvm *kvm);
 void vgic_lpi_translation_cache_destroy(struct kvm *kvm);
 void vgic_its_invalidate_cache(struct kvm *kvm);
 
+int vgic_irqfd_set_irq(struct kvm_kernel_irq_routing_entry *e,
+		       struct kvm *kvm, int irq_source_id,
+		       int level, bool line_status);
+int vgic_set_msi(struct kvm_kernel_irq_routing_entry *e,
+		 struct kvm *kvm, int irq_source_id,
+		 int level, bool line_status);
+int vgic_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
+			  struct kvm *kvm, int irq_source_id, int level,
+			  bool line_status);
+
 bool vgic_supports_direct_msis(struct kvm *kvm);
 int vgic_v4_init(struct kvm *kvm);
 void vgic_v4_teardown(struct kvm *kvm);

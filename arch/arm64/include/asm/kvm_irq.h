@@ -19,6 +19,8 @@ enum kvm_irqchip_type {
 
 #define irqchip_finalized(k)	((k)->arch.irqchip_finalized)
 
+struct kvm_kernel_irq_routing_entry;
+
 struct kvm_irqchip_flow {
 	void (*irqchip_destroy)(struct kvm *);
 	int  (*irqchip_vcpu_init)(struct kvm_vcpu *);
@@ -41,6 +43,15 @@ struct kvm_irqchip_flow {
 				     u32, bool (*)(int));
 	int  (*irqchip_unmap_phys_irq)(struct kvm_vcpu *, unsigned int);
 	int  (*irqchip_set_owner)(struct kvm_vcpu *, unsigned int, void *);
+	int  (*irqchip_irqfd_set_irq)(struct kvm_kernel_irq_routing_entry *e,
+				      struct kvm *kvm, int irq_source_id,
+				      int level, bool line_status);
+	int  (*irqchip_set_msi)(struct kvm_kernel_irq_routing_entry *e,
+				struct kvm *kvm, int irq_source_id,
+				int level, bool line_status);
+	int  (*irqchip_set_irq_inatomic)(struct kvm_kernel_irq_routing_entry *e,
+					 struct kvm *kvm, int irq_source_id,
+					 int level, bool line_status);
 };
 
 /*

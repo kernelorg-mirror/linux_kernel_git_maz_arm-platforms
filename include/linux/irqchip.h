@@ -33,7 +33,7 @@ extern int platform_irqchip_probe(struct platform_device *pdev);
 #define IRQCHIP_PLATFORM_DRIVER_BEGIN(drv_name) \
 static const struct of_device_id drv_name##_irqchip_match_table[] = {
 
-#define IRQCHIP_MATCH(compat, fn) { .compatible = compat, .data = fn },
+#define IRQCHIP_MATCH(compat, fn) _OF_DECLARE_ELMT(compat, fn, of_init_fn_2)
 
 #define IRQCHIP_PLATFORM_DRIVER_END(drv_name)				\
 	{},								\

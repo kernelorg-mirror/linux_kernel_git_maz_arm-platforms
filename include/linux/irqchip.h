@@ -50,6 +50,18 @@ static struct platform_driver drv_name##_driver = {		\
 };									\
 builtin_platform_driver(drv_name##_driver)
 
+#ifdef MODULE
+#define IRQCHIP_HYBRID_DRIVER_BEGIN(drv)	\
+	IRQCHIP_PLATFORM_DRIVER_BEGIN(drv)
+#define IRQCHIP_HYBRID_DRIVER_END(drv)		\
+	IRQCHIP_PLATFORM_DRIVER_END(drv)
+#else
+#define IRQCHIP_HYBRID_DRIVER_BEGIN(drv)	\
+	_OF_DECLARE_ARRAY_START(irqchip, drv)
+#define IRQCHIP_HYBRID_DRIVER_END(drv)		\
+	_OF_DECLARE_ARRAY_END;
+#endif
+
 /*
  * This macro must be used by the different irqchip drivers to declare
  * the association between their version and their initialization function.

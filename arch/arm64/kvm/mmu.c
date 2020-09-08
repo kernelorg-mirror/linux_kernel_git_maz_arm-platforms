@@ -761,7 +761,6 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	unsigned long vma_pagesize;
 	enum kvm_pgtable_prot prot = KVM_PGTABLE_PROT_R;
 	struct kvm_pgtable *pgt;
-	struct kvm_s2_mmu *mmu = vcpu->arch.hw_mmu;
 	unsigned long max_map_size = PUD_SIZE;
 
 	write_fault = kvm_is_write_fault(vcpu);

@@ -228,10 +228,10 @@ static int kvm_handle_ptrauth(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
-static int kvm_handle_eret(struct kvm_vcpu *vcpu, struct kvm_run *run)
+static int kvm_handle_eret(struct kvm_vcpu *vcpu)
 {
 	if (kvm_vcpu_get_esr(vcpu) & ESR_ELx_ERET_ISS_ERET_ERETAx)
-		return kvm_handle_ptrauth(vcpu, run);
+		return kvm_handle_ptrauth(vcpu);
 
 	kvm_emulate_nested_eret(vcpu);
 	return 1;

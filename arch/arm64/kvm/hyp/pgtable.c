@@ -44,6 +44,7 @@
 #define KVM_PTE_LEAF_ATTR_HI_S1_XN	BIT(54)
 
 #define KVM_PTE_LEAF_ATTR_HI_S2_XN	BIT(54)
+#define KVM_PTE_LEAF_ATTR_HI_S2_SW	GENMASK(58, 55)
 
 struct kvm_pgtable_walk_data {
 	struct kvm_pgtable		*pgt;
@@ -457,6 +458,7 @@ static int stage2_map_set_prot_attr(enum kvm_pgtable_prot prot,
 
 	attr |= FIELD_PREP(KVM_PTE_LEAF_ATTR_LO_S2_SH, sh);
 	attr |= KVM_PTE_LEAF_ATTR_LO_S2_AF;
+	attr |= prot & KVM_PTE_LEAF_ATTR_HI_S2_SW;
 	data->attr = attr;
 	return 0;
 }
@@ -796,6 +798,10 @@ int kvm_pgtable_stage2_relax_perms(struct kvm_pgtable *pgt, u64 addr,
 
 	if (prot & KVM_PGTABLE_PROT_X)
 		clr |= KVM_PTE_LEAF_ATTR_HI_S2_XN;
+
+	/* Always propagage the SW bits */
+	clr |= FIELD_PREP(KVM_PTE_LEAF_ATTR_HI_S2_SW, 0xf);
+	set |= prot & KVM_PTE_LEAF_ATTR_HI_S2_SW;
 
 	ret = stage2_update_leaf_attrs(pgt, addr, 1, set, clr, NULL);
 	kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, pgt->mmu, addr, 0);

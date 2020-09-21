@@ -234,6 +234,7 @@ static void gic_eoi_irq(struct irq_data *d)
 		hwirq = this_cpu_read(sgi_intid);
 
 	writel_relaxed(hwirq, gic_cpu_base(d) + GIC_CPU_EOI);
+	pr_warn("CPU%d EOI = %x\n", smp_processor_id(), hwirq);
 }
 
 static void gic_eoimode1_eoi_irq(struct irq_data *d)
@@ -248,6 +249,7 @@ static void gic_eoimode1_eoi_irq(struct irq_data *d)
 		hwirq = this_cpu_read(sgi_intid);
 
 	writel_relaxed(hwirq, gic_cpu_base(d) + GIC_CPU_DEACTIVATE);
+	pr_warn("CPU%d DIR = %x\n", smp_processor_id(), hwirq);
 }
 
 static int gic_irq_set_irqchip_state(struct irq_data *d,
@@ -345,13 +347,17 @@ static void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 
 	do {
 		irqstat = readl_relaxed(cpu_base + GIC_CPU_INTACK);
+		pr_warn("CPU%d IAR = %x\n", smp_processor_id(), irqstat);
+
 		irqnr = irqstat & GICC_IAR_INT_ID_MASK;
 
 		if (unlikely(irqnr >= 1020))
 			break;
 
-		if (static_branch_likely(&supports_deactivate_key))
+		if (static_branch_likely(&supports_deactivate_key)) {
 			writel_relaxed(irqstat, cpu_base + GIC_CPU_EOI);
+			pr_warn("CPU%d EOI = %x\n", smp_processor_id(), irqstat);
+		}
 		isb();
 
 		/*
@@ -469,6 +475,7 @@ static void gic_cpu_if_up(struct gic_chip_data *gic)
 	bypass &= GICC_DIS_BYPASS_MASK;
 
 	writel_relaxed(bypass | mode | GICC_ENABLE, cpu_base + GIC_CPU_CTRL);
+	pr_warn("CPU%d cpuif enabled", smp_processor_id());
 }
 
 

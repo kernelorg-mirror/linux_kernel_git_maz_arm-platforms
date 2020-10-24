@@ -115,7 +115,12 @@ SYM_FUNC_END(__hyp_do_panic)
 	 * Preserve x0-x4, which may contain stub parameters.
 	 */
 	ldr	x5, =__kvm_handle_stub_hvc
-	ldr_l	x6, kimage_voffset
+alternative_cb kvm_get_kimage_voffset
+	movz	x6, #0
+	movk	x6, #0, lsl #16
+	movk	x6, #0, lsl #32
+	movk	x6, #0, lsl #48
+alternative_cb_end
 
 	/* x5 = __pa(x5) */
 	sub	x5, x5, x6

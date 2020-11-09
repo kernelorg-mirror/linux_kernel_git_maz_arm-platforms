@@ -59,6 +59,7 @@
 #define __KVM_HOST_SMCCC_FUNC___kvm_get_mdcr_el2		12
 #define __KVM_HOST_SMCCC_FUNC___vgic_v3_save_aprs		13
 #define __KVM_HOST_SMCCC_FUNC___vgic_v3_restore_aprs		14
+#define __KVM_HOST_SMCCC_FUNC___kvm_sandbox_enter		15
 
 #ifndef __ASSEMBLY__
 
@@ -251,6 +252,11 @@ extern char __smccc_workaround_1_smc[__SMCCC_WORKAROUND_1_SMC_SZ];
 .macro get_host_ctxt reg, tmp
 	adr_this_cpu \reg, kvm_host_data, \tmp
 	add	\reg, \reg, #HOST_DATA_CONTEXT
+.endm
+
+.macro get_sandbox_ctxt reg, tmp
+	adr_this_cpu \reg, kvm_host_data, \tmp
+	add	\reg, \reg, #SANDBOX_DATA_CONTEXT
 .endm
 
 .macro get_vcpu_ptr vcpu, ctxt

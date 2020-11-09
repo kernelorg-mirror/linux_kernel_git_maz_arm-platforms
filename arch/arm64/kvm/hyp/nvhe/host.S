@@ -38,6 +38,14 @@ SYM_FUNC_START(__host_exit)
 	mov	x29, x0
 	bl	handle_trap
 
+	/* Are we entering the sandbox context? */
+	mrs	x0, hcr_el2
+	tbnz	x0, #27, __restore // check HCR_EL2.TGE
+
+	/* Exit light, Enter night... */
+	get_sandbox_ctxt x29, x0
+
+__restore:
 	/* Restore host regs x0-x17 */
 	ldp	x0, x1,   [x29, #CPU_XREG_OFFSET(0)]
 	ldp	x2, x3,   [x29, #CPU_XREG_OFFSET(2)]
@@ -60,6 +68,34 @@ __host_enter_without_restoring:
 	eret
 	sb
 SYM_FUNC_END(__host_exit)
+
+__sandbox_exit:
+	get_sandbox_ctxt	x0, x1
+
+	/* Store the sandbox regs x2 and x3 */
+	stp	x2, x3,   [x0, #CPU_XREG_OFFSET(2)]
+
+	/* Retrieve the sandbox regs x0-x1 from the stack */
+	ldp	x2, x3, [sp], #16	// x0, x1
+
+	/* Store the sandbox regs x0-x1 and x4-x17 */
+	stp	x2, x3,   [x0, #CPU_XREG_OFFSET(0)]
+	stp	x4, x5,   [x0, #CPU_XREG_OFFSET(4)]
+	stp	x6, x7,   [x0, #CPU_XREG_OFFSET(6)]
+	stp	x8, x9,   [x0, #CPU_XREG_OFFSET(8)]
+	stp	x10, x11, [x0, #CPU_XREG_OFFSET(10)]
+	stp	x12, x13, [x0, #CPU_XREG_OFFSET(12)]
+	stp	x14, x15, [x0, #CPU_XREG_OFFSET(14)]
+	stp	x16, x17, [x0, #CPU_XREG_OFFSET(16)]
+
+	/* Store the sandbox regs x18-x29, lr */
+	save_callee_saved_regs x0
+
+	bl	handle_trap
+
+	/* After handling the sandbox exit, we can only go back to the host */
+	get_host_ctxt x29, x0
+	b	__restore
 
 /*
  * void __noreturn __hyp_do_panic(bool restore_host, u64 spsr, u64 elr, u64 par);
@@ -96,9 +132,12 @@ SYM_FUNC_END(__hyp_do_panic)
 	stp	x0, x1, [sp, #-16]!
 	mrs	x0, esr_el2
 	lsr	x0, x0, #ESR_ELx_EC_SHIFT
+	cmp	x0, #ESR_ELx_EC_SVC64
+	b.eq	__sandbox_exit
 	cmp	x0, #ESR_ELx_EC_HVC64
-	ldp	x0, x1, [sp]		// Don't fixup the stack yet
 	b.ne	__host_exit
+
+	ldp	x0, x1, [sp]		// Don't fixup the stack yet
 
 	/* Check for a stub HVC call */
 	cmp	x0, #HVC_STUB_HCALL_NR

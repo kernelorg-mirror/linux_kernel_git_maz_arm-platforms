@@ -268,6 +268,7 @@ struct kvm_pmu_events {
 
 struct kvm_host_data {
 	struct kvm_cpu_context host_ctxt;
+	struct kvm_cpu_context sandbox_ctxt;
 	struct kvm_pmu_events pmu_events;
 };
 

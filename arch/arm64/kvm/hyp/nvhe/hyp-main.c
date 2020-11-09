@@ -12,6 +12,8 @@
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
 
+unsigned long sandbox_entry_ipa;
+
 #define cpu_reg(ctxt, r)	(ctxt)->regs.regs[r]
 #define DECLARE_REG(type, name, ctxt, reg)	\
 				type name = (type)cpu_reg(ctxt, (reg))
@@ -104,6 +106,76 @@ static void handle___vgic_v3_restore_aprs(struct kvm_cpu_context *host_ctxt)
 	__vgic_v3_restore_aprs(kern_hyp_va(cpu_if));
 }
 
+static void handle___kvm_sandbox_enter(struct kvm_cpu_context *host_ctxt)
+{
+	struct kvm_cpu_context *sandbox_ctxt;
+	struct kvm_host_data *data;
+	u64 val;
+
+	data = container_of(host_ctxt, typeof(*data), host_ctxt);
+	sandbox_ctxt = &data->sandbox_ctxt;
+
+	host_ctxt->regs.pc = read_sysreg_el2(SYS_ELR);
+	host_ctxt->regs.pstate = read_sysreg_el2(SYS_SPSR);
+	host_ctxt->regs.sp = read_sysreg(sp_el0);
+
+	/* Trap General Exceptions, Default Cacheable */
+	val = read_sysreg(hcr_el2);
+	val |= HCR_TGE | HCR_DC;
+	write_sysreg(val, hcr_el2);
+
+	/*
+	 * Prepare for an EL0 entry, with all possible exceptions masked.
+	 */
+	val = (PSR_MODE_EL0t | PSR_F_BIT | PSR_I_BIT | PSR_A_BIT | PSR_D_BIT);
+	write_sysreg_el2(val, SYS_SPSR);
+	write_sysreg_el2(sandbox_entry_ipa, SYS_ELR);
+	write_sysreg(sandbox_ctxt->regs.sp, sp_el0);
+
+	/*
+	 * Nuke Stage-1 TLBs for this CPU only, as we are giving it a
+	 * new S1 translation (effectively an idmap).
+	 */
+	__tlbi(vmalle1);
+	dsb(nsh);
+
+	/* Tell the sandbox something interesting */
+	cpu_reg(sandbox_ctxt, 0) = cpu_reg(host_ctxt, 1);
+}
+
+static void handle_sandbox_exit(struct kvm_cpu_context *sandbox_ctxt)
+{
+	struct kvm_cpu_context *host_ctxt;
+	struct kvm_host_data *data;
+	u64 val;
+
+	sandbox_ctxt->regs.sp = read_sysreg(sp_el0);
+
+	data = container_of(sandbox_ctxt, typeof(*data), sandbox_ctxt);
+	host_ctxt = &data->host_ctxt;
+
+	write_sysreg_el2(host_ctxt->regs.pc, SYS_ELR);
+	write_sysreg_el2(host_ctxt->regs.pstate, SYS_SPSR);
+	write_sysreg(host_ctxt->regs.sp, sp_el0);
+
+	val = read_sysreg(hcr_el2);
+	val &= ~(HCR_TGE | HCR_DC);
+	write_sysreg(val, hcr_el2);
+
+	/*
+	 * Nuke Stage-1 TLBs for this CPU only, as we restore its
+	 * original MM configuration (TGE/DC clear);
+	 */
+	__tlbi(vmalle1);
+	dsb(nsh);
+
+	/*
+	 * Whatever the sandbox said, we already have SMCCC_RET_SUCCESS
+	 * pre-populated in x0 from the HVC path...
+	 */
+	cpu_reg(host_ctxt, 1) = cpu_reg(sandbox_ctxt, 0);
+}
+
 #define HANDLE_FUNC(x)	[__KVM_HOST_SMCCC_FUNC_##x] = handle_##x
 
 typedef void (*hcall_t)(struct kvm_cpu_context *);
@@ -123,6 +195,7 @@ static const hcall_t host_hcall[] = {
 	HANDLE_FUNC(__kvm_get_mdcr_el2),
 	HANDLE_FUNC(__vgic_v3_save_aprs),
 	HANDLE_FUNC(__vgic_v3_restore_aprs),
+	HANDLE_FUNC(__kvm_sandbox_enter),
 };
 
 static void handle_host_hcall(struct kvm_cpu_context *host_ctxt)
@@ -149,12 +222,18 @@ inval:
 	cpu_reg(host_ctxt, 0) = ret;
 }
 
-void handle_trap(struct kvm_cpu_context *host_ctxt)
+void handle_trap(struct kvm_cpu_context *ctxt)
 {
 	u64 esr = read_sysreg_el2(SYS_ESR);
 
-	if (unlikely(ESR_ELx_EC(esr) != ESR_ELx_EC_HVC64))
+	switch (ESR_ELx_EC(esr)) {
+	case ESR_ELx_EC_HVC64:
+		handle_host_hcall(ctxt);
+		break;
+	case ESR_ELx_EC_SVC64:
+		handle_sandbox_exit(ctxt);
+		break;
+	default:
 		hyp_panic();
-
-	handle_host_hcall(host_ctxt);
+	}
 }

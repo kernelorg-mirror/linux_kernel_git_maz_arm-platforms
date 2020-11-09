@@ -187,4 +187,11 @@ reset:
 
 SYM_CODE_END(__kvm_handle_stub_hvc)
 
+SYM_CODE_START(__kvm_sandbox_hack)
+	/* x0 = x0 * 2 + 1 */
+	lsl	x0, x0, #1
+	add	x0, x0, #1
+	svc	#0
+SYM_CODE_END(__kvm_sandbox_hack)
+
 	.popsection

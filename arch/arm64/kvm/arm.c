@@ -1372,6 +1372,9 @@ static void cpu_init_hyp_mode(void)
 	    arm64_get_spectre_v4_state() == SPECTRE_VULNERABLE) {
 		kvm_call_hyp_nvhe(__kvm_enable_ssbs);
 	}
+
+	res.a1 = kvm_call_hyp_nvhe(__kvm_sandbox_enter, smp_processor_id());
+	pr_info("Sandbox said: CPU%d %ld\n", smp_processor_id(), res.a1);
 }
 
 static void cpu_hyp_reset(void)

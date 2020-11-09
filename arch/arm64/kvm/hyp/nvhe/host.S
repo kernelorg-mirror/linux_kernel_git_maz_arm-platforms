@@ -40,7 +40,7 @@ SYM_FUNC_START(__host_exit)
 
 	/* Are we entering the sandbox context? */
 	mrs	x0, hcr_el2
-	tbnz	x0, #27, __restore // check HCR_EL2.TGE
+	tbz	x0, #27, __restore // check HCR_EL2.TGE
 
 	/* Exit light, Enter night... */
 	get_sandbox_ctxt x29, x0
@@ -153,15 +153,7 @@ SYM_FUNC_END(__hyp_do_panic)
 	 * Preserve x0-x4, which may contain stub parameters.
 	 */
 	ldr	x5, =__kvm_handle_stub_hvc
-alternative_cb kvm_get_kimage_voffset
-	movz	x6, #0
-	movk	x6, #0, lsl #16
-	movk	x6, #0, lsl #32
-	movk	x6, #0, lsl #48
-alternative_cb_end
-
-	/* x5 = __pa(x5) */
-	sub	x5, x5, x6
+	kimg_pa x5, x6
 	br	x5
 .L__vect_end\@:
 .if ((.L__vect_end\@ - .L__vect_start\@) > 0x80)

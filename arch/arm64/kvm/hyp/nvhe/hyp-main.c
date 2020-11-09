@@ -12,8 +12,6 @@
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
 
-unsigned long sandbox_entry_ipa;
-
 #define cpu_reg(ctxt, r)	(ctxt)->regs.regs[r]
 #define DECLARE_REG(type, name, ctxt, reg)	\
 				type name = (type)cpu_reg(ctxt, (reg))
@@ -106,6 +104,10 @@ static void handle___vgic_v3_restore_aprs(struct kvm_cpu_context *host_ctxt)
 	__vgic_v3_restore_aprs(kern_hyp_va(cpu_if));
 }
 
+extern char __kvm_sandbox_hack[];
+
+static unsigned long sandbox_entry_ipa = (unsigned long)__kvm_sandbox_hack;
+
 static void handle___kvm_sandbox_enter(struct kvm_cpu_context *host_ctxt)
 {
 	struct kvm_cpu_context *sandbox_ctxt;
@@ -129,7 +131,7 @@ static void handle___kvm_sandbox_enter(struct kvm_cpu_context *host_ctxt)
 	 */
 	val = (PSR_MODE_EL0t | PSR_F_BIT | PSR_I_BIT | PSR_A_BIT | PSR_D_BIT);
 	write_sysreg_el2(val, SYS_SPSR);
-	write_sysreg_el2(sandbox_entry_ipa, SYS_ELR);
+	write_sysreg_el2(kimg_pa(sandbox_entry_ipa), SYS_ELR);
 	write_sysreg(sandbox_ctxt->regs.sp, sp_el0);
 
 	/*

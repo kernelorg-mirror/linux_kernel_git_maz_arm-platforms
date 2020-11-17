@@ -71,7 +71,7 @@ enum irqchip_irq_state;
  *				  it from the spurious interrupt detection
  *				  mechanism and from core side polling.
  * IRQ_DISABLE_UNLAZY		- Disable lazy irq disable
- * IRQ_HIDDEN			- Don't show up in /proc/interrupts
+ * IRQ_IPI			- Don't show up in /proc/interrupts
  * IRQ_RAW			- Skip tick management and irqtime accounting
  */
 enum {
@@ -99,7 +99,7 @@ enum {
 	IRQ_PER_CPU_DEVID	= (1 << 17),
 	IRQ_IS_POLLED		= (1 << 18),
 	IRQ_DISABLE_UNLAZY	= (1 << 19),
-	IRQ_HIDDEN		= (1 << 20),
+	IRQ_IPI			= (1 << 20),
 	IRQ_RAW			= (1 << 21),
 };
 

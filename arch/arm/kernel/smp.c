@@ -733,7 +733,7 @@ void __init set_smp_ipi_range(int ipi_base, int n)
 		WARN_ON(err);
 
 		ipi_desc[i] = irq_to_desc(ipi_base + i);
-		irq_set_status_flags(ipi_base + i, IRQ_HIDDEN);
+		__irq_modify_status(ipi_base + i, 0, IRQ_HIDDEN, ~0);
 
 		/* The recheduling IPI is special... */
 		if (i == IPI_RESCHEDULE)

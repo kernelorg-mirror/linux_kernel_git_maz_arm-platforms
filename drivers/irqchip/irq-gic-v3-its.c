@@ -3598,9 +3598,15 @@ static void its_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 				unsigned int nr_irqs)
 {
 	struct irq_data *d = irq_domain_get_irq_data(domain, virq);
-	struct its_device *its_dev = irq_data_get_irq_chip_data(d);
-	struct its_node *its = its_dev->its;
+	struct its_device *its_dev;
+	struct its_node *its;
 	int i;
+
+	if (!d)
+		return;
+
+	its_dev = irq_data_get_irq_chip_data(d);
+	its = its_dev->its;
 
 	bitmap_release_region(its_dev->event_map.lpi_map,
 			      its_get_event_id(irq_domain_get_irq_data(domain, virq)),

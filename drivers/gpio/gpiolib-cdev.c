@@ -1910,6 +1910,7 @@ static void gpio_desc_to_lineinfo(struct gpio_desc *desc,
 	    test_bit(FLAG_USED_AS_IRQ, &desc->flags) ||
 	    test_bit(FLAG_EXPORT, &desc->flags) ||
 	    test_bit(FLAG_SYSFS, &desc->flags) ||
+	    !gpiochip_line_is_valid(gc, info->offset) ||
 	    !ok_for_pinctrl)
 		info->flags |= GPIO_V2_LINE_FLAG_USED;
 

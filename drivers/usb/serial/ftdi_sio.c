@@ -2012,6 +2012,15 @@ static int ftdi_gpio_init_valid_mask(struct gpio_chip *gc,
 
 	bitmap_complement(valid_mask, &map, ngpios);
 
+	if (bitmap_empty(valid_mask, ngpios))
+		dev_warn(&port->dev, "No usable GPIO\n");
+	else
+		dev_info(&port->dev, "Enabling CBUS%*pbl for GPIO\n",
+			 ngpios, valid_mask);
+
+	if (!bitmap_full(valid_mask, ngpios))
+		dev_warn_once(&port->dev, "Consider using a tool such as ftx-prog to enable GPIOs if required\n");
+
 	return 0;
 }
 

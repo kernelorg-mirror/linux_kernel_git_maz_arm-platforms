@@ -612,6 +612,18 @@ void clk_bulk_put_all(int num_clks, struct clk_bulk_data *clks);
  */
 void devm_clk_put(struct device *dev, struct clk *clk);
 
+/**
+ * devm_clk_prepare_enable - prepare and enable a clock source, registering
+ *                           a disable/unprepare callback
+ * @dev: device used to acquire the clock
+ * @clk: clock source to be enabled
+ *
+ * Prepare and enable @clk, registering a callback that will perform
+ * the disabling and unpreparing for this clock when @dev is unbound
+ * from the bus.
+ */
+int __must_check devm_clk_prepare_enable(struct device *dev, struct clk *clk);
+
 /*
  * The remaining APIs are optional for machine class support.
  */

@@ -156,3 +156,22 @@ struct clk *devm_get_clk_from_child(struct device *dev,
 	return clk;
 }
 EXPORT_SYMBOL(devm_get_clk_from_child);
+
+static void devm_clk_disable_unprepare_callback(void *data)
+{
+	clk_disable_unprepare(data);
+}
+
+int devm_clk_prepare_enable(struct device *dev, struct clk *clk)
+{
+	int ret;
+
+	ret = clk_prepare_enable(clk);
+	if (ret)
+		return ret;
+
+	return devm_add_action_or_reset(dev,
+					devm_clk_disable_unprepare_callback,
+					clk);
+}
+EXPORT_SYMBOL_GPL(devm_clk_prepare_enable)

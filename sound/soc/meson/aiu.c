@@ -247,17 +247,9 @@ static int aiu_clk_get(struct device *dev)
 		return ret;
 	}
 
-	ret = clk_prepare_enable(aiu->pclk);
-	if (ret) {
-		dev_err(dev, "peripheral clock enable failed\n");
-		return ret;
-	}
-
-	ret = devm_add_action_or_reset(dev,
-				       (void(*)(void *))clk_disable_unprepare,
-				       aiu->pclk);
+	ret = devm_clk_prepare_enable(dev, aiu->pclk);
 	if (ret)
-		dev_err(dev, "failed to add reset action on pclk");
+		dev_err(dev, "peripheral clock enable failed\n");
 
 	return ret;
 }

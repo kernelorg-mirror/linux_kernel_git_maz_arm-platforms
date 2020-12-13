@@ -68,17 +68,9 @@ static int meson_efuse_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = clk_prepare_enable(clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret) {
 		dev_err(dev, "failed to enable gate");
-		return ret;
-	}
-
-	ret = devm_add_action_or_reset(dev,
-				       (void(*)(void *))clk_disable_unprepare,
-				       clk);
-	if (ret) {
-		dev_err(dev, "failed to add disable callback");
 		return ret;
 	}
 

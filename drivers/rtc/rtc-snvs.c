@@ -297,11 +297,6 @@ static const struct regmap_config snvs_rtc_config = {
 	.reg_stride = 4,
 };
 
-static void snvs_rtc_action(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int snvs_rtc_probe(struct platform_device *pdev)
 {
 	struct snvs_rtc_data *data;
@@ -344,17 +339,13 @@ static int snvs_rtc_probe(struct platform_device *pdev)
 	if (IS_ERR(data->clk)) {
 		data->clk = NULL;
 	} else {
-		ret = clk_prepare_enable(data->clk);
+		ret = devm_clk_prepare_enable(&pdev->dev, data->clk);
 		if (ret) {
 			dev_err(&pdev->dev,
 				"Could not prepare or enable the snvs clock\n");
 			return ret;
 		}
 	}
-
-	ret = devm_add_action_or_reset(&pdev->dev, snvs_rtc_action, data->clk);
-	if (ret)
-		return ret;
 
 	platform_set_drvdata(pdev, data);
 

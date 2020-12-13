@@ -257,11 +257,6 @@ static void jz4740_rtc_power_off(void)
 	kernel_halt();
 }
 
-static void jz4740_rtc_clk_disable(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static const struct of_device_id jz4740_rtc_of_match[] = {
 	{ .compatible = "ingenic,jz4740-rtc", .data = (void *)ID_JZ4740 },
 	{ .compatible = "ingenic,jz4760-rtc", .data = (void *)ID_JZ4760 },
@@ -335,13 +330,7 @@ static int jz4740_rtc_probe(struct platform_device *pdev)
 		return PTR_ERR(clk);
 	}
 
-	ret = clk_prepare_enable(clk);
-	if (ret) {
-		dev_err(dev, "Failed to enable clock\n");
-		return ret;
-	}
-
-	ret = devm_add_action_or_reset(dev, jz4740_rtc_clk_disable, clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret) {
 		dev_err(dev, "Failed to register devm action\n");
 		return ret;

@@ -920,13 +920,7 @@ static int sccnxp_probe(struct platform_device *pdev)
 			goto err_out;
 		uartclk = 0;
 	} else {
-		ret = clk_prepare_enable(clk);
-		if (ret)
-			goto err_out;
-
-		ret = devm_add_action_or_reset(&pdev->dev,
-				(void(*)(void *))clk_disable_unprepare,
-				clk);
+		ret = devm_clk_prepare_enable(&pdev->dev, clk);
 		if (ret)
 			goto err_out;
 

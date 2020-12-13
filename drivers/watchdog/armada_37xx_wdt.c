@@ -244,11 +244,6 @@ static const struct watchdog_ops armada_37xx_wdt_ops = {
 	.get_timeleft = armada_37xx_wdt_get_timeleft,
 };
 
-static void armada_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int armada_37xx_wdt_probe(struct platform_device *pdev)
 {
 	struct armada_37xx_watchdog *dev;
@@ -280,11 +275,7 @@ static int armada_37xx_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(dev->clk))
 		return PTR_ERR(dev->clk);
 
-	ret = clk_prepare_enable(dev->clk);
-	if (ret)
-		return ret;
-	ret = devm_add_action_or_reset(&pdev->dev,
-				       armada_clk_disable_unprepare, dev->clk);
+	ret = devm_clk_prepare_enable(&pdev->dev, dev->clk);
 	if (ret)
 		return ret;
 

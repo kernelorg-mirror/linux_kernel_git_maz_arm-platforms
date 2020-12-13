@@ -136,11 +136,6 @@ static const struct of_device_id meson_gxbb_wdt_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, meson_gxbb_wdt_dt_ids);
 
-static void meson_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -159,11 +154,7 @@ static int meson_gxbb_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(data->clk))
 		return PTR_ERR(data->clk);
 
-	ret = clk_prepare_enable(data->clk);
-	if (ret)
-		return ret;
-	ret = devm_add_action_or_reset(dev, meson_clk_disable_unprepare,
-				       data->clk);
+	ret = devm_clk_prepare_enable(dev, data->clk);
 	if (ret)
 		return ret;
 

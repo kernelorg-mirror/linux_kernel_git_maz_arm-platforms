@@ -244,11 +244,6 @@ static const struct regmap_config imx2_wdt_regmap_config = {
 	.max_register = 0x8,
 };
 
-static void imx2_wdt_action(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int __init imx2_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -293,11 +288,7 @@ static int __init imx2_wdt_probe(struct platform_device *pdev)
 				      dev_name(dev), wdog))
 			wdog->info = &imx2_wdt_pretimeout_info;
 
-	ret = clk_prepare_enable(wdev->clk);
-	if (ret)
-		return ret;
-
-	ret = devm_add_action_or_reset(dev, imx2_wdt_action, wdev->clk);
+	ret = devm_clk_prepare_enable(dev, wdev->clk);
 	if (ret)
 		return ret;
 

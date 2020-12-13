@@ -108,11 +108,6 @@ static const struct watchdog_ops tangox_wdt_ops = {
 	.restart	= tangox_wdt_restart,
 };
 
-static void tangox_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int tangox_wdt_probe(struct platform_device *pdev)
 {
 	struct tangox_wdt_device *dev;
@@ -131,11 +126,7 @@ static int tangox_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(dev->clk))
 		return PTR_ERR(dev->clk);
 
-	err = clk_prepare_enable(dev->clk);
-	if (err)
-		return err;
-	err = devm_add_action_or_reset(&pdev->dev,
-				       tangox_clk_disable_unprepare, dev->clk);
+	err = devm_clk_prepare_enable(&pdev->dev, dev->clk);
 	if (err)
 		return err;
 

@@ -150,11 +150,6 @@ static int stm32_iwdg_set_timeout(struct watchdog_device *wdd,
 	return 0;
 }
 
-static void stm32_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int stm32_iwdg_clk_init(struct platform_device *pdev,
 			       struct stm32_iwdg *wdt)
 {
@@ -175,25 +170,12 @@ static int stm32_iwdg_clk_init(struct platform_device *pdev,
 			return PTR_ERR(wdt->clk_pclk);
 		}
 
-		ret = clk_prepare_enable(wdt->clk_pclk);
-		if (ret) {
-			dev_err(dev, "Unable to prepare pclk clock\n");
-			return ret;
-		}
-		ret = devm_add_action_or_reset(dev,
-					       stm32_clk_disable_unprepare,
-					       wdt->clk_pclk);
+		ret = devm_clk_prepare_enable(dev, wdt->clk_pclk);
 		if (ret)
 			return ret;
 	}
 
-	ret = clk_prepare_enable(wdt->clk_lsi);
-	if (ret) {
-		dev_err(dev, "Unable to prepare lsi clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, stm32_clk_disable_unprepare,
-				       wdt->clk_lsi);
+	ret = devm_clk_prepare_enable(dev, wdt->clk_lsi);
 	if (ret)
 		return ret;
 

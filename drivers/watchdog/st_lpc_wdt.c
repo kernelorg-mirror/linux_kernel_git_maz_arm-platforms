@@ -142,11 +142,6 @@ static struct watchdog_device st_wdog_dev = {
 	.ops		= &st_wdog_ops,
 };
 
-static void st_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int st_wdog_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -210,12 +205,7 @@ static int st_wdog_probe(struct platform_device *pdev)
 	st_wdog_dev.max_timeout = 0xFFFFFFFF / st_wdog->clkrate;
 	st_wdog_dev.parent = dev;
 
-	ret = clk_prepare_enable(clk);
-	if (ret) {
-		dev_err(dev, "Unable to enable clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, st_clk_disable_unprepare, clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret)
 		return ret;
 

@@ -151,11 +151,6 @@ static u32 xwdt_selftest(struct xwdt_device *xdev)
 		return XWT_TIMER_FAILED;
 }
 
-static void xwdt_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int xwdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -221,13 +216,7 @@ static int xwdt_probe(struct platform_device *pdev)
 	spin_lock_init(&xdev->spinlock);
 	watchdog_set_drvdata(xilinx_wdt_wdd, xdev);
 
-	rc = clk_prepare_enable(xdev->clk);
-	if (rc) {
-		dev_err(dev, "unable to enable clock\n");
-		return rc;
-	}
-	rc = devm_add_action_or_reset(dev, xwdt_clk_disable_unprepare,
-				      xdev->clk);
+	rc = devm_clk_prepare_enable(dev, xdev->clk);
 	if (rc)
 		return rc;
 

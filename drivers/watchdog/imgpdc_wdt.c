@@ -175,11 +175,6 @@ static const struct watchdog_ops pdc_wdt_ops = {
 	.restart        = pdc_wdt_restart,
 };
 
-static void pdc_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int pdc_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -208,13 +203,7 @@ static int pdc_wdt_probe(struct platform_device *pdev)
 		return PTR_ERR(pdc_wdt->wdt_clk);
 	}
 
-	ret = clk_prepare_enable(pdc_wdt->sys_clk);
-	if (ret) {
-		dev_err(dev, "could not prepare or enable sys clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, pdc_clk_disable_unprepare,
-				       pdc_wdt->sys_clk);
+	ret = devm_clk_prepare_enable(dev, pdc_wdt->sys_clk);
 	if (ret)
 		return ret;
 

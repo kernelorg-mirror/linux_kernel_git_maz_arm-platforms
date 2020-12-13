@@ -124,11 +124,6 @@ static const struct of_device_id atlas7_wdt_ids[] = {
 	{}
 };
 
-static void atlas7_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int atlas7_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -146,12 +141,7 @@ static int atlas7_wdt_probe(struct platform_device *pdev)
 	clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(clk))
 		return PTR_ERR(clk);
-	ret = clk_prepare_enable(clk);
-	if (ret) {
-		dev_err(dev, "clk enable failed\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, atlas7_clk_disable_unprepare, clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret)
 		return ret;
 

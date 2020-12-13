@@ -195,11 +195,6 @@ static const struct watchdog_ops asm9260_wdt_ops = {
 	.restart	= asm9260_restart,
 };
 
-static void asm9260_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int asm9260_wdt_get_dt_clks(struct asm9260_wdt_priv *priv)
 {
 	int err;
@@ -218,14 +213,7 @@ static int asm9260_wdt_get_dt_clks(struct asm9260_wdt_priv *priv)
 		return PTR_ERR(priv->clk_ahb);
 	}
 
-	err = clk_prepare_enable(priv->clk_ahb);
-	if (err) {
-		dev_err(priv->dev, "Failed to enable ahb_clk!\n");
-		return err;
-	}
-	err = devm_add_action_or_reset(priv->dev,
-				       asm9260_clk_disable_unprepare,
-				       priv->clk_ahb);
+	err = devm_clk_prepare_enable(priv->dev, priv->clk_ahb);
 	if (err)
 		return err;
 

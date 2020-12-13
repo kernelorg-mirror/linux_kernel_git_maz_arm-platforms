@@ -187,11 +187,6 @@ static void zx2967_wdt_reset_sysctrl(struct device *dev)
 	of_node_put(out_args.np);
 }
 
-static void zx2967_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int zx2967_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -224,13 +219,7 @@ static int zx2967_wdt_probe(struct platform_device *pdev)
 		return PTR_ERR(wdt->clock);
 	}
 
-	ret = clk_prepare_enable(wdt->clock);
-	if (ret < 0) {
-		dev_err(dev, "failed to enable clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, zx2967_clk_disable_unprepare,
-				       wdt->clock);
+	ret = devm_clk_prepare_enable(dev, wdt->clock);
 	if (ret)
 		return ret;
 	clk_set_rate(wdt->clock, ZX2967_WDT_CLK_FREQ);

@@ -79,11 +79,6 @@ static const struct watchdog_ops ls1x_wdt_ops = {
 	.set_timeout = ls1x_wdt_set_timeout,
 };
 
-static void ls1x_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int ls1x_wdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -104,13 +99,7 @@ static int ls1x_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(drvdata->clk))
 		return PTR_ERR(drvdata->clk);
 
-	err = clk_prepare_enable(drvdata->clk);
-	if (err) {
-		dev_err(dev, "clk enable failed\n");
-		return err;
-	}
-	err = devm_add_action_or_reset(dev, ls1x_clk_disable_unprepare,
-				       drvdata->clk);
+	err = devm_clk_prepare_enable(dev, drvdata->clk);
 	if (err)
 		return err;
 

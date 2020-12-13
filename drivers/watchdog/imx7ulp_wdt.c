@@ -200,11 +200,6 @@ init_out:
 	return ret;
 }
 
-static void imx7ulp_wdt_action(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int imx7ulp_wdt_probe(struct platform_device *pdev)
 {
 	struct imx7ulp_wdt_device *imx7ulp_wdt;
@@ -228,11 +223,7 @@ static int imx7ulp_wdt_probe(struct platform_device *pdev)
 		return PTR_ERR(imx7ulp_wdt->clk);
 	}
 
-	ret = clk_prepare_enable(imx7ulp_wdt->clk);
-	if (ret)
-		return ret;
-
-	ret = devm_add_action_or_reset(dev, imx7ulp_wdt_action, imx7ulp_wdt->clk);
+	ret = devm_clk_prepare_enable(dev, imx7ulp_wdt->clk);
 	if (ret)
 		return ret;
 

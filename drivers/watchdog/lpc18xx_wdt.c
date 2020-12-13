@@ -197,11 +197,6 @@ static const struct watchdog_ops lpc18xx_wdt_ops = {
 	.restart        = lpc18xx_wdt_restart,
 };
 
-static void lpc18xx_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int lpc18xx_wdt_probe(struct platform_device *pdev)
 {
 	struct lpc18xx_wdt_dev *lpc18xx_wdt;
@@ -228,13 +223,7 @@ static int lpc18xx_wdt_probe(struct platform_device *pdev)
 		return PTR_ERR(lpc18xx_wdt->wdt_clk);
 	}
 
-	ret = clk_prepare_enable(lpc18xx_wdt->reg_clk);
-	if (ret) {
-		dev_err(dev, "could not prepare or enable sys clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, lpc18xx_clk_disable_unprepare,
-				       lpc18xx_wdt->reg_clk);
+	ret = devm_clk_prepare_enable(dev, lpc18xx_wdt->reg_clk);
 	if (ret)
 		return ret;
 

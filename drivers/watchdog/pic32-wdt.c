@@ -162,11 +162,6 @@ static const struct of_device_id pic32_wdt_dt_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, pic32_wdt_dt_ids);
 
-static void pic32_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int pic32_wdt_drv_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -192,13 +187,7 @@ static int pic32_wdt_drv_probe(struct platform_device *pdev)
 		return PTR_ERR(wdt->clk);
 	}
 
-	ret = clk_prepare_enable(wdt->clk);
-	if (ret) {
-		dev_err(dev, "clk enable failed\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, pic32_clk_disable_unprepare,
-				       wdt->clk);
+	ret = devm_clk_prepare_enable(dev, wdt->clk);
 	if (ret)
 		return ret;
 

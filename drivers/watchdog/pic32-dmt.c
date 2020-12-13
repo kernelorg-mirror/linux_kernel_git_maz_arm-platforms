@@ -164,11 +164,6 @@ static struct watchdog_device pic32_dmt_wdd = {
 	.ops		= &pic32_dmt_fops,
 };
 
-static void pic32_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int pic32_dmt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -190,11 +185,7 @@ static int pic32_dmt_probe(struct platform_device *pdev)
 		return PTR_ERR(dmt->clk);
 	}
 
-	ret = clk_prepare_enable(dmt->clk);
-	if (ret)
-		return ret;
-	ret = devm_add_action_or_reset(dev, pic32_clk_disable_unprepare,
-				       dmt->clk);
+	ret = devm_clk_prepare_enable(dev, dmt->clk);
 	if (ret)
 		return ret;
 

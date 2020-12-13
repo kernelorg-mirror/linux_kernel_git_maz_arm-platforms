@@ -274,11 +274,6 @@ static const struct watchdog_ops cdns_wdt_ops = {
 	.set_timeout = cdns_wdt_settimeout,
 };
 
-static void cdns_clk_disable_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 /************************Platform Operations*****************************/
 /**
  * cdns_wdt_probe - Probe call for the device.
@@ -338,13 +333,7 @@ static int cdns_wdt_probe(struct platform_device *pdev)
 		return dev_err_probe(dev, PTR_ERR(wdt->clk),
 				     "input clock not found\n");
 
-	ret = clk_prepare_enable(wdt->clk);
-	if (ret) {
-		dev_err(dev, "unable to enable clock\n");
-		return ret;
-	}
-	ret = devm_add_action_or_reset(dev, cdns_clk_disable_unprepare,
-				       wdt->clk);
+	ret = devm_clk_prepare_enable(dev, wdt->clk);
 	if (ret)
 		return ret;
 

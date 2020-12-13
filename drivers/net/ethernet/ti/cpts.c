@@ -647,6 +647,16 @@ static void cpts_calc_mult_shift(struct cpts *cpts)
 		 freq, cpts->cc.mult, cpts->cc.shift, (ns - NSEC_PER_SEC));
 }
 
+static void cpts_clk_unregister_mux(void *data)
+{
+	clk_hw_unregister_mux(data);
+}
+
+static void cpts_clk_del_provider(void *data)
+{
+	of_clk_del_provider(data);
+}
+
 static int cpts_of_mux_clk_setup(struct cpts *cpts, struct device_node *node)
 {
 	struct device_node *refclk_np;
@@ -696,8 +706,7 @@ static int cpts_of_mux_clk_setup(struct cpts *cpts, struct device_node *node)
 		goto mux_fail;
 	}
 
-	ret = devm_add_action_or_reset(cpts->dev,
-				       (void(*)(void *))clk_hw_unregister_mux,
+	ret = devm_add_action_or_reset(cpts->dev, cpts_clk_unregister_mux,
 				       clk_hw);
 	if (ret) {
 		dev_err(cpts->dev, "add clkmux unreg action %d", ret);
@@ -708,8 +717,7 @@ static int cpts_of_mux_clk_setup(struct cpts *cpts, struct device_node *node)
 	if (ret)
 		goto mux_fail;
 
-	ret = devm_add_action_or_reset(cpts->dev,
-				       (void(*)(void *))of_clk_del_provider,
+	ret = devm_add_action_or_reset(cpts->dev, cpts_clk_del_provider,
 				       refclk_np);
 	if (ret) {
 		dev_err(cpts->dev, "add clkmux provider unreg action %d", ret);

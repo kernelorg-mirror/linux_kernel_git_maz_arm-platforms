@@ -47,22 +47,6 @@ static inline struct keembay_pwm *to_keembay_pwm_dev(struct pwm_chip *chip)
 	return container_of(chip, struct keembay_pwm, chip);
 }
 
-static void keembay_clk_unprepare(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
-static int keembay_clk_enable(struct device *dev, struct clk *clk)
-{
-	int ret;
-
-	ret = clk_prepare_enable(clk);
-	if (ret)
-		return ret;
-
-	return devm_add_action_or_reset(dev, keembay_clk_unprepare, clk);
-}
-
 /*
  * With gcc 10, CONFIG_CC_OPTIMIZE_FOR_SIZE and only "inline" instead of
  * "__always_inline" this fails to compile because the compiler doesn't notice
@@ -199,7 +183,7 @@ static int keembay_pwm_probe(struct platform_device *pdev)
 	if (IS_ERR(priv->base))
 		return PTR_ERR(priv->base);
 
-	ret = keembay_clk_enable(dev, priv->clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret)
 		return ret;
 

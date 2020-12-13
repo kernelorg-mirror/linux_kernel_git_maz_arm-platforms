@@ -127,24 +127,6 @@ static const struct regmap_config lgm_pwm_regmap_config = {
 	.val_bits = 32,
 };
 
-static void lgm_clk_release(void *data)
-{
-	struct clk *clk = data;
-
-	clk_disable_unprepare(clk);
-}
-
-static int lgm_clk_enable(struct device *dev, struct clk *clk)
-{
-	int ret;
-
-	ret = clk_prepare_enable(clk);
-	if (ret)
-		return ret;
-
-	return devm_add_action_or_reset(dev, lgm_clk_release, clk);
-}
-
 static void lgm_reset_control_release(void *data)
 {
 	struct reset_control *rst = data;
@@ -191,7 +173,7 @@ static int lgm_pwm_probe(struct platform_device *pdev)
 	if (IS_ERR(clk))
 		return dev_err_probe(dev, PTR_ERR(clk), "failed to get clock\n");
 
-	ret = lgm_clk_enable(dev, clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret)
 		return dev_err_probe(dev, ret, "failed to enable clock\n");
 

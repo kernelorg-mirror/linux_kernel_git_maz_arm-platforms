@@ -271,17 +271,11 @@ static int t9015_probe(struct platform_device *pdev)
 		return PTR_ERR(priv->avdd);
 	}
 
-	ret = clk_prepare_enable(priv->pclk);
+	ret = devm_clk_prepare_enable(dev, priv->pclk);
 	if (ret) {
 		dev_err(dev, "core clock enable failed\n");
 		return ret;
 	}
-
-	ret = devm_add_action_or_reset(dev,
-			(void(*)(void *))clk_disable_unprepare,
-			priv->pclk);
-	if (ret)
-		return ret;
 
 	ret = device_reset(dev);
 	if (ret) {

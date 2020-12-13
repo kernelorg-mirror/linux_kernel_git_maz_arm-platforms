@@ -944,15 +944,9 @@ static void meson_disable_regulator(void *data)
 	regulator_disable(data);
 }
 
-static void meson_disable_clk(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int meson_enable_clk(struct device *dev, char *name)
 {
 	struct clk *clk;
-	int ret;
 
 	clk = devm_clk_get(dev, name);
 	if (IS_ERR(clk)) {
@@ -960,11 +954,7 @@ static int meson_enable_clk(struct device *dev, char *name)
 		return PTR_ERR(clk);
 	}
 
-	ret = clk_prepare_enable(clk);
-	if (!ret)
-		ret = devm_add_action_or_reset(dev, meson_disable_clk, clk);
-
-	return ret;
+	return devm_clk_prepare_enable(dev, clk);
 }
 
 static int meson_dw_hdmi_bind(struct device *dev, struct device *master,

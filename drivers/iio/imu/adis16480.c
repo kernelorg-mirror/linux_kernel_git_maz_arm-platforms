@@ -1175,11 +1175,7 @@ static int adis16480_ext_clk_config(struct adis16480 *st,
 	val &= ~mask;
 	val |= mode;
 
-	ret = adis_write_reg_16(&st->adis, ADIS16480_REG_FNCTIO_CTRL, val);
-	if (ret)
-		return ret;
-
-	return clk_prepare_enable(st->ext_clk);
+	return adis_write_reg_16(&st->adis, ADIS16480_REG_FNCTIO_CTRL, val);
 }
 
 static int adis16480_get_ext_clocks(struct adis16480 *st)
@@ -1215,11 +1211,6 @@ static int adis16480_get_ext_clocks(struct adis16480 *st)
 static void adis16480_stop(void *data)
 {
 	adis16480_stop_device(data);
-}
-
-static void adis16480_clk_disable(void *data)
-{
-	clk_disable_unprepare(data);
 }
 
 static int adis16480_probe(struct spi_device *spi)
@@ -1272,7 +1263,7 @@ static int adis16480_probe(struct spi_device *spi)
 		if (ret)
 			return ret;
 
-		ret = devm_add_action_or_reset(&spi->dev, adis16480_clk_disable, st->ext_clk);
+		ret = devm_clk_prepare_enable(&spi->dev, st->ext_clk);
 		if (ret)
 			return ret;
 

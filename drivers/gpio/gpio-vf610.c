@@ -232,11 +232,6 @@ static int vf610_gpio_irq_set_wake(struct irq_data *d, u32 enable)
 	return 0;
 }
 
-static void vf610_gpio_disable_clk(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int vf610_gpio_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -268,11 +263,7 @@ static int vf610_gpio_probe(struct platform_device *pdev)
 	port->clk_port = devm_clk_get(dev, "port");
 	ret = PTR_ERR_OR_ZERO(port->clk_port);
 	if (!ret) {
-		ret = clk_prepare_enable(port->clk_port);
-		if (ret)
-			return ret;
-		ret = devm_add_action_or_reset(dev, vf610_gpio_disable_clk,
-					       port->clk_port);
+		ret = devm_clk_prepare_enable(dev, port->clk_port);
 		if (ret)
 			return ret;
 	} else if (ret == -EPROBE_DEFER) {

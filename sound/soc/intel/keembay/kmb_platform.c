@@ -383,11 +383,6 @@ static void kmb_i2s_stop(struct kmb_i2s_info *kmb_i2s,
 	}
 }
 
-static void kmb_disable_clk(void *clk)
-{
-	clk_disable_unprepare(clk);
-}
-
 static int kmb_set_dai_fmt(struct snd_soc_dai *cpu_dai, unsigned int fmt)
 {
 	struct kmb_i2s_info *kmb_i2s = snd_soc_dai_get_drvdata(cpu_dai);
@@ -666,11 +661,7 @@ static int kmb_plat_dai_probe(struct platform_device *pdev)
 		return PTR_ERR(kmb_i2s->clk_apb);
 	}
 
-	ret = clk_prepare_enable(kmb_i2s->clk_apb);
-	if (ret < 0)
-		return ret;
-
-	ret = devm_add_action_or_reset(dev, kmb_disable_clk, kmb_i2s->clk_apb);
+	ret = devm_clk_prepare_enable(dev, kmb_i2s->clk_apb);
 	if (ret) {
 		dev_err(dev, "Failed to add clk_apb reset action\n");
 		return ret;

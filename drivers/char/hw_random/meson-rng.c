@@ -33,11 +33,6 @@ static int meson_rng_read(struct hwrng *rng, void *buf, size_t max, bool wait)
 	return sizeof(u32);
 }
 
-static void meson_rng_clk_disable(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int meson_rng_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -59,11 +54,7 @@ static int meson_rng_probe(struct platform_device *pdev)
 		data->core_clk = NULL;
 
 	if (data->core_clk) {
-		ret = clk_prepare_enable(data->core_clk);
-		if (ret)
-			return ret;
-		ret = devm_add_action_or_reset(dev, meson_rng_clk_disable,
-					       data->core_clk);
+		ret = devm_clk_prepare_enable(dev, data->core_clk);
 		if (ret)
 			return ret;
 	}

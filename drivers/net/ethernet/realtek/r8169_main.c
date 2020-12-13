@@ -5136,11 +5136,6 @@ static int rtl_jumbo_max(struct rtl8169_private *tp)
 	}
 }
 
-static void rtl_disable_clk(void *data)
-{
-	clk_disable_unprepare(data);
-}
-
 static int rtl_get_ether_clk(struct rtl8169_private *tp)
 {
 	struct device *d = tp_to_dev(tp);
@@ -5157,11 +5152,9 @@ static int rtl_get_ether_clk(struct rtl8169_private *tp)
 			dev_err_probe(d, rc, "failed to get clk\n");
 	} else {
 		tp->clk = clk;
-		rc = clk_prepare_enable(clk);
+		rc = devm_clk_prepare_enable(d, clk);
 		if (rc)
 			dev_err(d, "failed to enable clk: %d\n", rc);
-		else
-			rc = devm_add_action_or_reset(d, rtl_disable_clk, clk);
 	}
 
 	return rc;

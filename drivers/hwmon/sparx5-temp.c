@@ -26,13 +26,6 @@ struct s5_hwmon {
 	struct clk *clk;
 };
 
-static void s5_temp_clk_disable(void *data)
-{
-	struct clk *clk = data;
-
-	clk_disable_unprepare(clk);
-}
-
 static void s5_temp_enable(struct s5_hwmon *hwmon)
 {
 	u32 val = readl(hwmon->base + TEMP_CFG);
@@ -127,12 +120,7 @@ static int s5_temp_probe(struct platform_device *pdev)
 	if (IS_ERR(hwmon->clk))
 		return PTR_ERR(hwmon->clk);
 
-	ret = clk_prepare_enable(hwmon->clk);
-	if (ret)
-		return ret;
-
-	ret = devm_add_action_or_reset(&pdev->dev, s5_temp_clk_disable,
-				       hwmon->clk);
+	ret = devm_clk_prepare_enable(&pdev->dev, hwmon->clk);
 	if (ret)
 		return ret;
 

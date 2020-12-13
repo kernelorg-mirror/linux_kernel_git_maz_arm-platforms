@@ -1670,21 +1670,11 @@ static int devm_clk_get_enable(struct device *dev, char *id)
 		return ret;
 	}
 
-	ret = clk_prepare_enable(clk);
-	if (ret) {
+	ret = devm_clk_prepare_enable(clk);
+	if (ret)
 		dev_err(dev, "failed to enable %s", id);
-		return ret;
-	}
 
-	ret = devm_add_action_or_reset(dev,
-				       (void(*)(void *))clk_disable_unprepare,
-				       clk);
-	if (ret) {
-		dev_err(dev, "failed to add reset action on %s", id);
-		return ret;
-	}
-
-	return 0;
+	return ret;
 }
 
 struct axg_audio_reset_data {

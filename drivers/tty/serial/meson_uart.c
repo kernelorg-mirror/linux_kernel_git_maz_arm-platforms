@@ -657,15 +657,11 @@ static inline struct clk *meson_uart_probe_clock(struct device *dev,
 	if (IS_ERR(clk))
 		return clk;
 
-	ret = clk_prepare_enable(clk);
+	ret = devm_clk_prepare_enable(dev, clk);
 	if (ret) {
 		dev_err(dev, "couldn't enable clk\n");
 		return ERR_PTR(ret);
 	}
-
-	devm_add_action_or_reset(dev,
-			(void(*)(void *))clk_disable_unprepare,
-			clk);
 
 	return clk;
 }

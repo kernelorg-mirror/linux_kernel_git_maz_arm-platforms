@@ -760,7 +760,17 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	struct kvm_pgtable *pgt;
 
 	fault_granule = 1UL << ARM64_HW_PGTABLE_LEVEL_SHIFT(fault_level);
-	write_fault = kvm_is_write_fault(vcpu);
+	/*
+	 * Treat translation faults on CMOs as read faults. Should
+	 * this further generate a permission fault on a R/O memslot,
+	 * it will be caught in kvm_handle_guest_abort(), with
+	 * prejudice. Permission faults on non-R/O memslot will be
+	 * gracefully handled as writes.
+	 */
+	if (fault_status == FSC_FAULT && kvm_vcpu_dabt_is_cm(vcpu))
+		write_fault = false;
+	else
+		write_fault = kvm_is_write_fault(vcpu);
 	exec_fault = kvm_vcpu_trap_is_exec_fault(vcpu);
 	VM_BUG_ON(write_fault && exec_fault);
 
@@ -1013,19 +1023,37 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		}
 
 		/*
-		 * Check for a cache maintenance operation. Since we
-		 * ended-up here, we know it is outside of any memory
-		 * slot. But we can't find out if that is for a device,
-		 * or if the guest is just being stupid. The only thing
-		 * we know for sure is that this range cannot be cached.
+		 * Check for a cache maintenance operation. Three cases:
 		 *
-		 * So let's assume that the guest is just being
-		 * cautious, and skip the instruction.
+		 * - It is outside of any memory slot. But we can't find out
+		 *   if that is for a device, or if the guest is just being
+		 *   stupid. The only thing we know for sure is that this
+		 *   range cannot be cached.  So let's assume that the guest
+		 *   is just being cautious, and skip the instruction.
+		 *
+		 * - Otherwise, check whether this is a permission fault.
+		 *   If so, that's a DC IVAC on a R/O memslot, which is a
+		 *   pretty bad idea, and we tell the guest so.
+		 *
+		 * - If this wasn't a permission fault, pass it along for
+		 *   further handling (including faulting the page in if it
+		 *   was a translation fault).
 		 */
-		if (kvm_is_error_hva(hva) && kvm_vcpu_dabt_is_cm(vcpu)) {
-			kvm_incr_pc(vcpu);
-			ret = 1;
-			goto out_unlock;
+		if (kvm_vcpu_dabt_is_cm(vcpu)) {
+			if (kvm_is_error_hva(hva)) {
+				kvm_incr_pc(vcpu);
+				ret = 1;
+				goto out_unlock;
+			}
+
+			if (fault_status == FSC_PERM) {
+				/* DC IVAC on a R/O memslot */
+				kvm_inject_dabt(vcpu, kvm_vcpu_get_hfar(vcpu));
+				ret = 1;
+				goto out_unlock;
+			}
+
+			goto handle_access;
 		}
 
 		/*
@@ -1039,6 +1067,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		goto out_unlock;
 	}
 
+handle_access:
 	/* Userspace should not be able to register out-of-bounds IPAs */
 	VM_BUG_ON(fault_ipa >= kvm_phys_size(vcpu->kvm));
 

@@ -31,8 +31,22 @@ static const struct ftr_set_desc mmfr1 __initdata = {
 	},
 };
 
+extern struct arm64_ftr_override kaslr_feature_override;
+
+static const struct ftr_set_desc kaslr __initdata = {
+	.name		= "kaslr",
+#ifdef CONFIG_RANDOMIZE_BASE
+	.override	= &kaslr_feature_override,
+#endif
+	.fields		= {
+		{ "disabled", 0 },
+		{}
+	},
+};
+
 static const struct ftr_set_desc * const regs[] __initdata = {
 	&mmfr1,
+	&kaslr,
 };
 
 static const struct {
@@ -41,6 +55,7 @@ static const struct {
 } aliases[] __initdata = {
 	{ "kvm-arm.mode=nvhe",		"id_aa64mmfr1.vh=0" },
 	{ "kvm-arm.mode=protected",	"id_aa64mmfr1.vh=0" },
+	{ "nokaslr",			"kaslr.disabled=1" },
 };
 
 static char *cmdline_contains_option(const char *cmdline, const char *option)

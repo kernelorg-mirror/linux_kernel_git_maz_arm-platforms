@@ -92,9 +92,6 @@ SYM_CODE_START_LOCAL(mutate_to_vhe)
 	msr	hcr_el2, x0
 	isb
 
-	// Doesn't do much on VHE, but still, worth a shot
-	init_el2_state vhe
-
 	// Use the EL1 allocated stack, per-cpu offset
 	mrs	x0, sp_el1
 	mov	sp, x0
@@ -106,6 +103,31 @@ SYM_CODE_START_LOCAL(mutate_to_vhe)
 	msr	cpacr_el1, x0
 	mrs_s	x0, SYS_VBAR_EL12
 	msr	vbar_el1, x0
+
+	// Fixup SPE configuration, if supported...
+	mrs	x1, id_aa64dfr0_el1
+	ubfx	x1, x1, #ID_AA64DFR0_PMSVER_SHIFT, #4
+	mov	x2, xzr
+	cbz	x1, skip_spe
+
+	// ... and not owned by EL3
+	mrs_s	x0, SYS_PMBIDR_EL1
+	and	x0, x0, #(1 << SYS_PMBIDR_EL1_P_SHIFT)
+	cbnz	x0, skip_spe
+
+	// Let the SPE driver in control of the sampling
+	mrs_s	x0, SYS_PMSCR_EL1
+	bic	x0, x0, #(1 << SYS_PMSCR_EL2_PCT_SHIFT)
+	bic	x0, x0, #(1 << SYS_PMSCR_EL2_PA_SHIFT)
+	msr_s	SYS_PMSCR_EL1, x0
+	mov	x2, #MDCR_EL2_TPMS
+
+skip_spe:
+	// For VHE, use EL2 translation and disable access from EL1
+	mrs	x0, mdcr_el2
+	bic	x0, x0, #(MDCR_EL2_E2PB_MASK << MDCR_EL2_E2PB_SHIFT)
+	orr	x0, x0, x2
+	msr	mdcr_el2, x0
 
 	// Transfer the MM state from EL1 to EL2
 	mrs_s	x0, SYS_TCR_EL12

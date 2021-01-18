@@ -35,6 +35,12 @@ static const struct ftr_set_desc * const regs[] __initdata = {
 	&mmfr1,
 };
 
+static const struct {
+	const char	*alias;
+	const char	*feature;
+} aliases[] __initdata = {
+};
+
 static char *cmdline_contains_option(const char *cmdline, const char *option)
 {
 	char *str = strstr(cmdline, option);
@@ -88,6 +94,15 @@ static void __init match_options(const char *cmdline)
 	}
 }
 
+static __init void match_aliases(const char *cmdline)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(aliases); i++)
+		if (cmdline_contains_option(cmdline, aliases[i].alias))
+			match_options(aliases[i].feature);
+}
+
 static __init void parse_cmdline(void)
 {
 	if (!IS_ENABLED(CONFIG_CMDLINE_FORCE)) {
@@ -108,6 +123,7 @@ static __init void parse_cmdline(void)
 			goto out;
 
 		match_options(prop);
+		match_aliases(prop);
 
 		if (!IS_ENABLED(CONFIG_CMDLINE_EXTEND))
 			return;
@@ -115,6 +131,7 @@ static __init void parse_cmdline(void)
 
 out:
 	match_options(CONFIG_CMDLINE);
+	match_aliases(CONFIG_CMDLINE);
 }
 
 void init_shadow_regs(void);

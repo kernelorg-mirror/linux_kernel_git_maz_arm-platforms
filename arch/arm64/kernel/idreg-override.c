@@ -39,6 +39,8 @@ static const struct {
 	const char	*alias;
 	const char	*feature;
 } aliases[] __initdata = {
+	{ "kvm-arm.mode=nvhe",		"id_aa64mmfr1.vh=0" },
+	{ "kvm-arm.mode=protected",	"id_aa64mmfr1.vh=0" },
 };
 
 static char *cmdline_contains_option(const char *cmdline, const char *option)

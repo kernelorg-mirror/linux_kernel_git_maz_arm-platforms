@@ -10,6 +10,7 @@
 #include <linux/libfdt.h>
 
 #include <asm/cacheflush.h>
+#include <asm/cpufeature.h>
 #include <asm/setup.h>
 
 struct ftr_set_desc {
@@ -21,7 +22,17 @@ struct ftr_set_desc {
 	} 				fields[];
 };
 
+static const struct ftr_set_desc mmfr1 __initdata = {
+	.name		= "id_aa64mmfr1",
+	.override	= &id_aa64mmfr1_override,
+	.fields		= {
+	        { "vh", ID_AA64MMFR1_VHE_SHIFT },
+		{}
+	},
+};
+
 static const struct ftr_set_desc * const regs[] __initdata = {
+	&mmfr1,
 };
 
 static char *cmdline_contains_option(const char *cmdline, const char *option)

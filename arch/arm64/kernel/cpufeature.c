@@ -352,9 +352,12 @@ static const struct arm64_ftr_bits ftr_ctr[] = {
 	ARM64_FTR_END,
 };
 
+static struct arm64_ftr_override no_override = { };
+
 struct arm64_ftr_reg arm64_ftr_reg_ctrel0 = {
 	.name		= "SYS_CTR_EL0",
-	.ftr_bits	= ftr_ctr
+	.ftr_bits	= ftr_ctr,
+	.override	= &no_override,
 };
 
 static const struct arm64_ftr_bits ftr_id_mmfr0[] = {
@@ -543,8 +546,6 @@ static const struct arm64_ftr_bits ftr_single32[] = {
 static const struct arm64_ftr_bits ftr_raz[] = {
 	ARM64_FTR_END,
 };
-
-static struct arm64_ftr_override no_override = { 0, 0 };
 
 #define ARM64_FTR_REG_OVERRIDE(id, table, ovr) {		\
 		.sys_id = id,					\

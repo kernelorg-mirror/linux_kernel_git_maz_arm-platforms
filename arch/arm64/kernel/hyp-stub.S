@@ -93,7 +93,9 @@ SYM_CODE_START_LOCAL(mutate_to_vhe)
 	ldr	x1, [x1, FTR_OVR_MASK_OFFSET]
 	ubfx	x2, x2, #ID_AA64MMFR1_VHE_SHIFT, #4
 	ubfx	x1, x1, #ID_AA64MMFR1_VHE_SHIFT, #4
+	cmp	x1, xzr
 	and	x2, x2, x1
+	csinv	x2, x2, xzr, ne
 	cbz	x2, 1f
 
 	// Engage the VHE magic!

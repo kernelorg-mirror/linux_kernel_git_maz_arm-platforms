@@ -533,7 +533,7 @@ alternative_endif
 
 	.macro el1_interrupt_handler, handler:req
 	gic_prio_irq_setup pmr=x20, tmp=x1
-	enable_da_f
+	enable_da
 
 	mov	x0, sp
 	bl	enter_el1_irq_or_nmi
@@ -544,7 +544,7 @@ alternative_endif
 	ldr	x24, [tsk, #TSK_TI_PREEMPT]	// get preempt count
 alternative_if ARM64_HAS_IRQ_PRIO_MASKING
 	/*
-	 * DA_F were cleared at start of handling. If anything is set in DAIF,
+	 * DA were cleared at start of handling. If anything is set in DAIF,
 	 * we come back from an NMI, so skip preemption
 	 */
 	mrs	x0, daif
@@ -562,7 +562,7 @@ alternative_else_nop_endif
 	.macro el0_interrupt_handler, handler:req
 	gic_prio_irq_setup pmr=x20, tmp=x0
 	user_exit_irqoff
-	enable_da_f
+	enable_da
 
 	tbz	x22, #55, 1f
 	bl	do_el0_irq_bp_hardening
@@ -763,7 +763,7 @@ el0_error_naked:
 	mov	x0, sp
 	mov	x1, x25
 	bl	do_serror
-	enable_da_f
+	enable_da
 	b	ret_to_user
 SYM_CODE_END(el0_error)
 

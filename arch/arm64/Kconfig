@@ -1756,6 +1756,17 @@ config ARM64_DEBUG_PRIORITY_MASKING
 	  If unsure, say N
 endif
 
+config ARM64_FIQ_SUPPORT
+	bool "Support for FIQ interrupts"
+	help
+	  Adds support for handling FIQ interrupts as normal IRQs.
+	  This is required on Apple platforms where some IRQ sources are
+	  hardwired to the FIQ interrupt line.
+
+	  This option only affects platforms that require FIQ handling.
+	  On all other platforms, unexpected FIQs will continue to
+	  trigger a kernel panic.
+
 config RELOCATABLE
 	bool "Build a relocatable kernel image" if EXPERT
 	select ARCH_HAS_RELR

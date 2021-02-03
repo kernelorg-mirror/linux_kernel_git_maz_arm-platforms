@@ -40,9 +40,9 @@
 	msr	daif, \flags
 	.endm
 
-	/* IRQ is the lowest priority flag, unconditionally unmask the rest. */
-	.macro enable_da_f
-	msr	daifclr, #(8 | 4 | 1)
+	/* IRQ/FIQ are the lowest priority flags, unconditionally unmask the rest. */
+	.macro enable_da
+	msr	daifclr, #(8 | 4)
 	.endm
 
 /*

@@ -661,7 +661,7 @@ SYM_CODE_END(el1_sync)
 SYM_CODE_START_LOCAL_NOALIGN(el1_irq)
 	kernel_entry 1
 	gic_prio_irq_setup pmr=x20, tmp=x1
-	enable_da_f
+	enable_da
 
 	mov	x0, sp
 	bl	enter_el1_irq_or_nmi
@@ -727,7 +727,7 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_irq)
 el0_irq_naked:
 	gic_prio_irq_setup pmr=x20, tmp=x0
 	user_exit_irqoff
-	enable_da_f
+	enable_da
 
 	tbz	x22, #55, 1f
 	bl	do_el0_irq_bp_hardening
@@ -757,7 +757,7 @@ el0_error_naked:
 	mov	x0, sp
 	mov	x1, x25
 	bl	do_serror
-	enable_da_f
+	enable_da
 	b	ret_to_user
 SYM_CODE_END(el0_error)
 

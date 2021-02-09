@@ -435,7 +435,6 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 	mov	x0, x21				// pass FDT address in x0
 	bl	early_fdt_map			// Try mapping the FDT early
 	bl	init_feature_override
-	bl	switch_to_vhe
 #ifdef CONFIG_RANDOMIZE_BASE
 	tst	x23, ~(MIN_KIMG_ALIGN - 1)	// already running randomized?
 	b.ne	0f
@@ -446,6 +445,7 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 	ret					// to __primary_switch()
 0:
 #endif
+	bl	switch_to_vhe
 	add	sp, sp, #16
 	mov	x29, #0
 	mov	x30, #0

@@ -213,12 +213,18 @@ static int aic_irq_set_affinity(struct irq_data *d,
 	return IRQ_SET_MASK_OK;
 }
 
+static int aic_irq_set_type(struct irq_data *d, unsigned int type)
+{
+	return (type == IRQ_TYPE_LEVEL_HIGH) ? 0 : -EINVAL;
+}
+
 static struct irq_chip aic_chip = {
 	.name = "AIC",
 	.irq_mask = aic_irq_mask,
 	.irq_unmask = aic_irq_unmask,
 	.irq_eoi = aic_irq_eoi,
 	.irq_set_affinity = aic_irq_set_affinity,
+	.irq_set_type = aic_irq_set_type,
 };
 
 /*
@@ -329,6 +335,7 @@ static struct irq_chip fiq_chip = {
 	.irq_unmask = aic_fiq_unmask,
 	.irq_ack = aic_fiq_mask,
 	.irq_eoi = aic_fiq_eoi,
+	.irq_set_type = aic_irq_set_type,
 };
 
 /*
@@ -351,53 +358,87 @@ static int aic_irq_domain_map(struct irq_domain *id, unsigned int irq,
 {
 	struct aic_irq_chip *ic = id->host_data;
 
-	irq_set_chip_data(irq, ic);
 	if (hw < ic->nr_hw) {
-		irq_set_chip_and_handler(irq, &aic_chip, handle_fasteoi_irq);
+		irq_domain_set_info(id, irq, hw, &aic_chip, id->host_data,
+				    handle_fasteoi_irq, NULL, NULL);
+		irqd_set_single_target(irq_desc_get_irq_data(irq_to_desc(irq)));
 	} else {
 		irq_set_percpu_devid(irq);
-		irq_set_chip_and_handler(irq, &fiq_chip,
-					 handle_percpu_devid_irq);
+		irq_domain_set_info(id, irq, hw, &fiq_chip, id->host_data,
+				    handle_percpu_devid_irq, NULL, NULL);
 	}
-
-	irq_set_status_flags(irq, IRQ_LEVEL);
-	irq_set_noprobe(irq);
 
 	return 0;
 }
 
-static void aic_irq_domain_unmap(struct irq_domain *id, unsigned int irq)
-{
-	irq_set_chip_and_handler(irq, NULL, NULL);
-}
-
-static int aic_irq_domain_xlate(struct irq_domain *id,
-				struct device_node *ctrlr, const u32 *intspec,
-				unsigned int intsize,
-				irq_hw_number_t *out_hwirq,
-				unsigned int *out_type)
+static int aic_irq_domain_translate(struct irq_domain *id,
+				    struct irq_fwspec *fwspec,
+				    unsigned long *hwirq,
+				    unsigned int *type)
 {
 	struct aic_irq_chip *ic = id->host_data;
 
-	if (intsize != 3)
+	if (fwspec->param_count != 3 || !is_of_node(fwspec->fwnode))
 		return -EINVAL;
 
-	if (intspec[0] == AIC_IRQ && intspec[1] < ic->nr_hw)
-		*out_hwirq = intspec[1];
-	else if (intspec[0] == AIC_FIQ && intspec[1] < AIC_NR_FIQ)
-		*out_hwirq = ic->nr_hw + intspec[1];
-	else
+	switch (fwspec->param[0]) {
+	case AIC_IRQ:
+		if (fwspec->param[1] >= ic->nr_hw)
+			return -EINVAL;
+		*hwirq = 0;
+		break;
+	case AIC_FIQ:
+		if (fwspec->param[1] >= AIC_NR_FIQ)
+			return -EINVAL;
+		*hwirq = ic->nr_hw;
+		break;
+	default:
 		return -EINVAL;
+	}
 
-	*out_type = intspec[2] & IRQ_TYPE_SENSE_MASK;
+	*hwirq += fwspec->param[1];
+	*type = fwspec->param[2] & IRQ_TYPE_SENSE_MASK;
 
 	return 0;
 }
 
+static int aic_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs, void *arg)
+{
+	unsigned int type = IRQ_TYPE_NONE;
+	struct irq_fwspec *fwspec = arg;
+	irq_hw_number_t hwirq;
+	int i, ret;
+
+	ret = aic_irq_domain_translate(domain, fwspec, &hwirq, &type);
+	if (ret)
+		return ret;
+
+	for (i = 0; i < nr_irqs; i++) {
+		ret = aic_irq_domain_map(domain, virq + i, hwirq + i);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
+static void aic_irq_domain_free(struct irq_domain *domain, unsigned int virq,
+				unsigned int nr_irqs)
+{
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		struct irq_data *d = irq_domain_get_irq_data(domain, virq + i);
+		irq_set_handler(virq + i, NULL);
+		irq_domain_reset_irq_data(d);
+	}
+}
+
 static const struct irq_domain_ops aic_irq_domain_ops = {
-	.map = aic_irq_domain_map,
-	.unmap = aic_irq_domain_unmap,
-	.xlate = aic_irq_domain_xlate,
+	.translate	= aic_irq_domain_translate,
+	.alloc		= aic_irq_domain_alloc,
+	.free		= aic_irq_domain_free,
 };
 
 /*
@@ -604,8 +645,9 @@ static int __init aic_of_ic_init(struct device_node *node,
 	info = aic_ic_read(irqc, AIC_INFO);
 	irqc->nr_hw = AIC_INFO_NR_HW(info);
 
-	irqc->hw_domain = irq_domain_add_linear(node, irqc->nr_hw + AIC_NR_FIQ,
-						&aic_irq_domain_ops, irqc);
+	irqc->hw_domain = irq_domain_create_linear(of_node_to_fwnode(node),
+						   irqc->nr_hw + AIC_NR_FIQ,
+						   &aic_irq_domain_ops, irqc);
 	if (WARN_ON(!irqc->hw_domain)) {
 		iounmap(irqc->base);
 		kfree(irqc);

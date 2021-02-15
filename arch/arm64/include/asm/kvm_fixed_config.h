@@ -175,4 +175,14 @@
  */
 #define PVM_ID_AA64ISAR1_ALLOW (~0ULL)
 
+/*
+ * Returns the maximum number of breakpoints supported for protected VMs.
+ */
+int kvm_arm_pkvm_get_max_brps(void);
+
+/*
+ * Returns the maximum number of watchpoints supported for protected VMs.
+ */
+int kvm_arm_pkvm_get_max_wrps(void);
+
 #endif /* __ARM64_KVM_FIXED_CONFIG_H__ */

@@ -491,8 +491,10 @@ tsk	.req	x28		// current thread_info
 /*
  * Interrupt handling.
  */
-	.macro	irq_handler
-	ldr_l	x1, handle_arch_irq
+#define INTERRUPT_INDEX_IRQ	0
+
+	.macro	irq_handler, index=INTERRUPT_INDEX_IRQ
+	ldr_l	x1, handle_arch_irq + (\index * 8)
 	mov	x0, sp
 	irq_stack_entry
 	blr	x1
@@ -529,6 +531,50 @@ alternative_endif
 	msr_s	SYS_ICC_PMR_EL1, \tmp
 	alternative_else_nop_endif
 #endif
+	.endm
+
+	.macro el1_interrupt_entry,	interrupt_index:req
+	kernel_entry 1
+	gic_prio_irq_setup pmr=x20, tmp=x1
+	enable_da
+
+	mov	x0, sp
+	bl	enter_el1_irq_or_nmi
+
+	irq_handler	\interrupt_index
+
+#ifdef CONFIG_PREEMPTION
+	ldr	x24, [tsk, #TSK_TI_PREEMPT]	// get preempt count
+alternative_if ARM64_HAS_IRQ_PRIO_MASKING
+	/*
+	 * DA were cleared at start of handling. If anything is set in DAIF,
+	 * we come back from an NMI, so skip preemption
+	 */
+	mrs	x0, daif
+	orr	x24, x24, x0
+alternative_else_nop_endif
+	cbnz	x24, 1f				// preempt count != 0 || NMI return path
+	bl	arm64_preempt_schedule_irq	// irq en/disable is done inside
+1:
+#endif
+
+	mov	x0, sp
+	bl	exit_el1_irq_or_nmi
+
+	kernel_exit 1
+	.endm
+
+	.macro el0_interrupt_entry,	interrupt_index:req
+	gic_prio_irq_setup pmr=x20, tmp=x0
+	user_exit_irqoff
+	enable_da
+
+	tbz	x22, #55, 1f
+	bl	do_el0_irq_bp_hardening
+1:
+	irq_handler	\interrupt_index
+
+	b	ret_to_user
 	.endm
 
 	.text
@@ -659,34 +705,7 @@ SYM_CODE_END(el1_sync)
 
 	.align	6
 SYM_CODE_START_LOCAL_NOALIGN(el1_irq)
-	kernel_entry 1
-	gic_prio_irq_setup pmr=x20, tmp=x1
-	enable_da
-
-	mov	x0, sp
-	bl	enter_el1_irq_or_nmi
-
-	irq_handler
-
-#ifdef CONFIG_PREEMPTION
-	ldr	x24, [tsk, #TSK_TI_PREEMPT]	// get preempt count
-alternative_if ARM64_HAS_IRQ_PRIO_MASKING
-	/*
-	 * DA_F were cleared at start of handling. If anything is set in DAIF,
-	 * we come back from an NMI, so skip preemption
-	 */
-	mrs	x0, daif
-	orr	x24, x24, x0
-alternative_else_nop_endif
-	cbnz	x24, 1f				// preempt count != 0 || NMI return path
-	bl	arm64_preempt_schedule_irq	// irq en/disable is done inside
-1:
-#endif
-
-	mov	x0, sp
-	bl	exit_el1_irq_or_nmi
-
-	kernel_exit 1
+	el1_interrupt_entry INTERRUPT_INDEX_IRQ
 SYM_CODE_END(el1_irq)
 
 /*
@@ -725,16 +744,7 @@ SYM_CODE_END(el0_error_compat)
 SYM_CODE_START_LOCAL_NOALIGN(el0_irq)
 	kernel_entry 0
 el0_irq_naked:
-	gic_prio_irq_setup pmr=x20, tmp=x0
-	user_exit_irqoff
-	enable_da
-
-	tbz	x22, #55, 1f
-	bl	do_el0_irq_bp_hardening
-1:
-	irq_handler
-
-	b	ret_to_user
+	el0_interrupt_entry INTERRUPT_INDEX_IRQ
 SYM_CODE_END(el0_irq)
 
 SYM_CODE_START_LOCAL(el1_error)

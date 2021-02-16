@@ -530,6 +530,11 @@ static void gic_irq_nmi_teardown(struct irq_data *d)
 
 static void gic_eoi_irq(struct irq_data *d)
 {
+	if (d->hwirq < 32) {
+		write_sysreg_s(d->hwirq, SYS_ICC_EOIR0_EL1);
+		isb();
+		return;
+	}
 	gic_write_eoir(gic_irq(d));
 }
 
@@ -667,6 +672,39 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 		gic_write_eoir(irqnr);
 	else
 		isb();
+
+	if (handle_domain_irq(gic_data.domain, irqnr, regs)) {
+		WARN_ONCE(true, "Unexpected interrupt received!\n");
+		gic_deactivate_unhandled(irqnr);
+	}
+}
+
+static asmlinkage void __exception_irq_entry gic_handle_fiq(struct pt_regs *regs)
+{
+	u32 irqnr;
+
+	irqnr = read_sysreg_s(SYS_ICC_IAR0_EL1);
+
+	if (gic_supports_nmi() &&
+	    unlikely(gic_read_rpr() == GICD_INT_NMI_PRI)) {
+		gic_handle_nmi(irqnr, regs);
+		return;
+	}
+
+	if (gic_prio_masking_enabled()) {
+		gic_pmr_mask_irqs();
+		gic_arch_enable_irqs();
+	}
+
+	/* Check for special IDs first */
+	if ((irqnr >= 1020 && irqnr <= 1023))
+		return;
+
+	if (static_branch_likely(&supports_deactivate_key)) {
+		write_sysreg_s(irqnr, SYS_ICC_EOIR0_EL1);
+	}
+
+	isb();
 
 	if (handle_domain_irq(gic_data.domain, irqnr, regs)) {
 		WARN_ONCE(true, "Unexpected interrupt received!\n");
@@ -948,6 +986,8 @@ static void gic_cpu_sys_reg_init(void)
 	 * to BPR restores is reset value.
 	 */
 	gic_write_bpr1(0);
+	if (group0)
+		write_sysreg_s(0, SYS_ICC_BPR0_EL1);
 
 	if (static_branch_likely(&supports_deactivate_key)) {
 		/* EOI drops priority only (mode 1) */
@@ -994,6 +1034,10 @@ static void gic_cpu_sys_reg_init(void)
 
 	/* ... and let's hit the road... */
 	gic_write_grpen1(1);
+	if (group0) {
+		write_sysreg_s(1, SYS_ICC_IGRPEN0_EL1);
+		isb();
+	}
 
 	/* Keep the RSS capability status in per_cpu variable */
 	per_cpu(has_rss, cpu) = !!(gic_read_ctlr() & ICC_CTLR_EL1_RSS);
@@ -1053,9 +1097,9 @@ static void gic_cpu_init(void)
 
 	rbase = gic_data_rdist_sgi_base();
 
-	/* Configure SGIs/PPIs as non-secure Group-1 */
+	/* Configure SGIs/PPIs as non-secure Group-0 */
 	for (i = 0; i < gic_data.ppi_nr + 16; i += 32)
-		writel_relaxed(~0, rbase + GICR_IGROUPR0 + i / 8);
+		writel_relaxed(0, rbase + GICR_IGROUPR0 + i / 8);
 
 	gic_cpu_config(rbase, gic_data.ppi_nr + 16, gic_redist_wait_for_rwp);
 
@@ -1696,7 +1740,8 @@ static int __init gic_init_bases(void __iomem *dist_base,
 			pr_err("Failed to initialize MBIs\n");
 	}
 
-	set_handle_irq(gic_handle_irq);
+	set_handle_irq_entry(gic_handle_irq, 0);
+	set_handle_irq_entry(gic_handle_fiq, 1);
 
 	gic_update_rdist_properties();
 

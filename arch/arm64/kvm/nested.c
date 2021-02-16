@@ -43,40 +43,6 @@ int handle_wfx_nested(struct kvm_vcpu *vcpu, bool is_wfe)
 	return -EINVAL;
 }
 
-void kvm_arch_flush_shadow_all(struct kvm *kvm)
-{
-	int i;
-
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
-		WARN_ON(atomic_read(&mmu->refcnt));
-
-		if (!atomic_read(&mmu->refcnt))
-			kvm_free_stage2_pgd(mmu);
-	}
-	kfree(kvm->arch.nested_mmus);
-	kvm->arch.nested_mmus = NULL;
-	kvm->arch.nested_mmus_size = 0;
-	kvm_free_stage2_pgd(&kvm->arch.mmu);
-}
-
-bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
-{
-	bool imo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_IMO;
-	bool fmo = __vcpu_sys_reg(vcpu, HCR_EL2) & HCR_FMO;
-
-	WARN_ONCE(imo != fmo, "Separate virtual IRQ/FIQ settings not supported\n");
-
-	return nested_virt_in_use(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
-}
-
-void check_nested_vcpu_requests(struct kvm_vcpu *vcpu)
-{
-	if (kvm_check_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu))
-		kvm_inject_nested_irq(vcpu);
-}
-
 /*
  * Our emulated CPU doesn't support all the possible features. For the
  * sake of simplicity (and probably mental sanity), wipe out a number

@@ -492,6 +492,7 @@ tsk	.req	x28		// current thread_info
  * Interrupt handling.
  */
 #define INTERRUPT_INDEX_IRQ	0
+#define INTERRUPT_INDEX_FIQ	1
 
 	.macro	irq_handler, index=INTERRUPT_INDEX_IRQ
 	ldr_l	x1, handle_arch_irq + (\index * 8)
@@ -593,23 +594,23 @@ SYM_CODE_START(vectors)
 
 	kernel_ventry	1, sync				// Synchronous EL1h
 	kernel_ventry	1, irq				// IRQ EL1h
-	kernel_ventry	1, fiq_invalid			// FIQ EL1h
+	kernel_ventry	1, fiq				// FIQ EL1h
 	kernel_ventry	1, error			// Error EL1h
 
 	kernel_ventry	0, sync				// Synchronous 64-bit EL0
 	kernel_ventry	0, irq				// IRQ 64-bit EL0
-	kernel_ventry	0, fiq_invalid			// FIQ 64-bit EL0
+	kernel_ventry	0, fiq				// FIQ 64-bit EL0
 	kernel_ventry	0, error			// Error 64-bit EL0
 
 #ifdef CONFIG_COMPAT
 	kernel_ventry	0, sync_compat, 32		// Synchronous 32-bit EL0
 	kernel_ventry	0, irq_compat, 32		// IRQ 32-bit EL0
-	kernel_ventry	0, fiq_invalid_compat, 32	// FIQ 32-bit EL0
+	kernel_ventry	0, fiq_compat, 32		// FIQ 32-bit EL0
 	kernel_ventry	0, error_compat, 32		// Error 32-bit EL0
 #else
 	kernel_ventry	0, sync_invalid, 32		// Synchronous 32-bit EL0
 	kernel_ventry	0, irq_invalid, 32		// IRQ 32-bit EL0
-	kernel_ventry	0, fiq_invalid, 32		// FIQ 32-bit EL0
+	kernel_ventry	0, fiq, 32			// FIQ 32-bit EL0
 	kernel_ventry	0, error_invalid, 32		// Error 32-bit EL0
 #endif
 SYM_CODE_END(vectors)
@@ -708,6 +709,10 @@ SYM_CODE_START_LOCAL_NOALIGN(el1_irq)
 	el1_interrupt_entry INTERRUPT_INDEX_IRQ
 SYM_CODE_END(el1_irq)
 
+SYM_CODE_START_LOCAL_NOALIGN(el1_fiq)
+	el1_interrupt_entry INTERRUPT_INDEX_FIQ
+SYM_CODE_END(el1_fiq)
+
 /*
  * EL0 mode handlers.
  */
@@ -734,6 +739,11 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_irq_compat)
 	b	el0_irq_naked
 SYM_CODE_END(el0_irq_compat)
 
+SYM_CODE_START_LOCAL_NOALIGN(el0_fiq_compat)
+	kernel_entry 0, 32
+	b	el0_fiq_naked
+SYM_CODE_END(el0_fiq_compat)
+
 SYM_CODE_START_LOCAL_NOALIGN(el0_error_compat)
 	kernel_entry 0, 32
 	b	el0_error_naked
@@ -746,6 +756,12 @@ SYM_CODE_START_LOCAL_NOALIGN(el0_irq)
 el0_irq_naked:
 	el0_interrupt_entry INTERRUPT_INDEX_IRQ
 SYM_CODE_END(el0_irq)
+
+SYM_CODE_START_LOCAL_NOALIGN(el0_fiq)
+	kernel_entry 0
+el0_fiq_naked:
+	el0_interrupt_entry INTERRUPT_INDEX_FIQ
+SYM_CODE_END(el0_fiq)
 
 SYM_CODE_START_LOCAL(el1_error)
 	kernel_entry 1

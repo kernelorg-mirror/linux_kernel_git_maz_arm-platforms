@@ -6,7 +6,7 @@
 
 #include <asm-generic/irq.h>
 
-#define ARCH_IRQ_MULTI_HANDLER_NR_ENTRY 1
+#define ARCH_IRQ_MULTI_HANDLER_NR_ENTRY 2
 
 struct pt_regs;
 

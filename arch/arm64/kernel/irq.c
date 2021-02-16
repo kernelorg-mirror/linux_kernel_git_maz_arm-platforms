@@ -71,12 +71,26 @@ static void init_irq_stacks(void)
 }
 #endif
 
+void (*handle_arch_irq[ARCH_IRQ_MULTI_HANDLER_NR_ENTRY])(struct pt_regs *) __ro_after_init;
+
+int __init set_handle_irq_entry(void (*handle_irq)(struct pt_regs *), int nr)
+{
+	if (nr >= ARCH_IRQ_MULTI_HANDLER_NR_ENTRY)
+		return -EINVAL;
+
+	if (handle_arch_irq[nr])
+		return -EBUSY;
+
+	handle_arch_irq[nr] = handle_irq;
+	return 0;
+}
+
 void __init init_IRQ(void)
 {
 	init_irq_stacks();
 	init_irq_scs();
 	irqchip_init();
-	if (!handle_arch_irq)
+	if (!handle_arch_irq[0])
 		panic("No interrupt controller found.");
 
 	if (system_uses_irq_prio_masking()) {

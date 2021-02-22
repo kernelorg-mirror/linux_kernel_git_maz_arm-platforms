@@ -1013,6 +1013,133 @@
 /* Safe value for MPIDR_EL1: Bit31:RES1, Bit30:U:0, Bit24:MT:0 */
 #define SYS_MPIDR_SAFE_VAL	(BIT(31))
 
+/* GIC CPU interface  */
+/* ICC_CTLR_EL1 bit definitions */
+#define ICC_CTLR_EL1_EOImode_SHIFT	(1)
+#define ICC_CTLR_EL1_EOImode_drop_dir	(0U << ICC_CTLR_EL1_EOImode_SHIFT)
+#define ICC_CTLR_EL1_EOImode_drop	(1U << ICC_CTLR_EL1_EOImode_SHIFT)
+#define ICC_CTLR_EL1_EOImode_MASK	(1 << ICC_CTLR_EL1_EOImode_SHIFT)
+#define ICC_CTLR_EL1_CBPR_SHIFT		0
+#define ICC_CTLR_EL1_CBPR_MASK		(1 << ICC_CTLR_EL1_CBPR_SHIFT)
+#define ICC_CTLR_EL1_PMHE_SHIFT		6
+#define ICC_CTLR_EL1_PMHE_MASK		(1 << ICC_CTLR_EL1_PMHE_SHIFT)
+#define ICC_CTLR_EL1_PRI_BITS_SHIFT	8
+#define ICC_CTLR_EL1_PRI_BITS_MASK	(0x7 << ICC_CTLR_EL1_PRI_BITS_SHIFT)
+#define ICC_CTLR_EL1_ID_BITS_SHIFT	11
+#define ICC_CTLR_EL1_ID_BITS_MASK	(0x7 << ICC_CTLR_EL1_ID_BITS_SHIFT)
+#define ICC_CTLR_EL1_SEIS_SHIFT		14
+#define ICC_CTLR_EL1_SEIS_MASK		(0x1 << ICC_CTLR_EL1_SEIS_SHIFT)
+#define ICC_CTLR_EL1_A3V_SHIFT		15
+#define ICC_CTLR_EL1_A3V_MASK		(0x1 << ICC_CTLR_EL1_A3V_SHIFT)
+#define ICC_CTLR_EL1_RSS		(0x1 << 18)
+#define ICC_CTLR_EL1_ExtRange		(0x1 << 19)
+
+/* ICC_PMR_EL1 bit definitions */
+#define ICC_PMR_EL1_SHIFT		0
+#define ICC_PMR_EL1_MASK		(0xff << ICC_PMR_EL1_SHIFT)
+
+/* ICC_BPR0_EL1 bit definitions */
+#define ICC_BPR0_EL1_SHIFT		0
+#define ICC_BPR0_EL1_MASK		(0x7 << ICC_BPR0_EL1_SHIFT)
+
+/* ICC_BPR1_EL1 bit definitions */
+#define ICC_BPR1_EL1_SHIFT		0
+#define ICC_BPR1_EL1_MASK		(0x7 << ICC_BPR1_EL1_SHIFT)
+
+/* ICC_IGRPEN0_EL1 bit definitions */
+#define ICC_IGRPEN0_EL1_SHIFT		0
+#define ICC_IGRPEN0_EL1_MASK		(1 << ICC_IGRPEN0_EL1_SHIFT)
+
+/* ICC_IGRPEN1_EL1 bit definitions */
+#define ICC_IGRPEN1_EL1_SHIFT		0
+#define ICC_IGRPEN1_EL1_MASK		(1 << ICC_IGRPEN1_EL1_SHIFT)
+
+/* ICC_SRE_EL1 bit definitions */
+#define ICC_SRE_EL1_DIB			(1U << 2)
+#define ICC_SRE_EL1_DFB			(1U << 1)
+#define ICC_SRE_EL1_SRE			(1U << 0)
+
+/* GIC Hypervisor interface register bit definitions (SRE only) */
+
+/* ICH_LRx_EL2 bit definitions */
+#define ICH_LR_VIRTUAL_ID_MASK		((1ULL << 32) - 1)
+#define ICH_LR_EOI			(1ULL << 41)
+#define ICH_LR_GROUP			(1ULL << 60)
+#define ICH_LR_HW			(1ULL << 61)
+#define ICH_LR_STATE			(3ULL << 62)
+#define ICH_LR_PENDING_BIT		(1ULL << 62)
+#define ICH_LR_ACTIVE_BIT		(1ULL << 63)
+#define ICH_LR_PHYS_ID_SHIFT		32
+#define ICH_LR_PHYS_ID_MASK		(0x3ffULL << ICH_LR_PHYS_ID_SHIFT)
+#define ICH_LR_PRIORITY_SHIFT		48
+#define ICH_LR_PRIORITY_MASK		(0xffULL << ICH_LR_PRIORITY_SHIFT)
+
+/* ICH_MISR_EL2 bit definitions */
+#define ICH_MISR_EOI			(1 << 0)
+#define ICH_MISR_U			(1 << 1)
+
+/* ICH_HCR_EL2 bit definitions */
+#define ICH_HCR_EN			(1 << 0)
+#define ICH_HCR_UIE			(1 << 1)
+#define ICH_HCR_NPIE			(1 << 3)
+#define ICH_HCR_TC			(1 << 10)
+#define ICH_HCR_TALL0			(1 << 11)
+#define ICH_HCR_TALL1			(1 << 12)
+#define ICH_HCR_EOIcount_SHIFT		27
+#define ICH_HCR_EOIcount_MASK		(0x1f << ICH_HCR_EOIcount_SHIFT)
+
+/* ICH_VMCR_EL2 bit definitions */
+#define ICH_VMCR_ACK_CTL_SHIFT		2
+#define ICH_VMCR_ACK_CTL_MASK		(1 << ICH_VMCR_ACK_CTL_SHIFT)
+#define ICH_VMCR_FIQ_EN_SHIFT		3
+#define ICH_VMCR_FIQ_EN_MASK		(1 << ICH_VMCR_FIQ_EN_SHIFT)
+#define ICH_VMCR_CBPR_SHIFT		4
+#define ICH_VMCR_CBPR_MASK		(1 << ICH_VMCR_CBPR_SHIFT)
+#define ICH_VMCR_EOIM_SHIFT		9
+#define ICH_VMCR_EOIM_MASK		(1 << ICH_VMCR_EOIM_SHIFT)
+#define ICH_VMCR_BPR1_SHIFT		18
+#define ICH_VMCR_BPR1_MASK		(7 << ICH_VMCR_BPR1_SHIFT)
+#define ICH_VMCR_BPR0_SHIFT		21
+#define ICH_VMCR_BPR0_MASK		(7 << ICH_VMCR_BPR0_SHIFT)
+#define ICH_VMCR_PMR_SHIFT		24
+#define ICH_VMCR_PMR_MASK		(0xffUL << ICH_VMCR_PMR_SHIFT)
+#define ICH_VMCR_ENG0_SHIFT		0
+#define ICH_VMCR_ENG0_MASK		(1 << ICH_VMCR_ENG0_SHIFT)
+#define ICH_VMCR_ENG1_SHIFT		1
+#define ICH_VMCR_ENG1_MASK		(1 << ICH_VMCR_ENG1_SHIFT)
+
+/* ICH_VTR_EL2 bit definitions */
+#define ICH_VTR_PRI_BITS_SHIFT		29
+#define ICH_VTR_PRI_BITS_MASK		(7 << ICH_VTR_PRI_BITS_SHIFT)
+#define ICH_VTR_ID_BITS_SHIFT		23
+#define ICH_VTR_ID_BITS_MASK		(7 << ICH_VTR_ID_BITS_SHIFT)
+#define ICH_VTR_SEIS_SHIFT		22
+#define ICH_VTR_SEIS_MASK		(1 << ICH_VTR_SEIS_SHIFT)
+#define ICH_VTR_A3V_SHIFT		21
+#define ICH_VTR_A3V_MASK		(1 << ICH_VTR_A3V_SHIFT)
+
+/* ICC_IAR1_EL1 bit definitions */
+#define ICC_IAR1_EL1_SPURIOUS		0x3ff
+
+/* ICC_SRE_EL2 bit definitions */
+#define ICC_SRE_EL2_SRE			(1 << 0)
+#define ICC_SRE_EL2_ENABLE		(1 << 3)
+
+/* ICC_SGI1R_EL1 bit definitions */
+#define ICC_SGI1R_TARGET_LIST_SHIFT	0
+#define ICC_SGI1R_TARGET_LIST_MASK	(0xffff << ICC_SGI1R_TARGET_LIST_SHIFT)
+#define ICC_SGI1R_AFFINITY_1_SHIFT	16
+#define ICC_SGI1R_AFFINITY_1_MASK	(0xff << ICC_SGI1R_AFFINITY_1_SHIFT)
+#define ICC_SGI1R_SGI_ID_SHIFT		24
+#define ICC_SGI1R_SGI_ID_MASK		(0xfULL << ICC_SGI1R_SGI_ID_SHIFT)
+#define ICC_SGI1R_AFFINITY_2_SHIFT	32
+#define ICC_SGI1R_AFFINITY_2_MASK	(0xffULL << ICC_SGI1R_AFFINITY_2_SHIFT)
+#define ICC_SGI1R_IRQ_ROUTING_MODE_BIT	40
+#define ICC_SGI1R_RS_SHIFT		44
+#define ICC_SGI1R_RS_MASK		(0xfULL << ICC_SGI1R_RS_SHIFT)
+#define ICC_SGI1R_AFFINITY_3_SHIFT	48
+#define ICC_SGI1R_AFFINITY_3_MASK	(0xffULL << ICC_SGI1R_AFFINITY_3_SHIFT)
+
 #ifdef __ASSEMBLY__
 
 	.irp	num,0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30

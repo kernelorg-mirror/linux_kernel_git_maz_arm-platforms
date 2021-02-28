@@ -78,6 +78,9 @@ struct vgic_global {
 	/* GIC system register CPU interface */
 	struct static_key_false gicv3_cpuif;
 
+	/* Pseudo GICv3 from outer space */
+	struct static_key_false gicv3_impdef;
+
 	u32			ich_vtr_el2;
 };
 

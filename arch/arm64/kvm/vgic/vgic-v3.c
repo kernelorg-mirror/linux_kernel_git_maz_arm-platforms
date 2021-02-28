@@ -640,6 +640,16 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 		static_branch_enable(&vgic_v3_cpuif_trap);
 	}
 
+	/*
+	 * If we get one of these oddball non-GICs, taint the kernel,
+	 * as we have no idea of how they really behave.
+	 */
+	if (info->type != GIC_V3) {
+		kvm_warn("Using non-architectural extensions, taining kernel\n");
+		add_taint(TAINT_CPU_OUT_OF_SPEC, LOCKDEP_STILL_OK);
+		static_branch_enable(&kvm_vgic_global_state.gicv3_impdef);
+	}
+
 	kvm_vgic_global_state.vctrl_base = NULL;
 	kvm_vgic_global_state.type = VGIC_V3;
 	kvm_vgic_global_state.max_gic_vcpus = VGIC_V3_MAX_CPUS;

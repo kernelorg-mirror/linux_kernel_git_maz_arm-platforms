@@ -525,6 +525,7 @@ int kvm_vgic_hyp_init(void)
 		ret = vgic_v2_probe(gic_kvm_info);
 		break;
 	case GIC_V3:
+	case APL_VGIC_V3:
 		ret = vgic_v3_probe(gic_kvm_info);
 		if (!ret) {
 			static_branch_enable(&kvm_vgic_global_state.gicv3_cpuif);

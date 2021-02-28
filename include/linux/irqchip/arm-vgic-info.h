@@ -15,6 +15,8 @@ enum gic_type {
 	GIC_V2,
 	/* Full GICv3, optionally with v2 compat */
 	GIC_V3,
+	/* Apple's non-standard *v*GIC, mostly compatible with v3 */
+	APL_VGIC_V3,
 };
 
 struct gic_kvm_info {

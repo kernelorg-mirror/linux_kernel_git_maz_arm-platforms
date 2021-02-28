@@ -240,14 +240,10 @@ unsigned long vgic_mmio_read_pending(struct kvm_vcpu *vcpu,
 		bool val;
 
 		raw_spin_lock_irqsave(&irq->irq_lock, flags);
-		if (irq->hw && vgic_irq_is_sgi(irq->intid)) {
-			int err;
-
-			val = false;
-			err = irq_get_irqchip_state(irq->host_irq,
-						    IRQCHIP_STATE_PENDING,
-						    &val);
-			WARN_RATELIMIT(err, "IRQ %d", irq->host_irq);
+		/* for HW interrupts, directly fetch the HW state */
+		if (vgic_irq_is_mapped_level(irq) ||
+		    (irq->hw && vgic_irq_is_sgi(irq->intid))) {
+			val = vgic_get_phys_line_level(irq);
 		} else {
 			val = irq_is_pending(irq);
 		}

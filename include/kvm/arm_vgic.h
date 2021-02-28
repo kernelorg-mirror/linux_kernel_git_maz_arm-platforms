@@ -43,6 +43,9 @@ struct vgic_global {
 	/* type of the host GIC */
 	enum vgic_type		type;
 
+	/* type of the underlying HW */
+	enum gic_type		gic_type;
+
 	/* Physical address of vgic virtual cpu interface */
 	phys_addr_t		vcpu_base;
 

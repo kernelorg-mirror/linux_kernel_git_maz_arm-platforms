@@ -538,6 +538,7 @@ int kvm_vgic_hyp_init(void)
 	if (ret)
 		return ret;
 
+	kvm_vgic_global_state.gic_type = gic_kvm_info->type;
 	kvm_vgic_global_state.maint_irq = gic_kvm_info->maint_irq;
 	if (!kvm_vgic_global_state.maint_irq) {
 		kvm_err("No maintenance interrupt available, fingers crossed...\n");

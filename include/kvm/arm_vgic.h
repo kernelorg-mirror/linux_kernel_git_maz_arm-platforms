@@ -95,6 +95,8 @@ enum vgic_irq_config {
 	VGIC_CONFIG_LEVEL
 };
 
+struct vgic_irq;
+
 /*
  * Per-irq ops overriding some common behavious.
  *
@@ -108,6 +110,13 @@ struct irq_ops {
 	 * peaking into the physical GIC.
 	 */
 	bool (*get_input_level)(int vintid);
+
+	/*
+	 * Callback function pointer to in-kernel devices to inject
+	 * the IRQ using an IMPDEF method.
+	 */
+	void (*flush_oob_state)(struct vgic_irq *irq);
+	void (*sync_oob_state)(struct vgic_irq *irq);
 };
 
 struct vgic_irq {
@@ -327,6 +336,35 @@ struct vgic_cpu {
 	 * VCPU.
 	 */
 	struct list_head ap_list_head;
+	/*
+	 * List of IRQs that need special treatment because they do not
+	 * strictly follow the GIC state machine (most likely they have an
+	 * Out-Of-Band signalling, hence the name of the list), and can
+	 * enter the AP list from a state other than just Pending.
+	 *
+	 * As they enter a standard state, they must be moved to the AP
+	 * list. When they are neither Active nor Pending, they must be
+	 * moved back to the OOB list. From the vgic_irq perspective, this
+	 * is using the ap_list list_head, and both list are protected by
+	 * the same lock.
+	 *
+	 * The rules to move between the two lists are:
+	 *
+	 * * On guest entry:
+	 *   - Each interrupt on the OOB list has its flush_oob_state()
+	 *     helper called.
+	 *   - Each interrupt on the AP list with a flush_oob_state()
+	 *     helper gets called as well.
+	 *
+	 * * On guest exit:
+	 *    - Each interrupt with a sync_oob_state() helper that is
+	 *	on the AP list gets called. If the new state is invalid,
+	 *	it moves back to the OOB list.
+	 *    - Each interrupt on the OOB list has its sync_oob_state()
+	 *	helper called. If any of the A/P state is valid, it moves
+	 *	to the AP list.
+	 */
+	struct list_head oob_list_head;
 
 	/*
 	 * Members below are used with GICv3 emulation only and represent
@@ -395,6 +433,15 @@ void vgic_v3_dispatch_sgi(struct kvm_vcpu *vcpu, u64 reg, bool allow_group1);
 static inline int kvm_vgic_get_max_vcpus(void)
 {
 	return kvm_vgic_global_state.max_gic_vcpus;
+}
+
+/*
+ * Canard du Jour (Shut Up and Play Yer Guitar)
+ */
+static inline bool kvm_vgic_is_apple_m1(void)
+{
+	return (static_branch_unlikely(&kvm_vgic_global_state.gicv3_impdef) &&
+		kvm_vgic_global_state.gic_type == APL_VGIC_V3);
 }
 
 /**

@@ -343,6 +343,13 @@ static int aic_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
 	return 0;
 }
 
+static int aic_irq_set_irqchip_state(struct irq_data *data,
+				     enum irqchip_irq_state which, bool state)
+
+{
+	return 0;
+}
+
 static struct irq_chip fiq_chip = {
 	.name = "AIC-FIQ",
 	.irq_mask = aic_fiq_mask,
@@ -351,6 +358,7 @@ static struct irq_chip fiq_chip = {
 	.irq_eoi = aic_fiq_eoi,
 	.irq_set_type = aic_irq_set_type,
 	.irq_set_vcpu_affinity = aic_irq_set_vcpu_affinity,
+	.irq_set_irqchip_state = aic_irq_set_irqchip_state,
 };
 
 /*

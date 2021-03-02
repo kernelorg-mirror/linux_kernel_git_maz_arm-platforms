@@ -15,9 +15,12 @@
 #include <asm/arch_timer.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_hyp.h>
+#include <asm/sysreg_apple.h>
 
 #include <kvm/arm_vgic.h>
 #include <kvm/arm_arch_timer.h>
+
+#include "vgic/vgic.h"
 
 #include "trace.h"
 
@@ -145,7 +148,7 @@ u64 kvm_phys_timer_read(void)
 
 static void get_timer_map(struct kvm_vcpu *vcpu, struct timer_map *map)
 {
-	if (has_vhe()) {
+	if (has_vhe() && !kvm_vgic_is_apple_m1()) {
 		map->direct_vtimer = vcpu_vtimer(vcpu);
 		map->direct_ptimer = vcpu_ptimer(vcpu);
 		map->emul_ptimer = NULL;
@@ -511,7 +514,7 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 
 	local_irq_save(flags);
 
-	if (ctx->loaded)
+	if (ctx->loaded || kvm_vgic_is_apple_m1())
 		goto out;
 
 	switch (index) {
@@ -1116,8 +1119,48 @@ bool kvm_arch_timer_get_input_level(int vintid)
 	return kvm_timer_should_fire(timer);
 }
 
+static void apl_vtimer_flush_state(struct vgic_irq *irq)
+{
+	struct kvm_vcpu *vcpu = kvm_get_running_vcpu();
+	u64 val = vgic_v3_compute_lr(vcpu, irq);
+
+	/*
+	 * If the physical INTID is different from the virtual one,
+	 * odd things happen (screaming maintenance interrupt...).
+	 */
+	val &= ~ICH_LR_PHYS_ID_MASK;
+	val |= FIELD_PREP(ICH_LR_PHYS_ID_MASK, (val & 0x3ff));
+	write_sysreg_s(val, SYS_APL_VTIMER_LR_EL2);
+	if (!irq->enabled)
+		disable_percpu_irq(irq->host_irq);
+}
+
+static void apl_vtimer_sync_state(struct vgic_irq *irq)
+{
+	u64 val;
+
+	/*
+	 * By the time we read the funky LR, the timer has been
+	 * disabled, so the only piece of state we can save is the
+	 * active state. We can't restore the pending bit anyway, so
+	 * we aren't missing much...
+	 */
+	val = read_sysreg_s(SYS_APL_VTIMER_LR_EL2);
+	irq->active = !!(val & ICH_LR_ACTIVE_BIT);
+
+	/* Reenable the interrupt that we disabled on entry */
+	if (!irq->enabled)
+		enable_percpu_irq(irq->host_irq, host_vtimer_irq_flags);
+}
+
 static struct irq_ops arch_timer_irq_ops = {
 	.get_input_level = kvm_arch_timer_get_input_level,
+};
+
+static struct irq_ops apl_vtimer_irq_ops = {
+	.get_input_level = kvm_arch_timer_get_input_level,
+	.sync_oob_state  = apl_vtimer_sync_state,
+	.flush_oob_state = apl_vtimer_flush_state,
 };
 
 int kvm_timer_enable(struct kvm_vcpu *vcpu)
@@ -1147,7 +1190,8 @@ int kvm_timer_enable(struct kvm_vcpu *vcpu)
 	ret = kvm_vgic_map_phys_irq(vcpu,
 				    map.direct_vtimer->host_timer_irq,
 				    map.direct_vtimer->irq.irq,
-				    &arch_timer_irq_ops);
+				    (kvm_vgic_is_apple_m1() ?
+				     &apl_vtimer_irq_ops : &arch_timer_irq_ops));
 	if (ret)
 		return ret;
 
@@ -1177,6 +1221,19 @@ void kvm_timer_init_vhe(void)
 	/* When HCR_EL2.E2H ==1, EL1PCEN and EL1PCTEN are shifted by 10 */
 	u32 cnthctl_shift = 10;
 	u64 val;
+
+	if (kvm_vgic_is_apple_m1()) {
+		/*
+		 * Enable direct injection of the virtual timer, but
+		 * don't allow guest access to the physical timer, as
+		 * we have no way to deactivate it properly yet.
+		 */
+		u64 val = read_sysreg_s(SYS_HACR_EL2);
+		val |= BIT_ULL(20);
+		write_sysreg_s(val, SYS_HACR_EL2);
+		isb();
+		return;
+	}
 
 	/*
 	 * VHE systems allow the guest direct access to the EL1 physical

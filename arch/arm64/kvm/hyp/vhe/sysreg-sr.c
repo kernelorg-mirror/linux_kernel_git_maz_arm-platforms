@@ -32,6 +32,14 @@ NOKPROBE_SYMBOL(sysreg_save_host_state_vhe);
 
 void sysreg_save_guest_state_vhe(struct kvm_cpu_context *ctxt)
 {
+	if (kvm_vgic_is_apple_m1()) {
+		ctxt_sys_reg(ctxt, CNTV_CVAL_EL0) = read_sysreg_el0(SYS_CNTV_CVAL);
+		ctxt_sys_reg(ctxt, CNTV_CTL_EL0) = read_sysreg_el0(SYS_CNTV_CTL);
+		write_sysreg_el0(0, SYS_CNTV_CTL);
+
+		/* Make sure the timer is disabled before we mess with TGE */
+		isb();
+	}
 	__sysreg_save_common_state(ctxt);
 	__sysreg_save_el2_return_state(ctxt);
 }
@@ -45,6 +53,13 @@ NOKPROBE_SYMBOL(sysreg_restore_host_state_vhe);
 
 void sysreg_restore_guest_state_vhe(struct kvm_cpu_context *ctxt)
 {
+	if (kvm_vgic_is_apple_m1()) {
+		/* Make sure we're in Guest mode before the timer can fire */
+		isb();
+
+		write_sysreg_el0(ctxt_sys_reg(ctxt, CNTV_CVAL_EL0), SYS_CNTV_CVAL);
+		write_sysreg_el0(ctxt_sys_reg(ctxt, CNTV_CTL_EL0), SYS_CNTV_CTL);
+	}
 	__sysreg_restore_common_state(ctxt);
 	__sysreg_restore_el2_return_state(ctxt);
 }

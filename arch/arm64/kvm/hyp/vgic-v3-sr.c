@@ -300,6 +300,7 @@ void __vgic_v3_activate_traps(struct vgic_v3_cpu_if *cpu_if)
 	 * injected,
 	 */
 	if (static_branch_unlikely(&vgic_v3_cpuif_trap) ||
+	    kvm_vgic_is_apple_m1() ||
 	    cpu_if->its_vpe.its_vm)
 		write_gicreg(cpu_if->vgic_hcr, ICH_HCR_EL2);
 }
@@ -326,6 +327,7 @@ void __vgic_v3_deactivate_traps(struct vgic_v3_cpu_if *cpu_if)
 	 * no interrupts were being injected, and we disable it again here.
 	 */
 	if (static_branch_unlikely(&vgic_v3_cpuif_trap) ||
+	    kvm_vgic_is_apple_m1() ||
 	    cpu_if->its_vpe.its_vm)
 		write_gicreg(0, ICH_HCR_EL2);
 }

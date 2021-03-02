@@ -48,6 +48,9 @@
 #define SYS_APL_IPI_SR			sys_reg(3, 5, 15, 1, 1)
 #define IPI_SR_PENDING			BIT(0)
 
+/* Guest virtual timer List Register */
+#define SYS_APL_VTIMER_LR_EL2		sys_reg(3, 5, 15, 1, 2)
+
 /* Guest timer FIQ mask register */
 #define SYS_APL_VM_TMR_MASK		sys_reg(3, 5, 15, 1, 3)
 #define VM_TMR_MASK_V			BIT(0)

@@ -310,6 +310,9 @@ static void vgic_sort_ap_list(struct kvm_vcpu *vcpu)
  */
 static bool vgic_validate_injection(struct vgic_irq *irq, bool level, void *owner)
 {
+	if (unlikely(irq->ops && irq->ops->flush_oob_state))
+		return false;
+
 	if (irq->owner != owner)
 		return false;
 
@@ -515,14 +518,24 @@ int kvm_vgic_map_phys_irq(struct kvm_vcpu *vcpu, unsigned int host_irq,
 			  u32 vintid, struct irq_ops *ops)
 {
 	struct vgic_irq *irq = vgic_get_irq(vcpu->kvm, vcpu, vintid);
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	unsigned long flags;
 	int ret;
 
 	BUG_ON(!irq);
 
-	raw_spin_lock_irqsave(&irq->irq_lock, flags);
+	raw_spin_lock_irqsave(&vgic_cpu->ap_list_lock, flags);
+
+	raw_spin_lock(&irq->irq_lock);
 	ret = kvm_vgic_map_irq(vcpu, irq, host_irq, ops);
-	raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+	raw_spin_unlock(&irq->irq_lock);
+
+	if (irq->ops && irq->ops->sync_oob_state) {
+		INIT_LIST_HEAD(&irq->ap_list);
+		list_add(&irq->ap_list, &vgic_cpu->oob_list_head);
+	}
+
+	raw_spin_unlock_irqrestore(&vgic_cpu->ap_list_lock, flags);
 	vgic_put_irq(vcpu->kvm, irq);
 
 	return ret;
@@ -633,6 +646,9 @@ retry:
 
 		BUG_ON(vcpu != irq->vcpu);
 
+		if (irq->ops && irq->ops->sync_oob_state)
+			irq->ops->sync_oob_state(irq);
+
 		target_vcpu = vgic_target_oracle(irq);
 
 		if (!target_vcpu) {
@@ -642,6 +658,9 @@ retry:
 			 */
 			list_del(&irq->ap_list);
 			irq->vcpu = NULL;
+			if (irq->ops && irq->ops->sync_oob_state)
+				list_add_tail(&irq->ap_list,
+					      &vgic_cpu->oob_list_head);
 			raw_spin_unlock(&irq->irq_lock);
 
 			/*
@@ -722,6 +741,8 @@ static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
 		vgic_v2_fold_lr_state(vcpu);
 	else
 		vgic_v3_fold_lr_state(vcpu);
+
+
 }
 
 /* Requires the irq_lock to be held. */
@@ -812,7 +833,14 @@ static void vgic_flush_lr_state(struct kvm_vcpu *vcpu)
 		}
 
 		if (likely(vgic_target_oracle(irq) == vcpu)) {
-			vgic_populate_lr(vcpu, irq, count++);
+			/*
+			 * IRQs that use an IMPDEF injection method
+			 * don't occupy a List Register.
+			 */
+			if (irq->ops && irq->ops->flush_oob_state)
+				irq->ops->flush_oob_state(irq);
+			else
+				vgic_populate_lr(vcpu, irq, count++);
 
 			if (irq->source)
 				prio = irq->priority;
@@ -856,13 +884,71 @@ static inline void vgic_save_state(struct kvm_vcpu *vcpu)
 		__vgic_v3_save_state(&vcpu->arch.vgic_cpu.vgic_v3);
 }
 
+static void vgic_sync_oob_hwstate(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vgic_irq *irq;
+
+	if (list_empty(&vgic_cpu->oob_list_head))
+		return;
+
+	raw_spin_lock(&vgic_cpu->ap_list_lock);
+
+	list_for_each_entry(irq, &vgic_cpu->oob_list_head, ap_list) {
+		raw_spin_lock(&irq->irq_lock);
+
+		/* If the interrupt is on the OOB list, it must be invalid */
+		WARN_ON(irq->active || irq_is_pending(irq));
+
+		if (irq->ops && irq->ops->sync_oob_state)
+			irq->ops->sync_oob_state(irq);
+
+		/* At this stage, the state may be valid */
+		raw_spin_unlock(&irq->irq_lock);
+	}
+
+	raw_spin_unlock(&vgic_cpu->ap_list_lock);
+}
+
+static void vgic_merge_oob_irqs(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vgic_irq *irq, *tmp;
+
+	if (list_empty(&vgic_cpu->oob_list_head))
+		return;
+
+	raw_spin_lock(&vgic_cpu->ap_list_lock);
+
+	list_for_each_entry_safe(irq, tmp, &vgic_cpu->oob_list_head, ap_list) {
+		raw_spin_lock(&irq->irq_lock);
+
+		/*
+		 * If we've acquired an A|P state, move it to the
+		 * temporary list while mimicking what the normal
+		 * injection process would have done.
+		 */
+		if (irq->active || irq_is_pending(irq)) {
+			list_del(&irq->ap_list);
+			irq->vcpu = vcpu;
+			vgic_get_irq_kref(irq);
+			list_add_tail(&irq->ap_list, &vgic_cpu->ap_list_head);
+		}
+
+		raw_spin_unlock(&irq->irq_lock);
+	}
+
+	raw_spin_unlock(&vgic_cpu->ap_list_lock);
+}
+
 /* Sync back the hardware VGIC state into our emulation after a guest's run. */
 void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 {
 	int used_lrs;
 
 	/* An empty ap_list_head implies used_lrs == 0 */
-	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head))
+	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head) &&
+	    list_empty(&vcpu->arch.vgic_cpu.oob_list_head))
 		return;
 
 	if (can_access_vgic_from_kernel())
@@ -875,7 +961,10 @@ void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 
 	if (used_lrs)
 		vgic_fold_lr_state(vcpu);
+
+	vgic_sync_oob_hwstate(vcpu);
 	vgic_prune_ap_list(vcpu);
+	vgic_merge_oob_irqs(vcpu);
 }
 
 static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
@@ -886,9 +975,36 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 		__vgic_v3_restore_state(&vcpu->arch.vgic_cpu.vgic_v3);
 }
 
+static void vgic_flush_oob_hwstate(struct kvm_vcpu *vcpu)
+{
+	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+	struct vgic_irq *irq;
+
+	if (list_empty(&vgic_cpu->oob_list_head))
+		return;
+
+	raw_spin_lock(&vgic_cpu->ap_list_lock);
+
+	list_for_each_entry(irq, &vgic_cpu->oob_list_head, ap_list) {
+		raw_spin_lock(&irq->irq_lock);
+
+		/* If the interrupt is on the OOB list, it must be invalid */
+		WARN_ON(irq->active || irq_is_pending(irq));
+
+		if (irq->ops && irq->ops->flush_oob_state)
+			irq->ops->flush_oob_state(irq);
+
+		raw_spin_unlock(&irq->irq_lock);
+	}
+
+	raw_spin_unlock(&vgic_cpu->ap_list_lock);
+}
+
 /* Flush our emulation state into the GIC hardware before entering the guest. */
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
+	vgic_flush_oob_hwstate(vcpu);
+
 	/*
 	 * If there are no virtual interrupts active or pending for this
 	 * VCPU, then there is no work to do and we can bail out without

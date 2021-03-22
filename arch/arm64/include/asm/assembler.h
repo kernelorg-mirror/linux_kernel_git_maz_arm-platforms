@@ -270,12 +270,21 @@ alternative_endif
  * provide the system wide safe value from arm64_ftr_reg_ctrel0.sys_val
  */
 	.macro	read_ctr, reg
+#ifndef __KVM_NVHE_HYPERVISOR__
 alternative_if_not ARM64_MISMATCHED_CACHE_TYPE
 	mrs	\reg, ctr_el0			// read CTR
 	nop
 alternative_else
 	ldr_l	\reg, arm64_ftr_reg_ctrel0 + ARM64_FTR_SYSVAL
 alternative_endif
+#else
+alternative_cb kvm_compute_final_ctr_el0
+	movz	\reg, #0
+	movk	\reg, #0, lsl #16
+	movk	\reg, #0, lsl #32
+	movk	\reg, #0, lsl #48
+alternative_cb_end
+#endif
 	.endm
 
 

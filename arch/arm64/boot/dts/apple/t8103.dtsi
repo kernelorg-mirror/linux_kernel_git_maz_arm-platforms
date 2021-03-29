@@ -131,5 +131,34 @@
 			clock-names = "uart", "clk_uart_baud0";
 			status = "disabled";
 		};
+
+		pcie0: pcie@690000000 {
+			compatible = "apple,pcie-m1";
+			reg = <0x6 0x90000000 0x0 0x1000000>,
+			      <0x6 0x80000000 0x0 0x100000>,
+			      <0x6 0x8c000000 0x0 0x100000>,
+			      <0x6 0x81000000 0x0 0x20000>,
+			      <0x6 0x82000000 0x0 0x20000>,
+			      <0x6 0x83000000 0x0 0x20000>;
+
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 695 IRQ_TYPE_LEVEL_HIGH>,
+				     <AIC_IRQ 698 IRQ_TYPE_LEVEL_HIGH>,
+				     <AIC_IRQ 701 IRQ_TYPE_LEVEL_HIGH>;
+
+			msi-controller;
+			msi-interrupts = <704 32>;
+
+			msi-doorbell = <0x0 0xfffff000>;
+			bus-range = <0 15>;
+			#address-cells = <3>;
+			#size-cells = <2>;
+			ranges = <0x43000000 0x6 0xa0000000 0x6 0xa0000000
+			          0x0 0x20000000>,
+				 <0x02000000 0x0 0xc0000000 0x6 0xc0000000
+				  0x0 0x40000000>;
+
+			device_type = "pci";
+		};
 	};
 };

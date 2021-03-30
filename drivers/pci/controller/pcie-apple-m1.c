@@ -30,21 +30,29 @@ struct apple_pcie {
 
 static void apple_msi_top_irq_mask(struct irq_data *d)
 {
+	pr_info("IRQ%d (%ld) masked\n", d->irq, d->parent_data->hwirq);
 	pci_msi_mask_irq(d);
 	irq_chip_mask_parent(d);
 }
 
 static void apple_msi_top_irq_unmask(struct irq_data *d)
 {
+	pr_info("IRQ%d (%ld) unmasked\n", d->irq, d->parent_data->hwirq);
 	pci_msi_unmask_irq(d);
 	irq_chip_unmask_parent(d);
+}
+
+static void apple_msi_top_irq_eoi(struct irq_data *d)
+{
+	pr_info("IRQ%d (%ld) eoi\n", d->irq, d->parent_data->hwirq);
+	irq_chip_eoi_parent(d);
 }
 
 static struct irq_chip apple_msi_top_chip = {
 	.name			= "PCIe MSI",
 	.irq_mask		= apple_msi_top_irq_mask,
 	.irq_unmask		= apple_msi_top_irq_unmask,
-	.irq_eoi		= irq_chip_eoi_parent,
+	.irq_eoi		= apple_msi_top_irq_eoi,
 	.irq_set_affinity	= irq_chip_set_affinity_parent,
 	.irq_set_type		= irq_chip_set_type_parent,
 };
@@ -133,7 +141,22 @@ static int apple_msi_init(struct apple_pcie *pcie)
 	struct fwnode_handle *fwnode = dev_fwnode(pcie->dev);
 	struct device_node *parent_intc;
 	struct irq_domain *parent;
-	int ret;
+	void __iomem *port;
+	int ret, i = 0;
+
+	do {
+		port = devm_of_iomap(pcie->dev, to_of_node(fwnode), i + 3, NULL);
+		if (!IS_ERR(port)) {
+			/* OpenBSD magic */
+			writel(0xfffff000, port + 0x168);
+			writel(0, port + 0x128);
+			writel((5 << 4) | 1, port + 0x124);
+			i++;
+		}
+	} while (!IS_ERR(port));
+
+	if (i == 0)
+		return -ENODEV;
 
 	ret = of_property_read_u32_index(to_of_node(fwnode), "msi-interrupts",
 					 0, &pcie->msi_base);

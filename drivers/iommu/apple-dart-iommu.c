@@ -21,6 +21,7 @@
 #include <linux/of_address.h>
 #include <linux/of_iommu.h>
 #include <linux/of_platform.h>
+#include <linux/pci.h>
 #include <linux/platform_device.h>
 #include <linux/ratelimit.h>
 
@@ -356,6 +357,7 @@ static int apple_dart_map(struct iommu_domain *domain, unsigned long iova,
 	struct apple_dart_domain *dart_domain = to_dart_domain(domain);
 	struct io_pgtable_ops *ops = dart_domain->pgtbl_ops;
 
+	pr_warn("mapping %lx %llx %lx\n", iova, paddr, size);
 	if (!ops)
 		return -ENODEV;
 	if (prot & IOMMU_MMIO)
@@ -421,6 +423,8 @@ static int apple_dart_attach_stream(struct apple_dart_domain *domain,
 		&io_pgtable_ops_to_pgtable(domain->pgtbl_ops)->cfg;
 	int ret;
 
+	dev_warn(dart->dev, "enabling sid %d\n", sid);
+
 	list_for_each_entry(stream, &domain->streams, stream_head) {
 		if (stream->dart == dart && stream->sid == sid) {
 			stream->num_devices++;
@@ -429,6 +433,8 @@ static int apple_dart_attach_stream(struct apple_dart_domain *domain,
 	}
 
 	spin_lock_irqsave(&dart->lock, flags);
+
+	dev_warn(dart->dev, "used sids %x\n", dart->used_sids);
 
 	if (WARN_ON(dart->used_sids & BIT(sid))) {
 		ret = -EINVAL;
@@ -449,6 +455,7 @@ static int apple_dart_attach_stream(struct apple_dart_domain *domain,
 	dart->used_sids |= BIT(sid);
 	spin_unlock_irqrestore(&dart->lock, flags);
 
+	dev_warn(domain->dart->dev, "enabling sid %d\n", stream->sid);
 	apple_dart_hw_clear_all_ttbrs(stream->dart, stream->sid);
 	apple_dart_hw_set_ttbr(stream->dart, stream->sid, 0,
 			       pgtbl_cfg->apple_dart_cfg.ttbr);
@@ -653,8 +660,15 @@ static int apple_dart_of_xlate(struct device *dev, struct of_phandle_args *args)
 
 static struct iommu_group *apple_dart_device_group(struct device *dev)
 {
-	/* once we have PCI support this needs to use pci_device_group conditionally */
-	return generic_device_group(dev);
+	struct iommu_group *group;
+
+	dev_warn(dev, "apple_dart_device_group called\n");
+	if (dev_is_pci(dev))
+		group = pci_device_group(dev);
+	else
+		group = generic_device_group(dev);
+
+	return group;
 }
 
 static const struct iommu_ops apple_dart_iommu_ops = {
@@ -722,6 +736,7 @@ static int apple_dart_probe(struct platform_device *pdev)
 	struct apple_dart *dart;
 	struct device *dev = &pdev->dev;
 
+	dev_warn(&pdev->dev, "probing\n");
 	dart = devm_kzalloc(dev, sizeof(*dart), GFP_KERNEL);
 	if (!dart)
 		return -ENOMEM;
@@ -783,7 +798,13 @@ static int apple_dart_probe(struct platform_device *pdev)
 		if (ret)
 			return ret;
 	}
+	if (dev->bus->iommu_ops != pci_bus_type.iommu_ops) {
+		ret = bus_set_iommu(&pci_bus_type, &apple_dart_iommu_ops);
+		if (ret)
+			return ret;
+	}
 
+	dev_warn(&pdev->dev, "probed\n");
 	return 0;
 }
 

@@ -66,6 +66,11 @@ static int sev_flush_asids(void)
 	return ret;
 }
 
+static inline bool is_mirroring_enc_context(struct kvm *kvm)
+{
+	return to_kvm_svm(kvm)->sev_info.enc_context_owner;
+}
+
 /* Must be called with the sev_bitmap_lock held */
 static bool __sev_recycle_asids(int min_asid, int max_asid)
 {
@@ -87,7 +92,7 @@ static bool __sev_recycle_asids(int min_asid, int max_asid)
 	return true;
 }
 
-static int sev_asid_new(struct kvm_sev_info *sev)
+static int sev_asid_new(bool es_active)
 {
 	int pos, min_asid, max_asid;
 	bool retry = true;
@@ -98,8 +103,8 @@ static int sev_asid_new(struct kvm_sev_info *sev)
 	 * SEV-enabled guests must use asid from min_sev_asid to max_sev_asid.
 	 * SEV-ES-enabled guest can use from 1 to min_sev_asid - 1.
 	 */
-	min_asid = sev->es_active ? 0 : min_sev_asid - 1;
-	max_asid = sev->es_active ? min_sev_asid - 1 : max_sev_asid;
+	min_asid = es_active ? 0 : min_sev_asid - 1;
+	max_asid = es_active ? min_sev_asid - 1 : max_sev_asid;
 again:
 	pos = find_next_zero_bit(sev_asid_bitmap, max_sev_asid, min_asid);
 	if (pos >= max_asid) {
@@ -179,13 +184,17 @@ static void sev_unbind_asid(struct kvm *kvm, unsigned int handle)
 static int sev_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
+	bool es_active = argp->id == KVM_SEV_ES_INIT;
 	int asid, ret;
+
+	if (kvm->created_vcpus)
+		return -EINVAL;
 
 	ret = -EBUSY;
 	if (unlikely(sev->active))
 		return ret;
 
-	asid = sev_asid_new(sev);
+	asid = sev_asid_new(es_active);
 	if (asid < 0)
 		return ret;
 
@@ -194,6 +203,7 @@ static int sev_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 		goto e_free;
 
 	sev->active = true;
+	sev->es_active = es_active;
 	sev->asid = asid;
 	INIT_LIST_HEAD(&sev->regions_list);
 
@@ -202,16 +212,6 @@ static int sev_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
 e_free:
 	sev_asid_free(asid);
 	return ret;
-}
-
-static int sev_es_guest_init(struct kvm *kvm, struct kvm_sev_cmd *argp)
-{
-	if (!sev_es)
-		return -ENOTTY;
-
-	to_kvm_svm(kvm)->sev_info.es_active = true;
-
-	return sev_guest_init(kvm, argp);
 }
 
 static int sev_bind_asid(struct kvm *kvm, unsigned int handle, int *error)
@@ -564,6 +564,7 @@ static int sev_launch_update_vmsa(struct kvm *kvm, struct kvm_sev_cmd *argp)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
 	struct sev_data_launch_update_vmsa *vmsa;
+	struct kvm_vcpu *vcpu;
 	int i, ret;
 
 	if (!sev_es_guest(kvm))
@@ -573,8 +574,8 @@ static int sev_launch_update_vmsa(struct kvm *kvm, struct kvm_sev_cmd *argp)
 	if (!vmsa)
 		return -ENOMEM;
 
-	for (i = 0; i < kvm->created_vcpus; i++) {
-		struct vcpu_svm *svm = to_svm(kvm->vcpus[i]);
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		struct vcpu_svm *svm = to_svm(vcpu);
 
 		/* Perform some pre-encryption checks against the VMSA */
 		ret = sev_es_sync_vmsa(svm);
@@ -637,7 +638,7 @@ static int sev_launch_measure(struct kvm *kvm, struct kvm_sev_cmd *argp)
 		}
 
 		ret = -ENOMEM;
-		blob = kmalloc(params.len, GFP_KERNEL);
+		blob = kmalloc(params.len, GFP_KERNEL_ACCOUNT);
 		if (!blob)
 			goto e_free;
 
@@ -1074,7 +1075,7 @@ static int sev_get_attestation_report(struct kvm *kvm, struct kvm_sev_cmd *argp)
 		}
 
 		ret = -ENOMEM;
-		blob = kmalloc(params.len, GFP_KERNEL);
+		blob = kmalloc(params.len, GFP_KERNEL_ACCOUNT);
 		if (!blob)
 			goto e_free;
 
@@ -1124,14 +1125,21 @@ int svm_mem_enc_op(struct kvm *kvm, void __user *argp)
 	if (copy_from_user(&sev_cmd, argp, sizeof(struct kvm_sev_cmd)))
 		return -EFAULT;
 
+	/* enc_context_owner handles all memory enc operations */
+	if (is_mirroring_enc_context(kvm))
+		return -ENOTTY;
+
 	mutex_lock(&kvm->lock);
 
 	switch (sev_cmd.id) {
+	case KVM_SEV_ES_INIT:
+		if (!sev_es) {
+			r = -ENOTTY;
+			goto out;
+		}
+		fallthrough;
 	case KVM_SEV_INIT:
 		r = sev_guest_init(kvm, &sev_cmd);
-		break;
-	case KVM_SEV_ES_INIT:
-		r = sev_es_guest_init(kvm, &sev_cmd);
 		break;
 	case KVM_SEV_LAUNCH_START:
 		r = sev_launch_start(kvm, &sev_cmd);
@@ -1184,6 +1192,10 @@ int svm_register_enc_region(struct kvm *kvm,
 	int ret = 0;
 
 	if (!sev_guest(kvm))
+		return -ENOTTY;
+
+	/* If kvm is mirroring encryption context it isn't responsible for it */
+	if (is_mirroring_enc_context(kvm))
 		return -ENOTTY;
 
 	if (range->addr > ULONG_MAX || range->size > ULONG_MAX)
@@ -1252,6 +1264,10 @@ int svm_unregister_enc_region(struct kvm *kvm,
 	struct enc_region *region;
 	int ret;
 
+	/* If kvm is mirroring encryption context it isn't responsible for it */
+	if (is_mirroring_enc_context(kvm))
+		return -ENOTTY;
+
 	mutex_lock(&kvm->lock);
 
 	if (!sev_guest(kvm)) {
@@ -1282,6 +1298,71 @@ failed:
 	return ret;
 }
 
+int svm_vm_copy_asid_from(struct kvm *kvm, unsigned int source_fd)
+{
+	struct file *source_kvm_file;
+	struct kvm *source_kvm;
+	struct kvm_sev_info *mirror_sev;
+	unsigned int asid;
+	int ret;
+
+	source_kvm_file = fget(source_fd);
+	if (!file_is_kvm(source_kvm_file)) {
+		ret = -EBADF;
+		goto e_source_put;
+	}
+
+	source_kvm = source_kvm_file->private_data;
+	mutex_lock(&source_kvm->lock);
+
+	if (!sev_guest(source_kvm)) {
+		ret = -ENOTTY;
+		goto e_source_unlock;
+	}
+
+	/* Mirrors of mirrors should work, but let's not get silly */
+	if (is_mirroring_enc_context(source_kvm) || source_kvm == kvm) {
+		ret = -ENOTTY;
+		goto e_source_unlock;
+	}
+
+	asid = to_kvm_svm(source_kvm)->sev_info.asid;
+
+	/*
+	 * The mirror kvm holds an enc_context_owner ref so its asid can't
+	 * disappear until we're done with it
+	 */
+	kvm_get_kvm(source_kvm);
+
+	fput(source_kvm_file);
+	mutex_unlock(&source_kvm->lock);
+	mutex_lock(&kvm->lock);
+
+	if (sev_guest(kvm)) {
+		ret = -ENOTTY;
+		goto e_mirror_unlock;
+	}
+
+	/* Set enc_context_owner and copy its encryption context over */
+	mirror_sev = &to_kvm_svm(kvm)->sev_info;
+	mirror_sev->enc_context_owner = source_kvm;
+	mirror_sev->asid = asid;
+	mirror_sev->active = true;
+
+	mutex_unlock(&kvm->lock);
+	return 0;
+
+e_mirror_unlock:
+	mutex_unlock(&kvm->lock);
+	kvm_put_kvm(source_kvm);
+	return ret;
+e_source_unlock:
+	mutex_unlock(&source_kvm->lock);
+e_source_put:
+	fput(source_kvm_file);
+	return ret;
+}
+
 void sev_vm_destroy(struct kvm *kvm)
 {
 	struct kvm_sev_info *sev = &to_kvm_svm(kvm)->sev_info;
@@ -1292,6 +1373,12 @@ void sev_vm_destroy(struct kvm *kvm)
 		return;
 
 	mutex_lock(&kvm->lock);
+
+	/* If this is a mirror_kvm release the enc_context_owner and skip sev cleanup */
+	if (is_mirroring_enc_context(kvm)) {
+		kvm_put_kvm(sev->enc_context_owner);
+		return;
+	}
 
 	/*
 	 * Ensure that all guest tagged cache entries are flushed before
@@ -1775,7 +1862,7 @@ static bool setup_vmgexit_scratch(struct vcpu_svm *svm, bool sync, u64 len)
 			       len, GHCB_SCRATCH_AREA_LIMIT);
 			return false;
 		}
-		scratch_va = kzalloc(len, GFP_KERNEL);
+		scratch_va = kzalloc(len, GFP_KERNEL_ACCOUNT);
 		if (!scratch_va)
 			return false;
 
@@ -1849,7 +1936,7 @@ static int sev_handle_vmgexit_msr_protocol(struct vcpu_svm *svm)
 		vcpu->arch.regs[VCPU_REGS_RAX] = cpuid_fn;
 		vcpu->arch.regs[VCPU_REGS_RCX] = 0;
 
-		ret = svm_invoke_exit_handler(svm, SVM_EXIT_CPUID);
+		ret = svm_invoke_exit_handler(vcpu, SVM_EXIT_CPUID);
 		if (!ret) {
 			ret = -EINVAL;
 			break;
@@ -1899,8 +1986,9 @@ static int sev_handle_vmgexit_msr_protocol(struct vcpu_svm *svm)
 	return ret;
 }
 
-int sev_handle_vmgexit(struct vcpu_svm *svm)
+int sev_handle_vmgexit(struct kvm_vcpu *vcpu)
 {
+	struct vcpu_svm *svm = to_svm(vcpu);
 	struct vmcb_control_area *control = &svm->vmcb->control;
 	u64 ghcb_gpa, exit_code;
 	struct ghcb *ghcb;
@@ -1912,13 +2000,13 @@ int sev_handle_vmgexit(struct vcpu_svm *svm)
 		return sev_handle_vmgexit_msr_protocol(svm);
 
 	if (!ghcb_gpa) {
-		vcpu_unimpl(&svm->vcpu, "vmgexit: GHCB gpa is not set\n");
+		vcpu_unimpl(vcpu, "vmgexit: GHCB gpa is not set\n");
 		return -EINVAL;
 	}
 
-	if (kvm_vcpu_map(&svm->vcpu, ghcb_gpa >> PAGE_SHIFT, &svm->ghcb_map)) {
+	if (kvm_vcpu_map(vcpu, ghcb_gpa >> PAGE_SHIFT, &svm->ghcb_map)) {
 		/* Unable to map GHCB from guest */
-		vcpu_unimpl(&svm->vcpu, "vmgexit: error mapping GHCB [%#llx] from guest\n",
+		vcpu_unimpl(vcpu, "vmgexit: error mapping GHCB [%#llx] from guest\n",
 			    ghcb_gpa);
 		return -EINVAL;
 	}
@@ -1926,7 +2014,7 @@ int sev_handle_vmgexit(struct vcpu_svm *svm)
 	svm->ghcb = svm->ghcb_map.hva;
 	ghcb = svm->ghcb_map.hva;
 
-	trace_kvm_vmgexit_enter(svm->vcpu.vcpu_id, ghcb);
+	trace_kvm_vmgexit_enter(vcpu->vcpu_id, ghcb);
 
 	exit_code = ghcb_get_sw_exit_code(ghcb);
 
@@ -1944,7 +2032,7 @@ int sev_handle_vmgexit(struct vcpu_svm *svm)
 		if (!setup_vmgexit_scratch(svm, true, control->exit_info_2))
 			break;
 
-		ret = kvm_sev_es_mmio_read(&svm->vcpu,
+		ret = kvm_sev_es_mmio_read(vcpu,
 					   control->exit_info_1,
 					   control->exit_info_2,
 					   svm->ghcb_sa);
@@ -1953,19 +2041,19 @@ int sev_handle_vmgexit(struct vcpu_svm *svm)
 		if (!setup_vmgexit_scratch(svm, false, control->exit_info_2))
 			break;
 
-		ret = kvm_sev_es_mmio_write(&svm->vcpu,
+		ret = kvm_sev_es_mmio_write(vcpu,
 					    control->exit_info_1,
 					    control->exit_info_2,
 					    svm->ghcb_sa);
 		break;
 	case SVM_VMGEXIT_NMI_COMPLETE:
-		ret = svm_invoke_exit_handler(svm, SVM_EXIT_IRET);
+		ret = svm_invoke_exit_handler(vcpu, SVM_EXIT_IRET);
 		break;
 	case SVM_VMGEXIT_AP_HLT_LOOP:
-		ret = kvm_emulate_ap_reset_hold(&svm->vcpu);
+		ret = kvm_emulate_ap_reset_hold(vcpu);
 		break;
 	case SVM_VMGEXIT_AP_JUMP_TABLE: {
-		struct kvm_sev_info *sev = &to_kvm_svm(svm->vcpu.kvm)->sev_info;
+		struct kvm_sev_info *sev = &to_kvm_svm(vcpu->kvm)->sev_info;
 
 		switch (control->exit_info_1) {
 		case 0:
@@ -1990,12 +2078,12 @@ int sev_handle_vmgexit(struct vcpu_svm *svm)
 		break;
 	}
 	case SVM_VMGEXIT_UNSUPPORTED_EVENT:
-		vcpu_unimpl(&svm->vcpu,
+		vcpu_unimpl(vcpu,
 			    "vmgexit: unsupported event - exit_info_1=%#llx, exit_info_2=%#llx\n",
 			    control->exit_info_1, control->exit_info_2);
 		break;
 	default:
-		ret = svm_invoke_exit_handler(svm, exit_code);
+		ret = svm_invoke_exit_handler(vcpu, exit_code);
 	}
 
 	return ret;

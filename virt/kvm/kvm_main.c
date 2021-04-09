@@ -451,35 +451,189 @@ static void kvm_mmu_notifier_invalidate_range(struct mmu_notifier *mn,
 	srcu_read_unlock(&kvm->srcu, idx);
 }
 
+typedef bool (*hva_handler_t)(struct kvm *kvm, struct kvm_gfn_range *range);
+
+typedef void (*on_lock_fn_t)(struct kvm *kvm, unsigned long start,
+			     unsigned long end);
+
+struct kvm_hva_range {
+	unsigned long start;
+	unsigned long end;
+	pte_t pte;
+	hva_handler_t handler;
+	on_lock_fn_t on_lock;
+	bool must_lock;
+	bool flush_on_ret;
+	bool may_block;
+};
+
+/*
+ * Use a dedicated stub instead of NULL to indicate that there is no callback
+ * function/handler.  The compiler technically can't guarantee that a real
+ * function will have a non-zero address, and so it will generate code to
+ * check for !NULL, whereas comparing against a stub will be elided at compile
+ * time (unless the compiler is getting long in the tooth, e.g. gcc 4.9).
+ */
+static void kvm_null_fn(void)
+{
+
+}
+#define IS_KVM_NULL_FN(fn) ((fn) == (void *)kvm_null_fn)
+
+
+/* Acquire mmu_lock if necessary.  Returns %true if @handler is "null" */
+static __always_inline bool kvm_mmu_lock_and_check_handler(struct kvm *kvm,
+							   const struct kvm_hva_range *range,
+							   bool *locked)
+{
+	if (*locked)
+		return false;
+
+	*locked = true;
+
+	KVM_MMU_LOCK(kvm);
+
+	if (!IS_KVM_NULL_FN(range->on_lock))
+		range->on_lock(kvm, range->start, range->end);
+
+	return IS_KVM_NULL_FN(range->handler);
+}
+
+static __always_inline int __kvm_handle_hva_range(struct kvm *kvm,
+						  const struct kvm_hva_range *range)
+{
+	bool ret = false, locked = false;
+	struct kvm_gfn_range gfn_range;
+	struct kvm_memory_slot *slot;
+	struct kvm_memslots *slots;
+	int i, idx;
+
+	/* A null handler is allowed if and only if on_lock() is provided. */
+	if (WARN_ON_ONCE(IS_KVM_NULL_FN(range->on_lock) &&
+			 IS_KVM_NULL_FN(range->handler)))
+		return 0;
+
+	idx = srcu_read_lock(&kvm->srcu);
+
+	if (range->must_lock &&
+	    kvm_mmu_lock_and_check_handler(kvm, range, &locked))
+		goto out_unlock;
+
+	for (i = 0; i < KVM_ADDRESS_SPACE_NUM; i++) {
+		slots = __kvm_memslots(kvm, i);
+		kvm_for_each_memslot(slot, slots) {
+			unsigned long hva_start, hva_end;
+
+			hva_start = max(range->start, slot->userspace_addr);
+			hva_end = min(range->end, slot->userspace_addr +
+						  (slot->npages << PAGE_SHIFT));
+			if (hva_start >= hva_end)
+				continue;
+
+			/*
+			 * To optimize for the likely case where the address
+			 * range is covered by zero or one memslots, don't
+			 * bother making these conditional (to avoid writes on
+			 * the second or later invocation of the handler).
+			 */
+			gfn_range.pte = range->pte;
+			gfn_range.may_block = range->may_block;
+
+			/*
+			 * {gfn(page) | page intersects with [hva_start, hva_end)} =
+			 * {gfn_start, gfn_start+1, ..., gfn_end-1}.
+			 */
+			gfn_range.start = hva_to_gfn_memslot(hva_start, slot);
+			gfn_range.end = hva_to_gfn_memslot(hva_end + PAGE_SIZE - 1, slot);
+			gfn_range.slot = slot;
+
+			if (kvm_mmu_lock_and_check_handler(kvm, range, &locked))
+				goto out_unlock;
+
+			ret |= range->handler(kvm, &gfn_range);
+		}
+	}
+
+	if (range->flush_on_ret && (ret || kvm->tlbs_dirty))
+		kvm_flush_remote_tlbs(kvm);
+
+out_unlock:
+	if (locked)
+		KVM_MMU_UNLOCK(kvm);
+
+	srcu_read_unlock(&kvm->srcu, idx);
+
+	/* The notifiers are averse to booleans. :-( */
+	return (int)ret;
+}
+
+static __always_inline int kvm_handle_hva_range(struct mmu_notifier *mn,
+						unsigned long start,
+						unsigned long end,
+						pte_t pte,
+						hva_handler_t handler)
+{
+	struct kvm *kvm = mmu_notifier_to_kvm(mn);
+	const struct kvm_hva_range range = {
+		.start		= start,
+		.end		= end,
+		.pte		= pte,
+		.handler	= handler,
+		.on_lock	= (void *)kvm_null_fn,
+		.must_lock	= false,
+		.flush_on_ret	= true,
+		.may_block	= false,
+	};
+
+	return __kvm_handle_hva_range(kvm, &range);
+}
+
+static __always_inline int kvm_handle_hva_range_no_flush(struct mmu_notifier *mn,
+							 unsigned long start,
+							 unsigned long end,
+							 hva_handler_t handler)
+{
+	struct kvm *kvm = mmu_notifier_to_kvm(mn);
+	const struct kvm_hva_range range = {
+		.start		= start,
+		.end		= end,
+		.pte		= __pte(0),
+		.handler	= handler,
+		.on_lock	= (void *)kvm_null_fn,
+		.must_lock	= false,
+		.flush_on_ret	= false,
+		.may_block	= false,
+	};
+
+	return __kvm_handle_hva_range(kvm, &range);
+}
 static void kvm_mmu_notifier_change_pte(struct mmu_notifier *mn,
 					struct mm_struct *mm,
 					unsigned long address,
 					pte_t pte)
 {
 	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-	int idx;
 
-	idx = srcu_read_lock(&kvm->srcu);
+	trace_kvm_set_spte_hva(address);
 
-	KVM_MMU_LOCK(kvm);
+	/*
+	 * .change_pte() must be surrounded by .invalidate_range_{start,end}(),
+	 * If mmu_notifier_count is zero, then start() didn't find a relevant
+	 * memslot and wasn't forced down the slow path; rechecking here is
+	 * unnecessary.  This can only occur if memslot updates are blocked;
+	 * otherwise, mmu_notifier_count is incremented unconditionally.
+	 */
+	if (!kvm->mmu_notifier_count) {
+		lockdep_assert_held(&kvm->mmu_notifier_slots_lock);
+		return;
+	}
 
-	kvm->mmu_notifier_seq++;
-
-	if (kvm_set_spte_hva(kvm, address, pte))
-		kvm_flush_remote_tlbs(kvm);
-
-	KVM_MMU_UNLOCK(kvm);
-	srcu_read_unlock(&kvm->srcu, idx);
+	kvm_handle_hva_range(mn, address, address + 1, pte, kvm_set_spte_gfn);
 }
 
-static int kvm_mmu_notifier_invalidate_range_start(struct mmu_notifier *mn,
-					const struct mmu_notifier_range *range)
+static void kvm_inc_notifier_count(struct kvm *kvm, unsigned long start,
+				   unsigned long end)
 {
-	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-	int need_tlb_flush = 0, idx;
-
-	idx = srcu_read_lock(&kvm->srcu);
-	KVM_MMU_LOCK(kvm);
 	/*
 	 * The count increase must become visible at unlock time as no
 	 * spte can be established without taking the mmu_lock and
@@ -487,8 +641,8 @@ static int kvm_mmu_notifier_invalidate_range_start(struct mmu_notifier *mn,
 	 */
 	kvm->mmu_notifier_count++;
 	if (likely(kvm->mmu_notifier_count == 1)) {
-		kvm->mmu_notifier_range_start = range->start;
-		kvm->mmu_notifier_range_end = range->end;
+		kvm->mmu_notifier_range_start = start;
+		kvm->mmu_notifier_range_end = end;
 	} else {
 		/*
 		 * Fully tracking multiple concurrent ranges has dimishing
@@ -500,28 +654,54 @@ static int kvm_mmu_notifier_invalidate_range_start(struct mmu_notifier *mn,
 		 * complete.
 		 */
 		kvm->mmu_notifier_range_start =
-			min(kvm->mmu_notifier_range_start, range->start);
+			min(kvm->mmu_notifier_range_start, start);
 		kvm->mmu_notifier_range_end =
-			max(kvm->mmu_notifier_range_end, range->end);
+			max(kvm->mmu_notifier_range_end, end);
 	}
-	need_tlb_flush = kvm_unmap_hva_range(kvm, range->start, range->end,
-					     range->flags);
-	/* we've to flush the tlb before the pages can be freed */
-	if (need_tlb_flush || kvm->tlbs_dirty)
-		kvm_flush_remote_tlbs(kvm);
+}
 
-	KVM_MMU_UNLOCK(kvm);
-	srcu_read_unlock(&kvm->srcu, idx);
+static int kvm_mmu_notifier_invalidate_range_start(struct mmu_notifier *mn,
+					const struct mmu_notifier_range *range)
+{
+	bool blockable = mmu_notifier_range_blockable(range);
+	struct kvm *kvm = mmu_notifier_to_kvm(mn);
+	const struct kvm_hva_range hva_range = {
+		.start		= range->start,
+		.end		= range->end,
+		.pte		= __pte(0),
+		.handler	= kvm_unmap_gfn_range,
+		.on_lock	= kvm_inc_notifier_count,
+		.must_lock	= !blockable,
+		.flush_on_ret	= true,
+		.may_block	= blockable,
+	};
+
+	trace_kvm_unmap_hva_range(range->start, range->end);
+
+	/*
+	 * Prevent memslot modification between range_start() and range_end()
+	 * so that conditionally locking provides the same result in both
+	 * functions.  Without that guarantee, the mmu_notifier_count
+	 * adjustments will be imbalanced.
+	 *
+	 * Skip the memslot-lookup lock elision (set @must_lock above) to avoid
+	 * having to take the semaphore on non-blockable calls, e.g. OOM kill.
+	 * The complexity required to handle conditional locking for this case
+	 * is not worth the marginal benefits, the VM is likely doomed anyways.
+	 *
+	 * Pairs with the up_read in range_end().
+	 */
+	if (blockable)
+		down_read(&kvm->mmu_notifier_slots_lock);
+
+	__kvm_handle_hva_range(kvm, &hva_range);
 
 	return 0;
 }
 
-static void kvm_mmu_notifier_invalidate_range_end(struct mmu_notifier *mn,
-					const struct mmu_notifier_range *range)
+static void kvm_dec_notifier_count(struct kvm *kvm, unsigned long start,
+				   unsigned long end)
 {
-	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-
-	KVM_MMU_LOCK(kvm);
 	/*
 	 * This sequence increase will notify the kvm page fault that
 	 * the page that is going to be mapped in the spte could have
@@ -535,7 +715,29 @@ static void kvm_mmu_notifier_invalidate_range_end(struct mmu_notifier *mn,
 	 * in conjunction with the smp_rmb in mmu_notifier_retry().
 	 */
 	kvm->mmu_notifier_count--;
-	KVM_MMU_UNLOCK(kvm);
+}
+
+static void kvm_mmu_notifier_invalidate_range_end(struct mmu_notifier *mn,
+					const struct mmu_notifier_range *range)
+{
+	bool blockable = mmu_notifier_range_blockable(range);
+	struct kvm *kvm = mmu_notifier_to_kvm(mn);
+	const struct kvm_hva_range hva_range = {
+		.start		= range->start,
+		.end		= range->end,
+		.pte		= __pte(0),
+		.handler	= (void *)kvm_null_fn,
+		.on_lock	= kvm_dec_notifier_count,
+		.must_lock	= !blockable,
+		.flush_on_ret	= false,
+		.may_block	= blockable,
+	};
+
+	__kvm_handle_hva_range(kvm, &hva_range);
+
+	/* Pairs with the down_read in range_start(). */
+	if (blockable)
+		up_read(&kvm->mmu_notifier_slots_lock);
 
 	BUG_ON(kvm->mmu_notifier_count < 0);
 }
@@ -545,20 +747,9 @@ static int kvm_mmu_notifier_clear_flush_young(struct mmu_notifier *mn,
 					      unsigned long start,
 					      unsigned long end)
 {
-	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-	int young, idx;
+	trace_kvm_age_hva(start, end);
 
-	idx = srcu_read_lock(&kvm->srcu);
-	KVM_MMU_LOCK(kvm);
-
-	young = kvm_age_hva(kvm, start, end);
-	if (young)
-		kvm_flush_remote_tlbs(kvm);
-
-	KVM_MMU_UNLOCK(kvm);
-	srcu_read_unlock(&kvm->srcu, idx);
-
-	return young;
+	return kvm_handle_hva_range(mn, start, end, __pte(0), kvm_age_gfn);
 }
 
 static int kvm_mmu_notifier_clear_young(struct mmu_notifier *mn,
@@ -566,11 +757,8 @@ static int kvm_mmu_notifier_clear_young(struct mmu_notifier *mn,
 					unsigned long start,
 					unsigned long end)
 {
-	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-	int young, idx;
+	trace_kvm_age_hva(start, end);
 
-	idx = srcu_read_lock(&kvm->srcu);
-	KVM_MMU_LOCK(kvm);
 	/*
 	 * Even though we do not flush TLB, this will still adversely
 	 * affect performance on pre-Haswell Intel EPT, where there is
@@ -584,27 +772,17 @@ static int kvm_mmu_notifier_clear_young(struct mmu_notifier *mn,
 	 * cadence. If we find this inaccurate, we might come up with a
 	 * more sophisticated heuristic later.
 	 */
-	young = kvm_age_hva(kvm, start, end);
-	KVM_MMU_UNLOCK(kvm);
-	srcu_read_unlock(&kvm->srcu, idx);
-
-	return young;
+	return kvm_handle_hva_range_no_flush(mn, start, end, kvm_age_gfn);
 }
 
 static int kvm_mmu_notifier_test_young(struct mmu_notifier *mn,
 				       struct mm_struct *mm,
 				       unsigned long address)
 {
-	struct kvm *kvm = mmu_notifier_to_kvm(mn);
-	int young, idx;
+	trace_kvm_test_age_hva(address);
 
-	idx = srcu_read_lock(&kvm->srcu);
-	KVM_MMU_LOCK(kvm);
-	young = kvm_test_age_hva(kvm, address);
-	KVM_MMU_UNLOCK(kvm);
-	srcu_read_unlock(&kvm->srcu, idx);
-
-	return young;
+	return kvm_handle_hva_range_no_flush(mn, address, address + 1,
+					     kvm_test_age_gfn);
 }
 
 static void kvm_mmu_notifier_release(struct mmu_notifier *mn,
@@ -773,6 +951,7 @@ static struct kvm *kvm_create_vm(unsigned long type)
 	mutex_init(&kvm->lock);
 	mutex_init(&kvm->irq_lock);
 	mutex_init(&kvm->slots_lock);
+	init_rwsem(&kvm->mmu_notifier_slots_lock);
 	INIT_LIST_HEAD(&kvm->devices);
 
 	BUILD_BUG_ON(KVM_MEM_SLOTS_NUM > SHRT_MAX);
@@ -893,6 +1072,16 @@ static void kvm_destroy_vm(struct kvm *kvm)
 	kvm_coalesced_mmio_free(kvm);
 #if defined(CONFIG_MMU_NOTIFIER) && defined(KVM_ARCH_WANT_MMU_NOTIFIER)
 	mmu_notifier_unregister(&kvm->mmu_notifier, kvm->mm);
+	/*
+	 * Reset the lock used to prevent memslot updates between MMU notifier
+	 * invalidate_range_start() and invalidate_range_end().  At this point,
+	 * no more MMU notifiers will run and pending calls to ...start() have
+	 * completed.  But, the lock could still be held if KVM's notifier was
+	 * removed between ...start() and ...end().  No threads can be waiting
+	 * on the lock as the last reference on KVM has been dropped.  If the
+	 * lock is still held, freeing memslots will deadlock.
+	 */
+	init_rwsem(&kvm->mmu_notifier_slots_lock);
 #else
 	kvm_arch_flush_shadow_all(kvm);
 #endif
@@ -1144,7 +1333,10 @@ static struct kvm_memslots *install_new_memslots(struct kvm *kvm,
 	WARN_ON(gen & KVM_MEMSLOT_GEN_UPDATE_IN_PROGRESS);
 	slots->generation = gen | KVM_MEMSLOT_GEN_UPDATE_IN_PROGRESS;
 
+	down_write(&kvm->mmu_notifier_slots_lock);
 	rcu_assign_pointer(kvm->memslots[as_id], slots);
+	up_write(&kvm->mmu_notifier_slots_lock);
+
 	synchronize_srcu_expedited(&kvm->srcu);
 
 	/*
@@ -4061,6 +4253,12 @@ static struct file_operations kvm_vm_fops = {
 	.llseek		= noop_llseek,
 	KVM_COMPAT(kvm_vm_compat_ioctl),
 };
+
+bool file_is_kvm(struct file *file)
+{
+	return file && file->f_op == &kvm_vm_fops;
+}
+EXPORT_SYMBOL_GPL(file_is_kvm);
 
 static int kvm_dev_ioctl_create_vm(unsigned long type)
 {

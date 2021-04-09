@@ -408,27 +408,12 @@ static void nested_vmcb02_prepare_save(struct vcpu_svm *svm, struct vmcb *vmcb12
 	nested_vmcb02_compute_g_pat(svm);
 
 	/* Load the nested guest state */
-
-	if (svm->nested.vmcb12_gpa != svm->nested.last_vmcb12_gpa) {
-		new_vmcb12 = true;
-		svm->nested.last_vmcb12_gpa = svm->nested.vmcb12_gpa;
-	}
-
-	if (unlikely(new_vmcb12 || vmcb_is_dirty(vmcb12, VMCB_SEG))) {
-		svm->vmcb->save.es = vmcb12->save.es;
-		svm->vmcb->save.cs = vmcb12->save.cs;
-		svm->vmcb->save.ss = vmcb12->save.ss;
-		svm->vmcb->save.ds = vmcb12->save.ds;
-		svm->vmcb->save.cpl = vmcb12->save.cpl;
-		vmcb_mark_dirty(svm->vmcb, VMCB_SEG);
-	}
-
-	if (unlikely(new_vmcb12 || vmcb_is_dirty(vmcb12, VMCB_DT))) {
-		svm->vmcb->save.gdtr = vmcb12->save.gdtr;
-		svm->vmcb->save.idtr = vmcb12->save.idtr;
-		vmcb_mark_dirty(svm->vmcb, VMCB_DT);
-	}
-
+	svm->vmcb->save.es = vmcb12->save.es;
+	svm->vmcb->save.cs = vmcb12->save.cs;
+	svm->vmcb->save.ss = vmcb12->save.ss;
+	svm->vmcb->save.ds = vmcb12->save.ds;
+	svm->vmcb->save.gdtr = vmcb12->save.gdtr;
+	svm->vmcb->save.idtr = vmcb12->save.idtr;
 	kvm_set_rflags(&svm->vcpu, vmcb12->save.rflags | X86_EFLAGS_FIXED);
 
 	/*
@@ -548,14 +533,7 @@ int enter_svm_guest_mode(struct kvm_vcpu *vcpu, u64 vmcb12_gpa,
 
 
 	svm->nested.vmcb12_gpa = vmcb12_gpa;
-
-	WARN_ON(svm->vmcb == svm->nested.vmcb02.ptr);
-
-	nested_svm_copy_common_state(svm->vmcb01.ptr, svm->nested.vmcb02.ptr);
-
-	svm_switch_vmcb(svm, &svm->nested.vmcb02);
-	nested_vmcb02_prepare_control(svm);
-	nested_vmcb02_prepare_save(svm, vmcb12);
+	nested_prepare_vmcb_save(svm, vmcb12);
 
 	ret = nested_svm_load_cr3(&svm->vcpu, vmcb12->save.cr3,
 				  nested_npt_enabled(svm));

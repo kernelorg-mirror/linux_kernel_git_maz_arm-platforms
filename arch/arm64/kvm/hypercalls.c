@@ -59,6 +59,14 @@ static void kvm_ptp_get_time(struct kvm_vcpu *vcpu, u64 *val)
 	val[3] = lower_32_bits(cycles);
 }
 
+static bool mmio_guard_allowed(struct kvm_vcpu *vcpu)
+{
+	return (!test_bit(KVM_ARCH_FLAG_RETURN_NISV_IO_ABORT_TO_USER,
+			  &vcpu->kvm->arch.flags) &&
+		!vcpu_mode_is_32bit(vcpu));
+
+}
+
 int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 {
 	u32 func_id = smccc_get_function(vcpu);
@@ -131,7 +139,7 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 		val[0] = BIT(ARM_SMCCC_KVM_FUNC_FEATURES);
 		val[0] |= BIT(ARM_SMCCC_KVM_FUNC_PTP);
 		/* Only advertise MMIO guard to 64bit guests */
-		if (!vcpu_mode_is_32bit(vcpu)) {
+		if (mmio_guard_allowed(vcpu)) {
 			val[0] |= BIT(ARM_SMCCC_KVM_FUNC_MMIO_GUARD_INFO);
 			val[0] |= BIT(ARM_SMCCC_KVM_FUNC_MMIO_GUARD_ENROLL);
 			val[0] |= BIT(ARM_SMCCC_KVM_FUNC_MMIO_GUARD_MAP);
@@ -146,10 +154,12 @@ int kvm_hvc_call_handler(struct kvm_vcpu *vcpu)
 			val[0] = PAGE_SIZE;
 		break;
 	case ARM_SMCCC_VENDOR_HYP_KVM_MMIO_GUARD_ENROLL_FUNC_ID:
-		if (!vcpu_mode_is_32bit(vcpu)) {
+		mutex_lock(&vcpu->kvm->lock);
+		if (mmio_guard_allowed(vcpu)) {
 			set_bit(KVM_ARCH_FLAG_MMIO_GUARD, &vcpu->kvm->arch.flags);
 			val[0] = SMCCC_RET_SUCCESS;
 		}
+		mutex_unlock(&vcpu->kvm->lock);
 		break;
 	case ARM_SMCCC_VENDOR_HYP_KVM_MMIO_GUARD_MAP_FUNC_ID:
 		if (!vcpu_mode_is_32bit(vcpu) &&

@@ -138,7 +138,7 @@ static void bcm6345_l1_irq_handle(struct irq_desc *desc)
 		pending &= __raw_readl(cpu->map_base + reg_enable(intc, idx));
 
 		for_each_set_bit(hwirq, &pending, IRQS_PER_WORD) {
-			irq = irq_linear_revmap(intc->domain, base + hwirq);
+			irq = irq_find_mapping(intc->domain, base + hwirq);
 			if (irq)
 				do_IRQ(irq);
 			else

@@ -63,8 +63,6 @@ variety of methods:
   mapping.
 - irq_find_mapping() returns a Linux IRQ number for a given domain and
   hwirq number, and 0 if there was no mapping
-- irq_linear_revmap() is now identical to irq_find_mapping(), and is
-  deprecated
 - generic_handle_domain_irq() handles an interrupt described by a
   domain and a hwirq number
 - handle_domain_irq() does the same thing for root interrupt

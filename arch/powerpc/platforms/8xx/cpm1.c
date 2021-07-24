@@ -95,7 +95,7 @@ int cpm_get_irq(void)
 	cpm_vec = in_be16(&cpic_reg->cpic_civr);
 	cpm_vec >>= 11;
 
-	return irq_linear_revmap(cpm_pic_host, cpm_vec);
+	return irq_find_mapping(cpm_pic_host, cpm_vec);
 }
 
 static int cpm_pic_host_map(struct irq_domain *h, unsigned int virq,

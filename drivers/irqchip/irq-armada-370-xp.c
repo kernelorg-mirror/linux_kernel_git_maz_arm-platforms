@@ -492,7 +492,7 @@ static void armada_xp_mpic_reenable_percpu(void)
 		struct irq_data *data;
 		int virq;
 
-		virq = irq_linear_revmap(armada_370_xp_mpic_domain, irq);
+		virq = irq_find_mapping(armada_370_xp_mpic_domain, irq);
 		if (virq == 0)
 			continue;
 
@@ -691,7 +691,7 @@ static void armada_370_xp_mpic_resume(void)
 		struct irq_data *data;
 		int virq;
 
-		virq = irq_linear_revmap(armada_370_xp_mpic_domain, irq);
+		virq = irq_find_mapping(armada_370_xp_mpic_domain, irq);
 		if (virq == 0)
 			continue;
 

@@ -137,7 +137,7 @@ static unsigned int iic_get_irq(void)
 		in_be64((u64 __iomem *) &iic->regs->pending_destr);
 	if (!(pending.flags & CBE_IIC_IRQ_VALID))
 		return 0;
-	virq = irq_linear_revmap(iic_host, iic_pending_to_hwnum(pending));
+	virq = irq_find_mapping(iic_host, iic_pending_to_hwnum(pending));
 	if (!virq)
 		return 0;
 	iic->eoi_stack[++iic->eoi_ptr] = pending.prio;

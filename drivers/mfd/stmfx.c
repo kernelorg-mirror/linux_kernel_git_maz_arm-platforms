@@ -225,7 +225,7 @@ static irqreturn_t stmfx_irq_handler(int irq, void *data)
 
 	bits = pending;
 	for_each_set_bit(n, &bits, STMFX_REG_IRQ_SRC_MAX)
-		handle_nested_irq(irq_find_mapping(stmfx->irq_domain, n));
+		handle_nested_domain_irq(stmfx->irq_domain, n);
 
 	return IRQ_HANDLED;
 }

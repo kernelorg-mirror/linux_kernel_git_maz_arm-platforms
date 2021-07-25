@@ -122,7 +122,7 @@ static void mt6358_irq_sp_handler(struct mt6397_chip *chip,
 				  unsigned int top_gp)
 {
 	unsigned int irq_status, sta_reg, status;
-	unsigned int hwirq, virq;
+	unsigned int hwirq;
 	int i, j, ret;
 	struct pmic_irq_data *irqd = chip->irq_data;
 
@@ -147,9 +147,7 @@ static void mt6358_irq_sp_handler(struct mt6397_chip *chip,
 			hwirq = irqd->pmic_ints[top_gp].hwirq_base +
 				MTK_PMIC_REG_WIDTH * i + j;
 
-			virq = irq_find_mapping(chip->irq_domain, hwirq);
-			if (virq)
-				handle_nested_irq(virq);
+			handle_nested_domain_irq(chip->irq_domain, hwirq);
 
 			status &= ~BIT(j);
 		} while (status);

@@ -468,11 +468,9 @@ static irqreturn_t wm831x_irq_thread(int irq, void *data)
 	 * descriptors.
 	 */
 	if (primary & WM831X_TCHPD_INT)
-		handle_nested_irq(irq_find_mapping(wm831x->irq_domain,
-						   WM831X_IRQ_TCHPD));
+		handle_nested_domain_irq(wm831x->irq_domain, WM831X_IRQ_TCHPD);
 	if (primary & WM831X_TCHDATA_INT)
-		handle_nested_irq(irq_find_mapping(wm831x->irq_domain,
-						   WM831X_IRQ_TCHDATA));
+		handle_nested_domain_irq(wm831x->irq_domain, WM831X_IRQ_TCHDATA);
 	primary &= ~(WM831X_TCHDATA_EINT | WM831X_TCHPD_EINT);
 
 	for (i = 0; i < ARRAY_SIZE(wm831x_irqs); i++) {
@@ -508,8 +506,7 @@ static irqreturn_t wm831x_irq_thread(int irq, void *data)
 		}
 
 		if (*status & wm831x_irqs[i].mask)
-			handle_nested_irq(irq_find_mapping(wm831x->irq_domain,
-							   i));
+			handle_nested_domain_irq(wm831x->irq_domain, i);
 
 		/* Simulate an edge triggered IRQ by polling the input
 		 * status.  This is sucky but improves interoperability.
@@ -518,8 +515,7 @@ static irqreturn_t wm831x_irq_thread(int irq, void *data)
 		    wm831x->gpio_level_high[i - WM831X_IRQ_GPIO_1]) {
 			ret = wm831x_reg_read(wm831x, WM831X_GPIO_LEVEL);
 			while (ret & 1 << (i - WM831X_IRQ_GPIO_1)) {
-				handle_nested_irq(irq_find_mapping(wm831x->irq_domain,
-								   i));
+				handle_nested_domain_irq(wm831x->irq_domain, i);
 				ret = wm831x_reg_read(wm831x,
 						      WM831X_GPIO_LEVEL);
 			}
@@ -529,8 +525,7 @@ static irqreturn_t wm831x_irq_thread(int irq, void *data)
 		    wm831x->gpio_level_low[i - WM831X_IRQ_GPIO_1]) {
 			ret = wm831x_reg_read(wm831x, WM831X_GPIO_LEVEL);
 			while (!(ret & 1 << (i - WM831X_IRQ_GPIO_1))) {
-				handle_nested_irq(irq_find_mapping(wm831x->irq_domain,
-								   i));
+				handle_nested_domain_irq(wm831x->irq_domain, i);
 				ret = wm831x_reg_read(wm831x,
 						      WM831X_GPIO_LEVEL);
 			}

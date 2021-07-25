@@ -327,8 +327,7 @@ static irqreturn_t tps6586x_irq(int irq, void *data)
 		int i = __ffs(acks);
 
 		if (tps6586x->irq_en & (1 << i))
-			handle_nested_irq(
-				irq_find_mapping(tps6586x->irq_domain, i));
+			handle_nested_domain_irq(tps6586x->irq_domain, i);
 
 		acks &= ~(1 << i);
 	}

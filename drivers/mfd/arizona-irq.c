@@ -120,8 +120,7 @@ static irqreturn_t arizona_irq_thread(int irq, void *data)
 				dev_warn(arizona->dev,
 					"Failed to read AOD IRQ1 %d\n", ret);
 			else if (val)
-				handle_nested_irq(
-					irq_find_mapping(arizona->virq, 0));
+				handle_nested_domain_irq(arizona->virq, 0);
 		}
 
 		/*
@@ -131,7 +130,7 @@ static irqreturn_t arizona_irq_thread(int irq, void *data)
 		ret = regmap_read(arizona->regmap, ARIZONA_IRQ_PIN_STATUS,
 				  &val);
 		if (ret == 0 && val & ARIZONA_IRQ1_STS) {
-			handle_nested_irq(irq_find_mapping(arizona->virq, 1));
+			handle_nested_domain_irq(arizona->virq, 1);
 		} else if (ret != 0) {
 			dev_err(arizona->dev,
 				"Failed to read main IRQ status: %d\n", ret);

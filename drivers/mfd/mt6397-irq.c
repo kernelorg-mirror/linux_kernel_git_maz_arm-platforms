@@ -83,7 +83,7 @@ static void mt6397_irq_handle_reg(struct mt6397_chip *mt6397, int reg,
 				  int irqbase)
 {
 	unsigned int status = 0;
-	int i, irq, ret;
+	int i, ret;
 
 	ret = regmap_read(mt6397->regmap, reg, &status);
 	if (ret) {
@@ -92,11 +92,8 @@ static void mt6397_irq_handle_reg(struct mt6397_chip *mt6397, int reg,
 	}
 
 	for (i = 0; i < 16; i++) {
-		if (status & BIT(i)) {
-			irq = irq_find_mapping(mt6397->irq_domain, irqbase + i);
-			if (irq)
-				handle_nested_irq(irq);
-		}
+		if (status & BIT(i))
+			handle_nested_domain_irq(mt6397->irq_domain, irqbase + i);
 	}
 
 	regmap_write(mt6397->regmap, reg, status);

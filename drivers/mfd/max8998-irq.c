@@ -169,14 +169,8 @@ static irqreturn_t max8998_irq_thread(int irq, void *data)
 
 	/* Report */
 	for (i = 0; i < MAX8998_IRQ_NR; i++) {
-		if (irq_reg[max8998_irqs[i].reg - 1] & max8998_irqs[i].mask) {
-			irq = irq_find_mapping(max8998->irq_domain, i);
-			if (WARN_ON(!irq)) {
-				disable_irq_nosync(max8998->irq);
-				return IRQ_NONE;
-			}
-			handle_nested_irq(irq);
-		}
+		if (irq_reg[max8998_irqs[i].reg - 1] & max8998_irqs[i].mask)
+			handle_nested_domain_irq(max8998->irq_domain, i);
 	}
 
 	return IRQ_HANDLED;

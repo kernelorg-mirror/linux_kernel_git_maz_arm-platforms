@@ -168,7 +168,7 @@ static irqreturn_t max8997_irq_thread(int irq, void *data)
 	u8 irq_reg[MAX8997_IRQ_GROUP_NR] = {};
 	u8 irq_src;
 	int ret;
-	int i, cur_irq;
+	int i;
 
 	ret = max8997_read_reg(max8997->i2c, MAX8997_REG_INTSRC, &irq_src);
 	if (ret < 0) {
@@ -255,11 +255,8 @@ static irqreturn_t max8997_irq_thread(int irq, void *data)
 
 	/* Report */
 	for (i = 0; i < MAX8997_IRQ_NR; i++) {
-		if (irq_reg[max8997_irqs[i].group] & max8997_irqs[i].mask) {
-			cur_irq = irq_find_mapping(max8997->irq_domain, i);
-			if (cur_irq)
-				handle_nested_irq(cur_irq);
-		}
+		if (irq_reg[max8997_irqs[i].group] & max8997_irqs[i].mask)
+			handle_nested_domain_irq(max8997->irq_domain, i);
 	}
 
 	return IRQ_HANDLED;

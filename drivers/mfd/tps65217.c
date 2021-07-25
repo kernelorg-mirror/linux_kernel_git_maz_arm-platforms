@@ -126,7 +126,7 @@ static irqreturn_t tps65217_irq_thread(int irq, void *data)
 
 	for (i = 0; i < TPS65217_NUM_IRQ; i++) {
 		if (status & BIT(i)) {
-			handle_nested_irq(irq_find_mapping(tps->irq_domain, i));
+			handle_nested_domain_irq(tps->irq_domain, i);
 			handled = true;
 		}
 	}

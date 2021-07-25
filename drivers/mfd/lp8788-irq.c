@@ -120,7 +120,7 @@ static irqreturn_t lp8788_irq_handler(int irq, void *ptr)
 
 		/* reporting only if the irq is enabled */
 		if (status[addr] & mask) {
-			handle_nested_irq(irq_find_mapping(irqd->domain, i));
+			handle_nested_domain_irq(irqd->domain, i);
 			handled = true;
 		}
 	}

@@ -155,7 +155,7 @@ static int twl6030_irq_pm_notifier(struct notifier_block *notifier,
 * Threaded irq handler for the twl6030 interrupt.
 * We query the interrupt controller in the twl6030 to determine
 * which module is generating the interrupt request and call
-* handle_nested_irq for that module.
+* handle_nested_domain_irq for that module.
 */
 static irqreturn_t twl6030_irq_thread(int irq, void *data)
 {
@@ -185,18 +185,9 @@ static irqreturn_t twl6030_irq_thread(int irq, void *data)
 
 	int_sts = le32_to_cpu(sts.int_sts);
 	for (i = 0; int_sts; int_sts >>= 1, i++)
-		if (int_sts & 0x1) {
-			int module_irq =
-				irq_find_mapping(pdata->irq_domain,
+		if (int_sts & 0x1)
+			handle_nested_domain_irq(pdata->irq_domain,
 						 pdata->irq_mapping_tbl[i]);
-			if (module_irq)
-				handle_nested_irq(module_irq);
-			else
-				pr_err("twl6030_irq: Unmapped PIH ISR %u detected\n",
-				       i);
-			pr_debug("twl6030_irq: PIH ISR %u, virq%u\n",
-				 i, module_irq);
-		}
 
 	/*
 	 * NOTE:

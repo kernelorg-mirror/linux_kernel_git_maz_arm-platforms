@@ -676,6 +676,15 @@ int generic_handle_domain_irq(struct irq_domain *domain, unsigned int hwirq)
 }
 EXPORT_SYMBOL_GPL(generic_handle_domain_irq);
 
+void handle_nested_domain_irq(struct irq_domain *domain, unsigned int hwirq)
+{
+	struct irq_desc *desc = irq_resolve_mapping(domain, hwirq);
+
+	if (likely(desc))
+		__handle_nested_irq(desc);
+}
+EXPORT_SYMBOL_GPL(handle_nested_domain_irq);
+
 #ifdef CONFIG_HANDLE_DOMAIN_IRQ
 /**
  * handle_domain_irq - Invoke the handler for a HW irq belonging to a domain,

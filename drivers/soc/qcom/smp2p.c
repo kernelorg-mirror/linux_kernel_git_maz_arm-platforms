@@ -178,7 +178,6 @@ static irqreturn_t qcom_smp2p_intr(int irq, void *data)
 	unsigned smem_id = smp2p->smem_items[SMP2P_INBOUND];
 	unsigned pid = smp2p->remote_pid;
 	size_t size;
-	int irq_pin;
 	u32 status;
 	char buf[SMP2P_MAX_ENTRY_NAME];
 	u32 val;
@@ -230,10 +229,8 @@ static irqreturn_t qcom_smp2p_intr(int irq, void *data)
 				continue;
 
 			if ((val & BIT(i) && test_bit(i, entry->irq_rising)) ||
-			    (!(val & BIT(i)) && test_bit(i, entry->irq_falling))) {
-				irq_pin = irq_find_mapping(entry->domain, i);
-				handle_nested_irq(irq_pin);
-			}
+			    (!(val & BIT(i)) && test_bit(i, entry->irq_falling)))
+				handle_nested_domain_irq(entry->domain, i);
 		}
 	}
 

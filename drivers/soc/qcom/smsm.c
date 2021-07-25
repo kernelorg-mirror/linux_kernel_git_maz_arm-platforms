@@ -199,7 +199,6 @@ static irqreturn_t smsm_intr(int irq, void *data)
 {
 	struct smsm_entry *entry = data;
 	unsigned i;
-	int irq_pin;
 	u32 changed;
 	u32 val;
 
@@ -211,15 +210,11 @@ static irqreturn_t smsm_intr(int irq, void *data)
 			continue;
 
 		if (val & BIT(i)) {
-			if (test_bit(i, entry->irq_rising)) {
-				irq_pin = irq_find_mapping(entry->domain, i);
-				handle_nested_irq(irq_pin);
-			}
+			if (test_bit(i, entry->irq_rising))
+				handle_nested_domain_irq(entry->domain, i);
 		} else {
-			if (test_bit(i, entry->irq_falling)) {
-				irq_pin = irq_find_mapping(entry->domain, i);
-				handle_nested_irq(irq_pin);
-			}
+			if (test_bit(i, entry->irq_falling))
+				handle_nested_domain_irq(entry->domain, i);
 		}
 	}
 

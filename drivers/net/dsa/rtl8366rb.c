@@ -453,7 +453,6 @@ static irqreturn_t rtl8366rb_irq(int irq, void *data)
 		return IRQ_NONE;
 	while (stat) {
 		int line = __ffs(stat);
-		int child_irq;
 
 		stat &= ~BIT(line);
 		/* For line interrupts we combine link down in bits
@@ -461,8 +460,7 @@ static irqreturn_t rtl8366rb_irq(int irq, void *data)
 		 */
 		if (line < 12 && line > 5)
 			line -= 5;
-		child_irq = irq_find_mapping(smi->irqdomain, line);
-		handle_nested_irq(child_irq);
+		handle_nested_domain_irq(smi->irqdomain, line);
 	}
 	return IRQ_HANDLED;
 }

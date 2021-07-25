@@ -722,12 +722,8 @@ static irqreturn_t ar9331_sw_irq(int irq, void *data)
 	if (!stat)
 		return IRQ_NONE;
 
-	if (stat & AR9331_SW_GINT_PHY_INT) {
-		int child_irq;
-
-		child_irq = irq_find_mapping(priv->irqdomain, 0);
-		handle_nested_irq(child_irq);
-	}
+	if (stat & AR9331_SW_GINT_PHY_INT)
+		handle_nested_domain_irq(priv->irqdomain, 0);
 
 	ret = regmap_write(regmap, AR9331_SW_REG_GINT, stat);
 	if (ret) {

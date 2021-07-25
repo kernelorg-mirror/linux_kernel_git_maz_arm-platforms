@@ -143,7 +143,6 @@ static void mv88e6xxx_g1_irq_unmask(struct irq_data *d)
 static irqreturn_t mv88e6xxx_g1_irq_thread_work(struct mv88e6xxx_chip *chip)
 {
 	unsigned int nhandled = 0;
-	unsigned int sub_irq;
 	unsigned int n;
 	u16 reg;
 	u16 ctl1;
@@ -159,9 +158,7 @@ static irqreturn_t mv88e6xxx_g1_irq_thread_work(struct mv88e6xxx_chip *chip)
 	do {
 		for (n = 0; n < chip->g1_irq.nirqs; ++n) {
 			if (reg & (1 << n)) {
-				sub_irq = irq_find_mapping(chip->g1_irq.domain,
-							   n);
-				handle_nested_irq(sub_irq);
+				handle_nested_domain_irq(chip->g1_irq.domain, n);
 				++nhandled;
 			}
 		}

@@ -1027,7 +1027,6 @@ static irqreturn_t mv88e6xxx_g2_irq_thread_fn(int irq, void *dev_id)
 {
 	struct mv88e6xxx_chip *chip = dev_id;
 	unsigned int nhandled = 0;
-	unsigned int sub_irq;
 	unsigned int n;
 	int err;
 	u16 reg;
@@ -1040,8 +1039,7 @@ static irqreturn_t mv88e6xxx_g2_irq_thread_fn(int irq, void *dev_id)
 
 	for (n = 0; n < 16; ++n) {
 		if (reg & (1 << n)) {
-			sub_irq = irq_find_mapping(chip->g2_irq.domain, n);
-			handle_nested_irq(sub_irq);
+			handle_nested_domain_irq(chip->g2_irq.domain, n);
 			++nhandled;
 		}
 	}

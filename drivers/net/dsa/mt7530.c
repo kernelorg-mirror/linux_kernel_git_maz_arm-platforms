@@ -1893,10 +1893,7 @@ mt7530_irq_thread_fn(int irq, void *dev_id)
 
 	for (p = 0; p < MT7530_NUM_PHYS; p++) {
 		if (BIT(p) & val) {
-			unsigned int irq;
-
-			irq = irq_find_mapping(priv->irq_domain, p);
-			handle_nested_irq(irq);
+			handle_nested_domain_irq(priv->irq_domain, p);
 			handled = true;
 		}
 	}

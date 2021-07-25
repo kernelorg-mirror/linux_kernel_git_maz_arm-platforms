@@ -451,16 +451,15 @@ void unmask_threaded_irq(struct irq_desc *desc)
 }
 
 /*
- *	handle_nested_irq - Handle a nested irq from a irq thread
- *	@irq:	the interrupt number
+ *	__handle_nested_irq - Handle a nested irq from a irq thread
+ *	@desc:	the interrupt descriptor
  *
  *	Handle interrupts which are nested into a threaded interrupt
  *	handler. The handler function is called inside the calling
  *	threads context.
  */
-void handle_nested_irq(unsigned int irq)
+void __handle_nested_irq(struct irq_desc *desc)
 {
-	struct irq_desc *desc = irq_to_desc(irq);
 	struct irqaction *action;
 	irqreturn_t action_ret;
 
@@ -492,6 +491,19 @@ void handle_nested_irq(unsigned int irq)
 
 out_unlock:
 	raw_spin_unlock_irq(&desc->lock);
+}
+
+/*
+ *	handle_nested_irq - Handle a nested irq from a irq thread
+ *	@irq:	the interrupt number
+ *
+ *	Handle interrupts which are nested into a threaded interrupt
+ *	handler. The handler function is called inside the calling
+ *	threads context.
+ */
+void handle_nested_irq(unsigned int irq)
+{
+	__handle_nested_irq(irq_to_desc(irq));
 }
 EXPORT_SYMBOL_GPL(handle_nested_irq);
 

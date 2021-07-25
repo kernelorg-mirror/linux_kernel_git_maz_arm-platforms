@@ -580,7 +580,7 @@ static irqreturn_t stmfx_pinctrl_irq_thread_fn(int irq, void *dev_id)
 	for (i = 0, status = 0; i < NR_GPIO_REGS; i++)
 		status |= (unsigned long)pending[i] << (i * 8);
 	for_each_set_bit(n, &status, gc->ngpio) {
-		handle_nested_irq(irq_find_mapping(gc->irq.domain, n));
+		handle_nested_domain_irq(gc->irq.domain, n);
 		stmfx_pinctrl_irq_toggle_trigger(pctl, n);
 	}
 

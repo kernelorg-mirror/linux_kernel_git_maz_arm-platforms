@@ -555,7 +555,7 @@ static irqreturn_t sx150x_irq_thread_fn(int irq, void *dev_id)
 
 	status = val;
 	for_each_set_bit(n, &status, pctl->data->ngpios)
-		handle_nested_irq(irq_find_mapping(pctl->gpio.irq.domain, n));
+		handle_nested_domain_irq(pctl->gpio.irq.domain, n);
 
 	return IRQ_HANDLED;
 }
@@ -1199,7 +1199,7 @@ static int sx150x_probe(struct i2c_client *client,
 
 		/*
 		 * Because sx150x_irq_threaded_fn invokes all of the
-		 * nested interrupt handlers via handle_nested_irq,
+		 * nested interrupt handlers via handle_nested_domain_irq,
 		 * any "handler" assigned to struct gpio_irq_chip
 		 * below is going to be ignored, so the choice of the
 		 * function does not matter that much.

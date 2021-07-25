@@ -344,7 +344,6 @@ static irqreturn_t mcp23s08_irq(int irq, void *data)
 {
 	struct mcp23s08 *mcp = data;
 	int intcap, intcon, intf, i, gpio, gpio_orig, intcap_mask, defval;
-	unsigned int child_irq;
 	bool intf_set, intcap_changed, gpio_bit_changed,
 		defval_changed, gpio_set;
 
@@ -419,10 +418,8 @@ static irqreturn_t mcp23s08_irq(int irq, void *data)
 			(BIT(i) & mcp->irq_rise) && gpio_set) ||
 		    ((gpio_bit_changed || intcap_changed) &&
 			(BIT(i) & mcp->irq_fall) && !gpio_set) ||
-		    defval_changed) {
-			child_irq = irq_find_mapping(mcp->chip.irq.domain, i);
-			handle_nested_irq(child_irq);
-		}
+		    defval_changed)
+			handle_nested_domain_irq(mcp->chip.irq.domain, i);
 	}
 
 	return IRQ_HANDLED;

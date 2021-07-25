@@ -261,8 +261,7 @@ static irqreturn_t adp5588_irq_handler(int irq, void *devid)
 
 				if ((lvl && dev->int_lvl_high[bank] & bit) ||
 				    (!lvl && dev->int_lvl_low[bank] & bit))
-					handle_nested_irq(irq_find_mapping(
-					      dev->gpio_chip.irq.domain, gpio));
+					handle_nested_domain_irq(dev->gpio_chip.irq.domain, gpio);
 			}
 		}
 	}

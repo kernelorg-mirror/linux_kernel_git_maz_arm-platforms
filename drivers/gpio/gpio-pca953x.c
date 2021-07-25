@@ -798,14 +798,7 @@ static irqreturn_t pca953x_irq_handler(int irq, void *devid)
 		ret = 0;
 
 		for_each_set_bit(level, pending, gc->ngpio) {
-			int nested_irq = irq_find_mapping(gc->irq.domain, level);
-
-			if (unlikely(nested_irq <= 0)) {
-				dev_warn_ratelimited(gc->parent, "unmapped interrupt %d\n", level);
-				continue;
-			}
-
-			handle_nested_irq(nested_irq);
+			handle_nested_domain_irq(gc->irq.domain, level);
 			ret = 1;
 		}
 	}

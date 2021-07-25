@@ -76,19 +76,16 @@ static int gpio_siox_get_data(struct siox_device *sdevice, const u8 buf[])
 
 	for (offset = 0; offset < 12; ++offset) {
 		if (trigger & (1 << offset)) {
-			struct irq_domain *irqdomain = ddata->gchip.irq.domain;
-			unsigned int irq = irq_find_mapping(irqdomain, offset);
-
 			/*
-			 * Conceptually handle_nested_irq should call the flow
-			 * handler of the irq chip. But it doesn't, so we have
-			 * to clean the irq_status here.
+			 * Conceptually handle_nested_domain_irq should call
+			 * the flow handler of the irq chip. But it doesn't,
+			 * so we have to clean the irq_status here.
 			 */
 			raw_spin_lock_irq(&ddata->irqlock);
 			ddata->irq_status &= ~(1 << offset);
 			raw_spin_unlock_irq(&ddata->irqlock);
 
-			handle_nested_irq(irq);
+			handle_nested_domain_irq(ddata->gchip.irq.domain, offset);
 		}
 	}
 

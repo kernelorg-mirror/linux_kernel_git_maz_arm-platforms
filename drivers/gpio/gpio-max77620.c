@@ -38,12 +38,8 @@ static irqreturn_t max77620_gpio_irqhandler(int irq, void *data)
 
 	pending = value;
 
-	for_each_set_bit(offset, &pending, MAX77620_GPIO_NR) {
-		unsigned int virq;
-
-		virq = irq_find_mapping(gpio->gpio_chip.irq.domain, offset);
-		handle_nested_irq(virq);
-	}
+	for_each_set_bit(offset, &pending, MAX77620_GPIO_NR)
+		handle_nested_domain_irq(gpio->gpio_chip.irq.domain, offset);
 
 	return IRQ_HANDLED;
 }

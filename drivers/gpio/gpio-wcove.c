@@ -328,7 +328,7 @@ static struct irq_chip wcove_irqchip = {
 static irqreturn_t wcove_gpio_irq_handler(int irq, void *data)
 {
 	struct wcove_gpio *wg = (struct wcove_gpio *)data;
-	unsigned int virq, gpio;
+	unsigned int gpio;
 	unsigned long pending;
 	u8 p[2];
 
@@ -347,8 +347,7 @@ static irqreturn_t wcove_gpio_irq_handler(int irq, void *data)
 		for_each_set_bit(gpio, &pending, WCOVE_GPIO_NUM) {
 			unsigned int mask, reg = to_ireg(gpio, IRQ_STATUS, &mask);
 
-			virq = irq_find_mapping(wg->chip.irq.domain, gpio);
-			handle_nested_irq(virq);
+			handle_nested_domain_irq(wg->chip.irq.domain, gpio);
 			regmap_set_bits(wg->regmap, reg, mask);
 		}
 

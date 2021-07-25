@@ -287,12 +287,9 @@ static irqreturn_t adnp_irq(int irq, void *data)
 		/* mask out non-pending and disabled interrupts */
 		pending &= isr & ier;
 
-		for_each_set_bit(bit, &pending, 8) {
-			unsigned int child_irq;
-			child_irq = irq_find_mapping(adnp->gpio.irq.domain,
-						     base + bit);
-			handle_nested_irq(child_irq);
-		}
+		for_each_set_bit(bit, &pending, 8)
+			handle_nested_domain_irq(adnp->gpio.irq.domain,
+						 base + bit);
 	}
 
 	return IRQ_HANDLED;

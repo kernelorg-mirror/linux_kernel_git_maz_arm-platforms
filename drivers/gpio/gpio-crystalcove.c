@@ -274,7 +274,6 @@ static irqreturn_t crystalcove_gpio_irq_handler(int irq, void *data)
 	unsigned long pending;
 	unsigned int p0, p1;
 	int gpio;
-	unsigned int virq;
 
 	if (regmap_read(cg->regmap, GPIO0IRQ, &p0) ||
 	    regmap_read(cg->regmap, GPIO1IRQ, &p1))
@@ -285,10 +284,8 @@ static irqreturn_t crystalcove_gpio_irq_handler(int irq, void *data)
 
 	pending = p0 | p1 << 8;
 
-	for_each_set_bit(gpio, &pending, CRYSTALCOVE_GPIO_NUM) {
-		virq = irq_find_mapping(cg->chip.irq.domain, gpio);
-		handle_nested_irq(virq);
-	}
+	for_each_set_bit(gpio, &pending, CRYSTALCOVE_GPIO_NUM)
+		handle_nested_domain_irq(cg->chip.irq.domain, gpio);
 
 	return IRQ_HANDLED;
 }

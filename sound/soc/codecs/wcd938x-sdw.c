@@ -181,7 +181,7 @@ static int wcd9380_interrupt_callback(struct sdw_slave *slave,
 	u32 sts1, sts2, sts3;
 
 	do {
-		handle_nested_irq(irq_find_mapping(slave_irq, 0));
+		handle_nested_domain_irq(slave_irq, 0);
 		regmap_read(regmap, WCD938X_DIGITAL_INTR_STATUS_0, &sts1);
 		regmap_read(regmap, WCD938X_DIGITAL_INTR_STATUS_1, &sts2);
 		regmap_read(regmap, WCD938X_DIGITAL_INTR_STATUS_2, &sts3);

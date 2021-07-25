@@ -5332,7 +5332,7 @@ static bool rt5677_check_hotword(struct rt5677_priv *rt5677)
 static irqreturn_t rt5677_irq(int unused, void *data)
 {
 	struct rt5677_priv *rt5677 = data;
-	int ret, loop, i, reg_irq, virq;
+	int ret, loop, i, reg_irq;
 	bool irq_fired = false;
 
 	mutex_lock(&rt5677->irq_lock);
@@ -5364,9 +5364,7 @@ static irqreturn_t rt5677_irq(int unused, void *data)
 		for (i = 0; i < RT5677_IRQ_NUM; i++) {
 			if (reg_irq & rt5677_irq_descs[i].status_mask) {
 				irq_fired = true;
-				virq = irq_find_mapping(rt5677->domain, i);
-				if (virq)
-					handle_nested_irq(virq);
+				handle_nested_domain_irq(rt5677->domain, i);
 
 				/* Clear the interrupt by flipping the polarity
 				 * of the interrupt source line that fired
@@ -5401,7 +5399,7 @@ exit:
 
 static void rt5677_resume_irq_check(struct work_struct *work)
 {
-	int i, virq;
+	int i;
 	struct rt5677_priv *rt5677 =
 		container_of(work, struct rt5677_priv, resume_irq_check.work);
 
@@ -5423,11 +5421,8 @@ static void rt5677_resume_irq_check(struct work_struct *work)
 	 */
 	mutex_lock(&rt5677->irq_lock);
 	for (i = 0; i < RT5677_IRQ_NUM; i++) {
-		if (rt5677->irq_en & rt5677_irq_descs[i].enable_mask) {
-			virq = irq_find_mapping(rt5677->domain, i);
-			if (virq)
-				handle_nested_irq(virq);
-		}
+		if (rt5677->irq_en & rt5677_irq_descs[i].enable_mask)
+			handle_nested_domain_irq(rt5677->domain, i);
 	}
 	mutex_unlock(&rt5677->irq_lock);
 }

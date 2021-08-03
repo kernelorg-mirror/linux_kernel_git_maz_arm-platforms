@@ -295,9 +295,13 @@ struct kvm_vcpu_arch {
 	/* Stage 2 paging state used by the hardware on next switch */
 	struct kvm_s2_mmu *hw_mmu;
 
-	/* HYP configuration */
+	/* Values of trap registers for the guest. */
 	u64 hcr_el2;
-	u32 mdcr_el2;
+	u64 mdcr_el2;
+	u64 cptr_el2;
+
+	/* Values of trap registers for the host before guest entry. */
+	u64 mdcr_el2_host;
 
 	/* Exception Information */
 	struct kvm_vcpu_fault_info fault;

@@ -186,8 +186,6 @@ static int handle_pvm_restricted(struct kvm_vcpu *vcpu)
 			     0;
 }
 
-typedef int (*exit_handle_fn)(struct kvm_vcpu *);
-
 static exit_handle_fn hyp_exit_handlers[] = {
 	[0 ... ESR_ELx_EC_MAX]		= handle_pvm_restricted,
 	[ESR_ELx_EC_WFx]		= NULL,

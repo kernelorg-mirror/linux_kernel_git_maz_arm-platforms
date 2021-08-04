@@ -290,6 +290,7 @@ static int pkvm_check_extension(struct kvm *kvm, long ext, int kvm_cap)
 	case KVM_CAP_NR_VCPUS:
 	case KVM_CAP_MAX_VCPUS:
 	case KVM_CAP_MAX_VCPU_ID:
+	case KVM_CAP_ARM_PROTECTED_VM:
 		r = kvm_cap;
 		break;
 	case KVM_CAP_ARM_EL1_32BIT:

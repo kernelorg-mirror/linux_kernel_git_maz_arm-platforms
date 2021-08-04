@@ -262,13 +262,6 @@ int kvm_arm_vcpu_pkvm_init(struct kvm_vcpu *vcpu)
 	if (!kvm_vm_is_protected(kvm))
 		return 0;
 
-	/*
-	 * Initialize traps for protected VMs.
-	 * NOTE: Move  trap initialization to EL2 once the code is in place for
-	 * maintaining protected VM state at EL2 instead of the host.
-	 */
-	kvm_init_protected_traps(vcpu);
-
 	if (!vcpu->vcpu_id) {
 		int i;
 		struct kvm_memory_slot *slot = kvm->arch.pkvm.firmware_slot;
@@ -294,6 +287,13 @@ int kvm_arm_vcpu_pkvm_init(struct kvm_vcpu *vcpu)
 	} else if (!test_bit(KVM_ARM_VCPU_POWER_OFF, vcpu->arch.features)) {
 		return -EPERM;
 	}
+
+	/*
+	 * Initialize traps for protected VMs.
+	 * NOTE: Move  trap initialization to EL2 once the code is in place for
+	 * maintaining protected VM state at EL2 instead of the host.
+	 */
+	kvm_init_protected_traps(vcpu);
 
 	return 0;
 }

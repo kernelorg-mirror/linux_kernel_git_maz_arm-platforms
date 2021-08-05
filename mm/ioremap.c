@@ -219,6 +219,11 @@ static inline int ioremap_p4d_range(pgd_t *pgd, unsigned long addr,
 	return 0;
 }
 
+void __weak ioremap_page_range_hook(unsigned long addr, unsigned long end,
+				    phys_addr_t phys_addr, pgprot_t prot)
+{
+}
+
 int ioremap_page_range(unsigned long addr,
 		       unsigned long end, phys_addr_t phys_addr, pgprot_t prot)
 {
@@ -245,6 +250,9 @@ int ioremap_page_range(unsigned long addr,
 
 	if (mask & ARCH_PAGE_TABLE_SYNC_MASK)
 		arch_sync_kernel_mappings(start, end);
+
+	if (!err)
+		ioremap_page_range_hook(addr, end, phys_addr, prot);
 
 	return err;
 }

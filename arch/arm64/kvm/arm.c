@@ -88,12 +88,13 @@ int kvm_vm_ioctl_enable_cap(struct kvm *kvm,
 	case KVM_CAP_ARM_NISV_TO_USER:
 		if (cap->flags)
 			return -EINVAL;
-		kvm->arch.return_nisv_io_abort_to_user = true;
+		set_bit(KVM_ARCH_FLAG_RETURN_NISV_IO_ABORT_TO_USER,
+			&kvm->arch.flags);
 		break;
 	case KVM_CAP_ARM_MTE:
 		if (!system_supports_mte() || kvm->created_vcpus || cap->flags)
 			return -EINVAL;
-		kvm->arch.mte_enabled = true;
+		set_bit(KVM_ARCH_FLAG_MTE_ENABLED, &kvm->arch.flags);
 		break;
 	case KVM_CAP_ARM_PROTECTED_VM:
 		return kvm_arm_vm_ioctl_pkvm(kvm, cap);
@@ -211,6 +212,7 @@ static int kvm_check_extension(struct kvm *kvm, long ext)
 	case KVM_CAP_SET_GUEST_DEBUG:
 	case KVM_CAP_VCPU_ATTRIBUTES:
 	case KVM_CAP_PTP_KVM:
+	case KVM_CAP_ARM_MMIO_GUARD:
 		r = 1;
 		break;
 	case KVM_CAP_ARM_SET_DEVICE_ADDR:
@@ -1158,12 +1160,18 @@ static int kvm_arch_vcpu_ioctl_vcpu_init(struct kvm_vcpu *vcpu,
 	 * ensuring that the data side is always coherent. We still
 	 * need to invalidate the I-cache though, as FWB does *not*
 	 * imply CTR_EL0.DIC.
+	 *
+	 * If the MMIO guard was enabled, we pay the price of a full
+	 * unmap to get back to a sane state (and clear the flag).
 	 */
 	if (vcpu->arch.has_run_once) {
-		if (!cpus_have_final_cap(ARM64_HAS_STAGE2_FWB))
+		if (!cpus_have_final_cap(ARM64_HAS_STAGE2_FWB) ||
+		    test_bit(KVM_ARCH_FLAG_MMIO_GUARD, &vcpu->kvm->arch.flags))
 			stage2_unmap_vm(vcpu->kvm);
 		else
 			icache_inval_all_pou();
+
+		clear_bit(KVM_ARCH_FLAG_MMIO_GUARD, &vcpu->kvm->arch.flags);
 	}
 
 	vcpu_reset_hcr(vcpu);

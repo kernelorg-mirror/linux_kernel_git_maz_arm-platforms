@@ -94,6 +94,33 @@
 			enable-method = "spin-table";
 			cpu-release-addr = <0 0>; /* To be filled by loader */
 		};
+	};
+
+	timer {
+		compatible = "arm,armv8-timer";
+		interrupt-parent = <&aic>;
+		interrupt-names = "phys", "virt", "hyp-phys", "hyp-virt";
+		interrupts = <AIC_FIQ AIC_TMR_GUEST_PHYS IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_FIQ AIC_TMR_GUEST_VIRT IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_FIQ AIC_TMR_HV_PHYS IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_FIQ AIC_TMR_HV_VIRT IRQ_TYPE_LEVEL_HIGH>;
+	};
+
+	clk24: clock-24m {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <24000000>;
+		clock-output-names = "clk24";
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		ranges;
+		dma-ranges;
+		nonposted-mmio;
 
 		pinctrl_ap: pinctrl@23c100000 {
 			compatible = "apple,t8103-pinctrl", "apple,pinctrl";
@@ -103,7 +130,10 @@
 			#gpio-cells = <2>;
 			gpio-ranges = <&pinctrl_ap 0 0 212>;
 
+			clocks = <&pmgr0 APPLE_CLK_GPIO>;
+
 			interrupt-controller;
+			#interrupt-cells = <2>;
 			interrupt-parent = <&aic>;
 			interrupts = <AIC_IRQ 190 IRQ_TYPE_LEVEL_HIGH>,
 				     <AIC_IRQ 191 IRQ_TYPE_LEVEL_HIGH>,
@@ -118,25 +148,6 @@
 					 <APPLE_PINMUX(151, 1)>,
 					 <APPLE_PINMUX(32, 1)>;
 			};
-		};
-
-		pinctrl_nub: pinctrl@23d1f0000 {
-			compatible = "apple,t8103-pinctrl", "apple,pinctrl";
-			reg = <0x2 0x3d1f0000 0x0 0x4000>;
-
-			gpio-controller;
-			#gpio-cells = <2>;
-			gpio-ranges = <&pinctrl_nub 0 0 23>;
-
-			interrupt-controller;
-			interrupt-parent = <&aic>;
-			interrupts = <AIC_IRQ 330 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 331 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 332 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 333 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 334 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 335 IRQ_TYPE_LEVEL_HIGH>,
-				     <AIC_IRQ 336 IRQ_TYPE_LEVEL_HIGH>;
 		};
 
 		pinctrl_smc: pinctrl@23e820000 {
@@ -300,33 +311,6 @@
 				ranges;
 			};
 		};
-	};
-
-	timer {
-		compatible = "arm,armv8-timer";
-		interrupt-parent = <&aic>;
-		interrupt-names = "phys", "virt", "hyp-phys", "hyp-virt";
-		interrupts = <AIC_FIQ AIC_TMR_GUEST_PHYS IRQ_TYPE_LEVEL_HIGH>,
-			     <AIC_FIQ AIC_TMR_GUEST_VIRT IRQ_TYPE_LEVEL_HIGH>,
-			     <AIC_FIQ AIC_TMR_HV_PHYS IRQ_TYPE_LEVEL_HIGH>,
-			     <AIC_FIQ AIC_TMR_HV_VIRT IRQ_TYPE_LEVEL_HIGH>;
-	};
-
-	clk24: clock-24m {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <24000000>;
-		clock-output-names = "clk24";
-	};
-
-	soc {
-		compatible = "simple-bus";
-		#address-cells = <2>;
-		#size-cells = <2>;
-
-		ranges;
-		dma-ranges;
-		nonposted-mmio;
 
 		serial0: serial@235200000 {
 			compatible = "apple,s5l-uart";
@@ -423,29 +407,6 @@
 			clocks = <&pmgr0 APPLE_CLK_NUB_GPIO>;
 		};
 
-		gpio: pinctrl@23c100000 {
-			compatible = "apple,t8103-pinctrl", "apple,pinctrl";
-			reg = <0x2 0x3c100000 0x0 0x100000>;
-
-			interrupt-parent = <&aic>;
-			interrupts = <AIC_IRQ 190 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 191 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 192 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 193 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 194 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 195 IRQ_TYPE_LEVEL_HIGH
-			              AIC_IRQ 196 IRQ_TYPE_LEVEL_HIGH>;
-
-			clocks = <&pmgr0 APPLE_CLK_GPIO>;
-
-			gpio-controller;
-			#gpio-cells = <2>;
-			gpio-ranges = <&gpio 0 0 212>;
-
-			interrupt-controller;
-			#interrupt-cells = <2>;
-		};
-
 		nub_gpio: pinctrl@23d1f0000 {
 			compatible = "apple,t8103-pinctrl", "apple,pinctrl";
 			reg = <0x2 0x3d1f0000 0x0 0x4000>;
@@ -475,7 +436,7 @@
 			interrupt-parent = <&aic>;
 			interrupts = <AIC_IRQ 617 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&pmgr0 APPLE_CLK_SPI3>;
-			cs-gpios = <&gpio 49 0>;
+			cs-gpios = <&pinctrl_ap 49 0>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 
@@ -483,7 +444,7 @@
 				compatible = "input,applespi-kbd-v1";
 				reg = <0>;
 				spi-max-frequency = <2000000>;
-				spien-gpios = <&gpio 195 0>;
+				spien-gpios = <&pinctrl_ap 195 0>;
 				irq-gpios = <&nub_gpio 13 0>;
 				interrupt-parent = <&nub_gpio>;
 				interrupts = <13 8>;

@@ -121,7 +121,7 @@ struct apple_pcie {
 	void __iomem            *rc;
 	struct irq_domain	*domain;
 	unsigned long		*bitmap;
-	u32			msi_base;
+	struct irq_fwspec	fwspec;
 	u32			nvecs;
 };
 
@@ -172,7 +172,7 @@ static int apple_msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
 				  unsigned int nr_irqs, void *args)
 {
 	struct apple_pcie *pcie = domain->host_data;
-	struct irq_fwspec fwspec;
+	struct irq_fwspec fwspec = pcie->fwspec;
 	unsigned int i;
 	int ret, hwirq;
 
@@ -186,11 +186,7 @@ static int apple_msi_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	if (hwirq < 0)
 		return -ENOSPC;
 
-	fwspec.fwnode = domain->parent->fwnode;
-	fwspec.param_count = 3;
-	fwspec.param[0] = 0;
-	fwspec.param[1] = hwirq + pcie->msi_base;
-	fwspec.param[2] = IRQ_TYPE_EDGE_RISING;
+	fwspec.param[1] += hwirq;
 
 	ret = irq_domain_alloc_irqs_parent(domain, virq, nr_irqs, &fwspec);
 	if (ret)
@@ -331,27 +327,29 @@ static int apple_pcie_setup_port(struct apple_pcie *pcie,
 static int apple_msi_init(struct apple_pcie *pcie)
 {
 	struct fwnode_handle *fwnode = dev_fwnode(pcie->dev);
-	struct device_node *parent_intc;
+	struct of_phandle_args args = {};
 	struct irq_domain *parent;
 	int ret;
 
-	ret = of_property_read_u32_index(to_of_node(fwnode), "msi-ranges",
-					 0, &pcie->msi_base);
+	ret = of_parse_phandle_with_args(to_of_node(fwnode), "msi-ranges",
+					 "#interrupt-cells", 0, &args);
 	if (ret)
 		return ret;
 
 	ret = of_property_read_u32_index(to_of_node(fwnode), "msi-ranges",
-					 1, &pcie->nvecs);
+					 args.args_count + 1, &pcie->nvecs);
 	if (ret)
 		return ret;
+
+	of_phandle_args_to_fwspec(args.np, args.args, args.args_count,
+				  &pcie->fwspec);
 
 	pcie->bitmap = devm_bitmap_zalloc(pcie->dev, pcie->nvecs, GFP_KERNEL);
 	if (!pcie->bitmap)
 		return -ENOMEM;
 
-	parent_intc = of_irq_find_parent(to_of_node(fwnode));
-	parent = irq_find_host(parent_intc);
-	if (!parent_intc || !parent) {
+	parent = irq_find_matching_fwspec(&pcie->fwspec, DOMAIN_BUS_WIRED);
+	if (!parent) {
 		dev_err(pcie->dev, "failed to find parent domain\n");
 		return -ENXIO;
 	}

@@ -368,9 +368,9 @@
 			msi-ranges = <&aic AIC_IRQ 704 IRQ_TYPE_EDGE_RISING 32>;
 
 
-			iommu-map = <0x100 &pcie0_dart_0 0 1>,
-				    <0x200 &pcie0_dart_1 0 1>,
-				    <0x300 &pcie0_dart_2 0 1>;
+			iommu-map = <0x100 &pcie0_dart_0 1 1>,
+				    <0x200 &pcie0_dart_1 1 1>,
+				    <0x300 &pcie0_dart_2 1 1>;
 			iommu-map-mask = <0xff00>;
 
 			bus-range = <0 3>;

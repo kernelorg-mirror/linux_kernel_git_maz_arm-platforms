@@ -534,9 +534,9 @@ static int apple_pcie_setup_port(struct apple_pcie *pcie,
 
 	port->base = devm_platform_ioremap_resource(platform, port->idx + 2);
 	if (IS_ERR(port->base))
-		return -ENODEV;
+		return PTR_ERR(port->base);
 
-	rmw_set(PORT_APPCLK_EN, port + PORT_APPCLK);
+	rmw_set(PORT_APPCLK_EN, port->base + PORT_APPCLK);
 
 	ret = apple_pcie_setup_refclk(pcie, port);
 	if (ret < 0)
@@ -551,9 +551,6 @@ static int apple_pcie_setup_port(struct apple_pcie *pcie,
 		dev_err(pcie->dev, "port %pOF ready wait timeout\n", np);
 		return ret;
 	}
-
-	/* Flush writes and enable the link */
-	dma_wmb();
 
 	ret = apple_pcie_port_setup_irq(port);
 	if (ret)
@@ -765,9 +762,8 @@ static int apple_pcie_init(struct pci_config_window *cfg)
 	mutex_init(&pcie->lock);
 
 	pcie->base = devm_platform_ioremap_resource(platform, 1);
-
 	if (IS_ERR(pcie->base))
-		return -ENODEV;
+		return PTR_ERR(pcie->base);
 
 	cfg->priv = pcie;
 	INIT_LIST_HEAD(&pcie->ports);

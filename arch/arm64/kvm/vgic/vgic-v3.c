@@ -69,9 +69,10 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 
 		raw_spin_lock(&irq->irq_lock);
 
-		/* Always preserve the active bit, note deactivation */
+		/* Preserve the active bit for non-LPI, note deactivation */
 		deactivated = irq->active && !(val & ICH_LR_ACTIVE_BIT);
 		irq->active = !!(val & ICH_LR_ACTIVE_BIT);
+		irq->active &= irq->intid <= VGIC_MAX_SPI;
 
 		if (irq->active && is_v2_sgi)
 			irq->active_source = cpuid;

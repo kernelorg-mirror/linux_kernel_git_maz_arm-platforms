@@ -1062,20 +1062,16 @@ static irqreturn_t soctherm_edp_isr_thread(int irq, void *arg)
 			soctherm_oc_intr_enable(ts, THROTTLE_OC4, true);
 
 		if (oc1 && soc_irq_cdata.irq_enable & BIT(0))
-			handle_nested_irq(
-				irq_find_mapping(soc_irq_cdata.domain, 0));
+			handle_nested_domain_irq(soc_irq_cdata.domain, 0);
 
 		if (oc2 && soc_irq_cdata.irq_enable & BIT(1))
-			handle_nested_irq(
-				irq_find_mapping(soc_irq_cdata.domain, 1));
+			handle_nested_domain_irq(soc_irq_cdata.domain, 1);
 
 		if (oc3 && soc_irq_cdata.irq_enable & BIT(2))
-			handle_nested_irq(
-				irq_find_mapping(soc_irq_cdata.domain, 2));
+			handle_nested_domain_irq(soc_irq_cdata.domain, 2);
 
 		if (oc4 && soc_irq_cdata.irq_enable & BIT(3))
-			handle_nested_irq(
-				irq_find_mapping(soc_irq_cdata.domain, 3));
+			handle_nested_domain_irq(soc_irq_cdata.domain, 3);
 	}
 
 	if (st) {

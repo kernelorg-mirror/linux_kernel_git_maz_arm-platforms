@@ -694,7 +694,7 @@ static irqreturn_t moxtet_irq_thread_fn(int irq, void *data)
 {
 	struct moxtet *moxtet = data;
 	unsigned long set;
-	int nhandled = 0, i, sub_irq, ret;
+	int nhandled = 0, i, ret;
 
 	ret = moxtet_irq_read(moxtet, &set);
 	if (ret < 0)
@@ -704,8 +704,7 @@ static irqreturn_t moxtet_irq_thread_fn(int irq, void *data)
 
 	do {
 		for_each_set_bit(i, &set, MOXTET_NIRQS) {
-			sub_irq = irq_find_mapping(moxtet->irq.domain, i);
-			handle_nested_irq(sub_irq);
+			handle_nested_domain_irq(moxtet->irq.domain, i);
 			dev_dbg(moxtet->dev, "%i irq\n", i);
 			++nhandled;
 		}

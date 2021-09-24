@@ -155,7 +155,7 @@ static int rmi_process_interrupt_requests(struct rmi_device *rmi_dev)
 	mutex_unlock(&data->irq_mutex);
 
 	for_each_set_bit(i, data->irq_status, data->irq_count)
-		handle_nested_irq(irq_find_mapping(data->irqdomain, i));
+		handle_nested_domain_irq(data->irqdomain, i);
 
 	if (data->input)
 		input_sync(data->input);

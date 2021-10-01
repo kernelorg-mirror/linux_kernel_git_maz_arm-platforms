@@ -69,9 +69,10 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 
 		raw_spin_lock(&irq->irq_lock);
 
-		/* Always preserve the active bit, note deactivation */
+		/* Preserve the active bit for non-LPI, note deactivation */
 		deactivated = irq->active && !(val & ICH_LR_ACTIVE_BIT);
 		irq->active = !!(val & ICH_LR_ACTIVE_BIT);
+		irq->active &= irq->intid <= VGIC_MAX_SPI;
 
 		if (irq->active && is_v2_sgi)
 			irq->active_source = cpuid;
@@ -669,6 +670,14 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 	if (cpus_have_const_cap(ARM64_WORKAROUND_CAVIUM_30115)) {
 		group0_trap = true;
 		group1_trap = true;
+	}
+
+	if (kvm_vgic_global_state.ich_vtr_el2 & ICH_VTR_SEIS_MASK) {
+		kvm_info("GICv3 with locally generated SEI\n");
+
+		group0_trap = true;
+		group1_trap = true;
+		common_trap = true;
 	}
 
 	if (group0_trap || group1_trap || common_trap) {

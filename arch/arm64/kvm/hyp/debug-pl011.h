@@ -164,6 +164,12 @@ static inline void hyp_puts(char *s)
 	hyp_putc('\n');
 }
 
+static inline void hyp_puts_noeol(char *s)
+{
+	while (*s)
+		hyp_putc(*s++);
+}
+
 static inline void __hyp_putx4(unsigned int x)
 {
 	x &= 0xf;
@@ -218,10 +224,25 @@ static inline void hyp_putx64(unsigned long x)
 
 static inline void hyp_putc(char c) { }
 static inline void hyp_puts(char *s) { }
+static inline void hyp_puts_noeol(char *s) { }
 static inline void hyp_putx32(unsigned int x) { }
 static inline void hyp_putx64(unsigned long x) { }
 
 #endif
 
 #endif	/* CONFIG_KVM_ARM_HYP_DEBUG_UART */
+
+void __noreturn hyp_panic(void);
+
+#define STRH(s) #s
+#define STR(s) STRH(s)
+
+#define HYP_HERE() do { hyp_puts("HYP_DEBUG " __FILE__ ":" STR(__LINE__)); } while(0)
+#define HYP_PANIC(x) do { hyp_puts("HYP_PANIC!!! " __FILE__ ":" STR(__LINE__)); hyp_panic(); } while(0)
+#define HYP_ASSERT(x) do { if (unlikely(!(x))) HYP_PANIC(); } while (0)
+
+#define HYP_PRINT_DUO(s, y) do {hyp_puts_noeol(s); hyp_puts_noeol(" "); hyp_putx64((unsigned long) y); } while(0)
+
+#define HYP_PRINT_VAL(v) HYP_PRINT_DUO(#v, v)
+
 #endif	/* __ARM64_KVM_HYP_DEBUG_PL011_H__ */

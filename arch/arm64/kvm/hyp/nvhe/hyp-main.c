@@ -222,6 +222,13 @@ static bool handle_shadow_entry(struct kvm_vcpu *shadow_vcpu)
 	shadow_entry_handler_fn ec_handler;
 
 	switch (shadow_vcpu->arch.pkvm.exit_code) {
+	case -1:
+		/*
+		 * First run.
+		 * TODO: Hack to test semi-protected VMs first run
+		 */
+		shadow_vcpu->arch.ctxt = host_vcpu->arch.ctxt;
+		break;
 	case ARM_EXCEPTION_IRQ:
 		break;
 	case ARM_EXCEPTION_TRAP:

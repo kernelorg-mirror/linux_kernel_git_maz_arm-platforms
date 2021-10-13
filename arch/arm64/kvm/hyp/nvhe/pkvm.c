@@ -398,6 +398,7 @@ static int init_shadow_structs(struct kvm *kvm,
 		shadow_vcpu->arch.pkvm.shadow_handle = shadow_handle;
 		shadow_vcpu->arch.pkvm.host_vcpu = host_vcpu;
 		shadow_vcpu->arch.pkvm.shadow_vm = vm;
+		shadow_vcpu->arch.pkvm.exit_code = -1;
 	}
 
 	return 0;

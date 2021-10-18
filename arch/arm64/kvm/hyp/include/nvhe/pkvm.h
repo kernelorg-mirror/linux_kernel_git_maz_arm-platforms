@@ -63,5 +63,10 @@ static inline size_t hyp_get_shadow_size(int num_vcpus)
 	       sizeof(struct shadow_vcpu_state) * num_vcpus;
 }
 
+int pkvm_reset_vcpu(struct kvm_vcpu *vcpu);
+
+bool pkvm_handle_hvc(struct kvm_vcpu *vcpu);
+
+struct kvm_vcpu *pvm_mpidr_to_vcpu(struct kvm_shadow_vm *vm, unsigned long mpidr);
 
 #endif /* __ARM64_KVM_NVHE_PKVM_H__ */

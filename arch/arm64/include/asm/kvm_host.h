@@ -168,6 +168,13 @@ struct kvm_shadow_vm {
 	int psci_version;
 };
 
+enum kvm_vcpu_power_state {
+	OFF,
+	PENDING_ON,
+	ON
+
+};
+
 struct kvm_protected_vcpu {
 	/* The handle id to the shadow structs in the hyp shadow area. */
 	int shadow_handle;
@@ -180,6 +187,9 @@ struct kvm_protected_vcpu {
 
 	/* Track the exit code for the protected guest. */
 	int exit_code;
+
+	/* Track the power state transition of a protected vcpu. */
+	enum kvm_vcpu_power_state power_state;
 };
 
 struct kvm_vcpu_fault_info {

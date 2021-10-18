@@ -443,13 +443,13 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	kvm_arch_vcpu_load_debug_state_flags(vcpu);
 
 	if (is_protected_kvm_enabled())
-		kvm_call_hyp(__pkvm_vcpu_load, vcpu);
+		kvm_call_hyp_nvhe(__pkvm_vcpu_load, vcpu);
 }
 
 void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 {
 	if (is_protected_kvm_enabled())
-		kvm_call_hyp(__pkvm_vcpu_put, vcpu);
+		kvm_call_hyp_nvhe(__pkvm_vcpu_put, vcpu);
 
 	kvm_arch_vcpu_put_debug_state_flags(vcpu);
 	kvm_arch_vcpu_put_fp(vcpu);

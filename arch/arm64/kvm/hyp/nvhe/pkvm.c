@@ -187,7 +187,7 @@ static void pvm_init_trap_regs(struct kvm_vcpu *vcpu)
 /*
  * Initialize trap register values for protected VMs.
  */
-void __pkvm_vcpu_init_traps(struct kvm_vcpu *vcpu)
+static void pkvm_vcpu_init_traps(struct kvm_vcpu *vcpu)
 {
 	pvm_init_trap_regs(vcpu);
 	pvm_init_traps_aa64pfr0(vcpu);
@@ -397,6 +397,8 @@ static int init_shadow_structs(struct kvm *kvm,
 		struct kvm_vcpu *host_vcpu = kern_hyp_va(kvm->vcpus[i]);
 
 		vm->vcpus[i] = shadow_vcpu;
+
+		pkvm_vcpu_init_traps(shadow_vcpu);
 
 		shadow_state->vm = vm;
 		shadow_vcpu->arch.hw_mmu = host_vcpu->arch.hw_mmu;

@@ -359,14 +359,15 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 	if (!is_protected_kvm_enabled())
 		return;
 
+	state = this_cpu_ptr(&loaded_state);
+
 	/* Nice try */
 	if (state->vcpu)
 		return;
 
-	state = this_cpu_ptr(&loaded_state);
-	state->vcpu = hyp_get_shadow_vcpu(vcpu) ?: kern_hyp_va(vcpu);
-
 	vcpu = kern_hyp_va(vcpu);
+
+	state->vcpu = hyp_get_shadow_vcpu(vcpu) ?: kern_hyp_va(vcpu);
 	state->is_shadow = state->vcpu != vcpu;
 
 	if (state->is_shadow) {
@@ -376,7 +377,8 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 
 		/* Propagate WFx trapping flags, trap ptrauth */
 		state->vcpu->arch.hcr_el2 &= ~(HCR_TWE | HCR_TWI |
-					       HCR_API | HCR_APK);
+					       HCR_API | HCR_APK |
+					       HCR_TVM | HCR_TRVM);
 		state->vcpu->arch.hcr_el2 |= vcpu->arch.hcr_el2 & (HCR_TWE | HCR_TWI);
 
 		/* Generic flags */

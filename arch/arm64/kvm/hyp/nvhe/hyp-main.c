@@ -399,8 +399,7 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 	state->is_shadow = state->vcpu != vcpu;
 
 	if (state->is_shadow) {
-		/* FIXME: we can't trust the validity of these pointers */
-		state->vcpu->arch.host_thread_info = vcpu->arch.host_thread_info;
+		/* FIXME: we can't trust the validity of this pointers */
 		state->vcpu->arch.host_fpsimd_state = vcpu->arch.host_fpsimd_state;
 
 		/* Propagate WFx trapping flags, trap ptrauth */

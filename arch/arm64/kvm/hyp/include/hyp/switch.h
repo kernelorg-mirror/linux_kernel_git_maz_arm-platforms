@@ -140,12 +140,9 @@ static inline bool __populate_fault_info(struct kvm_vcpu *vcpu)
 
 static inline void __hyp_sve_save_host(struct kvm_vcpu *vcpu)
 {
-	struct thread_struct *thread;
+	void *pffr = vcpu->arch.host_sve_state + sve_ffr_offset(vcpu->arch.host_sve_vl);
 
-	thread = container_of(vcpu->arch.host_fpsimd_state, struct thread_struct,
-			      uw.fpsimd_state);
-
-	__sve_save_state(sve_pffr(thread), &vcpu->arch.host_fpsimd_state->fpsr);
+	__sve_save_state(pffr, &vcpu->arch.host_fpsimd_state->fpsr);
 }
 
 static inline void __hyp_sve_restore_guest(struct kvm_vcpu *vcpu)

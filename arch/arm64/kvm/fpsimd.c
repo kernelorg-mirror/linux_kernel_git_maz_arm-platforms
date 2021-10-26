@@ -14,6 +14,28 @@
 #include <asm/kvm_mmu.h>
 #include <asm/sysreg.h>
 
+static int kvm_sve_map_state(struct kvm_vcpu *vcpu)
+{
+	void *sve_state = current->thread.sve_state;
+	int ret;
+
+	if (sve_state) {
+		ret = create_hyp_mappings(sve_state,
+					 sve_state + sve_state_size(current),
+					 PAGE_HYP);
+		if (ret)
+			return ret;
+
+		vcpu->arch.host_sve_state = kern_hyp_va(sve_state);
+		vcpu->arch.host_sve_vl = current->thread.sve_vl;
+	} else {
+		vcpu->arch.host_sve_state = NULL;
+		vcpu->arch.host_sve_vl = 0;
+	}
+
+	return 0;
+}
+
 /*
  * Called on entry to KVM_RUN unless this vcpu previously ran at least
  * once and the most recent prior KVM_RUN for this vcpu was called from
@@ -25,18 +47,37 @@
  */
 int kvm_arch_vcpu_run_map_fp(struct kvm_vcpu *vcpu)
 {
-	int ret;
-
 	struct user_fpsimd_state *fpsimd = &current->thread.uw.fpsimd_state;
+	int ret;
 
 	/* Make sure the host task fpsimd state is visible to hyp: */
 	ret = create_hyp_mappings(fpsimd, fpsimd + 1, PAGE_HYP);
 	if (ret)
 		goto error;
 
+	ret = kvm_sve_map_state(vcpu);
+	if (ret)
+		goto error;
+
 	vcpu->arch.host_fpsimd_state = kern_hyp_va(fpsimd);
 error:
 	return ret;
+}
+
+static bool kvm_sve_mapping_valid(struct kvm_vcpu *vcpu)
+{
+	void *sve_state = current->thread.sve_state;
+
+	/*
+	 * Check whether the host's SVE state has changed since last
+	 * time we ran. This could be because the thread has decided
+	 * to change its vector length, resulting in either the state
+	 * being freed or being allocated somewhere else.
+	 */
+	return ((sve_state && vcpu->arch.host_sve_state &&
+		 vcpu->arch.host_sve_state == kern_hyp_va(sve_state) &&
+		 vcpu->arch.host_sve_vl == current->thread.sve_vl) ||
+		(!sve_state && !vcpu->arch.host_sve_state));
 }
 
 /*
@@ -63,6 +104,9 @@ void kvm_arch_vcpu_load_fp(struct kvm_vcpu *vcpu)
 
 	if (read_sysreg(cpacr_el1) & CPACR_EL1_ZEN_EL0EN)
 		vcpu->arch.flags |= KVM_ARM64_HOST_SVE_ENABLED;
+
+	if (!kvm_sve_mapping_valid(vcpu))
+		kvm_sve_map_state(vcpu);
 }
 
 void kvm_arch_vcpu_ctxflush_fp(struct kvm_vcpu *vcpu)

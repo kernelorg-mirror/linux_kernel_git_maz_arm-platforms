@@ -352,20 +352,6 @@ static void kvm_vgic_dist_destroy(struct kvm *kvm)
 		vgic_v4_teardown(kvm);
 }
 
-void kvm_vgic_vcpu_destroy(struct kvm_vcpu *vcpu)
-{
-	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
-
-	/*
-	 * Retire all pending LPIs on this vcpu anyway as we're
-	 * going to destroy it.
-	 */
-	vgic_flush_pending_lpis(vcpu);
-
-	INIT_LIST_HEAD(&vgic_cpu->ap_list_head);
-	vgic_cpu->rd_iodev.base_addr = VGIC_ADDR_UNDEF;
-}
-
 /* To be called with kvm->lock held */
 static void __kvm_vgic_destroy(struct kvm *kvm)
 {
@@ -374,8 +360,18 @@ static void __kvm_vgic_destroy(struct kvm *kvm)
 
 	vgic_debug_destroy(kvm);
 
-	kvm_for_each_vcpu(i, vcpu, kvm)
-		kvm_vgic_vcpu_destroy(vcpu);
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
+
+		/*
+		 * Retire all pending LPIs on this vcpu anyway as
+		 * we're going to destroy it.
+		 */
+		vgic_flush_pending_lpis(vcpu);
+
+		INIT_LIST_HEAD(&vgic_cpu->ap_list_head);
+		vgic_cpu->rd_iodev.base_addr = VGIC_ADDR_UNDEF;
+	}
 
 	kvm_vgic_dist_destroy(kvm);
 }

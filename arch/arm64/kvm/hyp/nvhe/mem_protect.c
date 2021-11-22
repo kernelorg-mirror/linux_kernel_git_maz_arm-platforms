@@ -294,22 +294,13 @@ static int reclaim_walker(u64 addr, u64 end, u32 level, kvm_pte_t *ptep,
 		void * const arg)
 {
 	kvm_pte_t pte = *ptep;
-	phys_addr_t phys;
+	struct hyp_page *page;
 
 	if (!kvm_pte_valid(pte))
 		return 0;
 
-	/*
-	 * Only update the host stage-2 -- we're about to tear-down the guest
-	 * stage-2 so no need to waste effort trying to keep it in sync.
-	 */
-	phys = kvm_pte_to_phys(pte);
-	BUG_ON(host_stage2_set_owner_locked(phys, PAGE_SIZE, pkvm_host_id));
-
-	/*
-	 * XXX: if protected guest mark the page 'dirty' instead, and zero it
-	 * lazily on host s2 aborts.
-	 */
+	page = hyp_phys_to_page(kvm_pte_to_phys(pte));
+	page->flags |= HOST_PAGE_NEED_POISONING;
 
 	return 0;
 }
@@ -1713,6 +1704,52 @@ int __pkvm_host_donate_guest(u64 pfn, u64 gfn, struct kvm_vcpu *vcpu)
 	ret = do_donate(&donation);
 
 	guest_unlock_component(vcpu);
+	host_unlock_component();
+
+	return ret;
+}
+
+static int hyp_zero_page(phys_addr_t phys)
+{
+	void *addr;
+
+	addr = hyp_fixmap_map(phys);
+	if (!addr)
+		return -EINVAL;
+	memset(addr, 0, PAGE_SIZE);
+	__clean_dcache_guest_page(addr, PAGE_SIZE);
+
+	return hyp_fixmap_unmap();
+}
+
+int __pkvm_host_reclaim_page(u64 pfn)
+{
+	u64 addr = hyp_pfn_to_phys(pfn);
+	struct hyp_page *page;
+	kvm_pte_t pte;
+	int ret;
+
+	host_lock_component();
+
+	ret = kvm_pgtable_get_leaf(&host_kvm.pgt, addr, &pte, NULL);
+	if (ret)
+		goto unlock;
+
+	if (host_get_page_state(pte) == PKVM_PAGE_OWNED)
+		goto unlock;
+
+	page = hyp_phys_to_page(addr);
+	if (page->flags & HOST_PAGE_NEED_POISONING) {
+		ret = hyp_zero_page(addr);
+		if (ret)
+			goto unlock;
+		page->flags &= ~HOST_PAGE_NEED_POISONING;
+		ret = host_stage2_set_owner_locked(addr, PAGE_SIZE, pkvm_host_id);
+	} else {
+		ret = -EPERM;
+	}
+
+unlock:
 	host_unlock_component();
 
 	return ret;

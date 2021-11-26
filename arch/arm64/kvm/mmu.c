@@ -50,7 +50,7 @@ static int stage2_apply_range(struct kvm *kvm, phys_addr_t addr,
 	do {
 		struct kvm_pgtable *pgt = kvm->arch.mmu.pgt;
 		if (!pgt)
-			return -EINVAL;
+			return WARN_ON(-EINVAL);
 
 		next = stage2_pgd_addr_end(kvm, addr, end);
 		ret = fn(pgt, addr, next - addr);
@@ -1224,10 +1224,12 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		 */
 		prot &= ~KVM_NV_GUEST_MAP_SZ;
 		ret = kvm_pgtable_stage2_relax_perms(pgt, fault_ipa, prot);
+		WARN(ret < 0 && ret != -EAGAIN, "kvm_pgtable_stage2_relax_perms %d\n", ret);
 	} else {
 		ret = kvm_pgtable_stage2_map(pgt, fault_ipa, vma_pagesize,
 					     __pfn_to_phys(pfn), prot,
 					     memcache);
+		WARN(ret < 0 && ret != -EAGAIN, "kvm_pgtable_stage2_map %d\n", ret);
 	}
 
 	/* Mark the page dirty only if the fault is handled successfully */
@@ -1678,14 +1680,14 @@ int kvm_arch_prepare_memory_region(struct kvm *kvm,
 		 * sanitise_mte_tags for more details.
 		 */
 		if (kvm_has_mte(kvm) && vma->vm_flags & VM_SHARED) {
-			ret = -EINVAL;
+			ret = WARN_ON(-EINVAL);
 			break;
 		}
 
 		if (vma->vm_flags & VM_PFNMAP) {
 			/* IO region dirty page logging not allowed */
 			if (memslot->flags & KVM_MEM_LOG_DIRTY_PAGES) {
-				ret = -EINVAL;
+				ret = WARN_ON(-EINVAL);
 				break;
 			}
 		}

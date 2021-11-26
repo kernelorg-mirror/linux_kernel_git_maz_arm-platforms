@@ -278,6 +278,7 @@ static int handle_trap_exceptions(struct kvm_vcpu *vcpu)
 
 		exit_handler = kvm_get_exit_handler(vcpu);
 		handled = exit_handler(vcpu);
+		WARN(handled < 0, "failed %ps %d\n", exit_handler, handled);
 	}
 
 	return handled;
@@ -312,6 +313,7 @@ int handle_exit(struct kvm_vcpu *vcpu, int exception_index)
 		 * We attempted an illegal exception return.  Guest state must
 		 * have been corrupted somehow.  Give up.
 		 */
+		WARN_ON(1);
 		run->exit_reason = KVM_EXIT_FAIL_ENTRY;
 		return -EINVAL;
 	default:

@@ -1129,6 +1129,7 @@ static int pkvm_host_donate_guest(u64 pfn, u64 gfn, struct kvm_vcpu *vcpu)
 {
 	struct arm_smccc_res res;
 
+	clean_dcache_guest_page(__va(__pfn_to_phys(pfn)), PAGE_SIZE);
 	arm_smccc_1_1_hvc(KVM_HOST_SMCCC_FUNC(__pkvm_host_donate_guest),
 			  pfn, gfn, vcpu, &res);
 	WARN_ON(res.a0 != SMCCC_RET_SUCCESS);

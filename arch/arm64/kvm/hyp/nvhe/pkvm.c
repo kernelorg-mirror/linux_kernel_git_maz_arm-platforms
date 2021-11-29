@@ -1000,6 +1000,12 @@ static bool pkvm_install_ioguard_page(struct kvm_vcpu *vcpu, u64 *exit_code)
 	return true;
 }
 
+/**
+ * Handler for protected VM HVC calls.
+ *
+ * Returns true if the hypervisor has handled the exit, and control should go
+ * back to the guest, or false if it hasn't.
+ */
 bool kvm_handle_pvm_hvc64(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	u32 fn = smccc_get_function(vcpu);

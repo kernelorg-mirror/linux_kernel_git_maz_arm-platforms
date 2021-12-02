@@ -349,7 +349,8 @@ static void unpin_host_vcpus(struct kvm_shadow_vm *vm)
 	}
 }
 
-static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm, int nr_vcpus)
+static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
+			       struct kvm_vcpu **vcpu_array, int nr_vcpus)
 {
 	int i;
 	int ret;
@@ -358,7 +359,7 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm, int nr
 	vm->created_vcpus = 0;
 
 	for (i = 0; i < nr_vcpus; i++) {
-		struct kvm_vcpu *host_vcpu = kern_hyp_va(kvm->vcpus[i]);
+		struct kvm_vcpu *host_vcpu = kern_hyp_va(vcpu_array[i]);
 		struct shadow_vcpu_state *shadow_state = &vm->shadow_vcpus[i];
 		struct kvm_vcpu *shadow_vcpu = &shadow_state->vcpu;
 
@@ -545,10 +546,12 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	phys_addr_t shadow_pa = hyp_virt_to_phys(vm);
 	u64 pfn = hyp_phys_to_pfn(shadow_pa);
 	u64 nr_pages = shadow_size >> PAGE_SHIFT;
+	u64 pgd_size;
 	int nr_vcpus = 0;
 	int ret = 0;
 
 	kvm = kern_hyp_va(kvm);
+	pgd = kern_hyp_va(pgd);
 
 	ret = hyp_pin_shared_mem(kvm, kvm + 1);
 	if (ret)
@@ -566,17 +569,21 @@ int __pkvm_init_shadow(struct kvm *kvm,
 
 	/* Ensure we're working with a clean slate. */
 	memset(vm, 0, shadow_size);
+	vm->arch.vtcr = host_kvm.arch.vtcr;
+	pgd_size = kvm_pgtable_stage2_pgd_size(vm->arch.vtcr) >> PAGE_SHIFT;
+	ret =  __pkvm_host_donate_hyp(hyp_virt_to_pfn(pgd), pgd_size);
+	if (ret)
+		goto err_remove_mappings;
 
 	/* Add the entry to the shadow table. */
 	ret = insert_shadow_table(kvm, vm, shadow_size);
 	if (ret < 0)
-		goto err_remove_mappings;
+		goto err_remove_pgd;
 
-	ret = init_shadow_structs(kvm, vm, nr_vcpus);
+	ret = init_shadow_structs(kvm, vm, pgd, nr_vcpus);
 	if (ret < 0)
 		goto err_remove_shadow_table;
 
-	pgd = kern_hyp_va(pgd);
 	ret = kvm_guest_prepare_stage2(vm, pgd);
 	if (ret)
 		goto err_remove_shadow_table;
@@ -585,6 +592,9 @@ int __pkvm_init_shadow(struct kvm *kvm,
 
 err_remove_shadow_table:
 	remove_shadow_table(vm->shadow_handle);
+
+err_remove_pgd:
+	WARN_ON(__pkvm_hyp_donate_host(hyp_virt_to_pfn(pgd), pgd_size));
 
 err_remove_mappings:
 	unpin_host_vcpus(vm);

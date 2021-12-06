@@ -7,6 +7,10 @@
 #ifndef __ARM64_KVM_NVHE_PKVM_H__
 #define __ARM64_KVM_NVHE_PKVM_H__
 
+#ifndef __KVM_NVHE_HYPERVISOR__
+#error WTF?????
+#endif
+
 #include <asm/kvm_pkvm.h>
 
 #include <nvhe/gfp.h>
@@ -48,6 +52,20 @@ struct kvm_shadow_vm {
 	/* Array of the shadow state per vcpu. */
 	struct shadow_vcpu_state shadow_vcpus[0];
 };
+
+static inline struct kvm_shadow_vm *vcpu_to_shadow_vm(struct kvm_vcpu *vcpu)
+{
+	return container_of(vcpu, struct kvm_shadow_vm,
+			    shadow_vcpus[vcpu->vcpu_idx].vcpu);
+}
+
+static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
+{
+	if (!is_protected_kvm_enabled())
+		return false;
+
+	return vcpu->arch.pkvm.shadow_vm->arch.pkvm.enabled;
+}
 
 extern struct kvm_shadow_vm **shadow_table;
 

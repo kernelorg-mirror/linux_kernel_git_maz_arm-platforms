@@ -127,7 +127,7 @@ static __always_inline bool is_protected_kvm_enabled(void)
 	if (is_vhe_hyp_code())
 		return false;
 	else
-		return cpus_have_final_cap(ARM64_KVM_PROTECTED_MODE);
+		return unlikely(cpus_have_final_cap(ARM64_KVM_PROTECTED_MODE));
 }
 
 static inline bool is_hyp_nvhe(void)

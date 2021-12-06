@@ -187,9 +187,6 @@ static void kvm_shadow_destroy(struct kvm *kvm)
 	struct arm_smccc_res res;
 	struct list_head *ppages;
 
-	if (!kvm_vm_is_protected(kvm))
-		return;
-
 	arm_smccc_1_1_hvc(KVM_HOST_SMCCC_FUNC(__pkvm_teardown_shadow),
 			kvm, &res);
 	WARN_ON(res.a0 != SMCCC_RET_SUCCESS);
@@ -565,6 +562,10 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 		kvm_call_hyp(__vgic_v3_save_vmcr_aprs,
 			     &vcpu->arch.vgic_cpu.vgic_v3);
 		kvm_call_hyp_nvhe(__pkvm_vcpu_put, vcpu);
+
+		/* __pkvm_vcpu_put implies a sync of the state */
+		if (!kvm_vm_is_protected(vcpu->kvm))
+			vcpu->arch.flags |= KVM_ARM64_PKVM_STATE_DIRTY;
 	}
 
 	kvm_arch_vcpu_put_debug_state_flags(vcpu);
@@ -766,7 +767,7 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 	}
 
 	// XXX: Bodge for testing
-	if (kvm_vm_is_protected(kvm))
+	if (is_protected_kvm_enabled())
 		pkvm_init_el2_context(kvm);
 
 	return ret;

@@ -496,14 +496,18 @@ static void flush_shadow_state(struct pkvm_loaded_state *state)
 	 * dirty (from a host perspective), copy the state back into
 	 * the shadow.
 	 */
-	if (!state->is_protected &&
-	    READ_ONCE(host_vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY)
-		__sync_vcpu_state(host_vcpu, shadow_vcpu);
+	if (!state->is_protected) {
+		if (READ_ONCE(host_vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY)
+			__sync_vcpu_state(host_vcpu, shadow_vcpu);
+
+		state->vcpu->arch.hcr_el2 = HCR_GUEST_FLAGS & ~(HCR_RW | HCR_TWI | HCR_TWE);
+		state->vcpu->arch.hcr_el2 |= host_vcpu->arch.hcr_el2;
+	}
 
 	flush_vgic_state(host_vcpu, shadow_vcpu);
 	flush_timer_state(shadow_vcpu);
 
-	switch (shadow_vcpu->arch.pkvm.exit_code) {
+	switch (ARM_EXCEPTION_CODE(shadow_vcpu->arch.pkvm.exit_code)) {
 	case ARM_EXCEPTION_IRQ:
 	case ARM_EXCEPTION_EL1_SERROR:
 	case ARM_EXCEPTION_IL:
@@ -619,8 +623,6 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 					       HCR_API | HCR_APK);
 		state->vcpu->arch.hcr_el2 |= vcpu->arch.hcr_el2 & (HCR_TWE |
 								   HCR_TWI);
-	} else {
-		state->vcpu->arch.hcr_el2 = vcpu->arch.hcr_el2;
 	}
 }
 

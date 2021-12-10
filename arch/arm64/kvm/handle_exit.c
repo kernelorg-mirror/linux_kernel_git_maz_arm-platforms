@@ -263,7 +263,7 @@ int handle_exit(struct kvm_vcpu *vcpu, int exception_index)
 		 * have been corrupted somehow.  Give up.
 		 */
 		run->exit_reason = KVM_EXIT_FAIL_ENTRY;
-		return -EINVAL;
+		return WARN_ON_ONCE(-EINVAL);
 	default:
 		kvm_pr_unimpl("Unsupported exception type: %d",
 			      exception_index);

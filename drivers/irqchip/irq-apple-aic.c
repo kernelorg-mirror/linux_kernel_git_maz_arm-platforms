@@ -172,7 +172,6 @@ struct aic_irq_chip {
 		cpumask_t aff;
 	} *fiq_aff[AIC_NR_FIQ];
 	int nr_hw;
-	int ipi_hwirq;
 };
 
 static DEFINE_PER_CPU(uint32_t, aic_fiq_unmasked);

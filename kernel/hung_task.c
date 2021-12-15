@@ -63,7 +63,9 @@ static struct task_struct *watchdog_task;
  * Should we dump all CPUs backtraces in a hung task event?
  * Defaults to 0, can be changed via sysctl.
  */
-unsigned int __read_mostly sysctl_hung_task_all_cpu_backtrace;
+static unsigned int __read_mostly sysctl_hung_task_all_cpu_backtrace;
+#else
+#define sysctl_hung_task_all_cpu_backtrace 0
 #endif /* CONFIG_SMP */
 
 /*
@@ -145,6 +147,47 @@ static void check_hung_task(struct task_struct *t, unsigned long timeout)
 	touch_nmi_watchdog();
 }
 
+static void check_killed_task(struct task_struct *t, unsigned long timeout)
+{
+	unsigned long stamp = t->killed_time;
+
+	/*
+	 * Ensure the task is not frozen.
+	 * Also, skip vfork and any other user process that freezer should skip.
+	 */
+	if (unlikely(t->flags & (PF_FROZEN | PF_FREEZER_SKIP)))
+		return;
+	/*
+	 * Skip threads which are already inside do_exit(), for exit_mm() etc.
+	 * might take many seconds.
+	 */
+	if (t->flags & PF_EXITING)
+		return;
+	if (!stamp) {
+		stamp = jiffies;
+		if (!stamp)
+			stamp++;
+		t->killed_time = stamp;
+		return;
+	}
+	if (time_is_after_jiffies(stamp + timeout * HZ))
+		return;
+	trace_sched_process_hang(t);
+	if (sysctl_hung_task_panic) {
+		console_verbose();
+		hung_task_call_panic = true;
+	}
+	/*
+	 * This thread failed to terminate for more than
+	 * sysctl_hung_task_timeout_secs seconds, complain:
+	 */
+	pr_err("INFO: task %s:%d can't die for more than %ld seconds.\n",
+	       t->comm, t->pid, (jiffies - stamp) / HZ);
+	sched_show_task(t);
+	hung_task_show_lock = true;
+	touch_nmi_watchdog();
+}
+
 /*
  * To avoid extending the RCU grace period for an unbounded amount of time,
  * periodically exit the critical section and enter a new one.
@@ -196,6 +239,9 @@ static void check_hung_uninterruptible_tasks(unsigned long timeout)
 				goto unlock;
 			last_break = jiffies;
 		}
+		/* Check threads which are about to terminate. */
+		if (unlikely(fatal_signal_pending(t)))
+			check_killed_task(t, timeout);
 		/* use "==" to skip the TASK_KILLABLE tasks waiting on NFS */
 		if (READ_ONCE(t->__state) == TASK_UNINTERRUPTIBLE)
 			check_hung_task(t, timeout);
@@ -222,11 +268,13 @@ static long hung_timeout_jiffies(unsigned long last_checked,
 		MAX_SCHEDULE_TIMEOUT;
 }
 
+#ifdef CONFIG_SYSCTL
 /*
  * Process updating of timeout sysctl
  */
-int proc_dohung_task_timeout_secs(struct ctl_table *table, int write,
-				  void *buffer, size_t *lenp, loff_t *ppos)
+static int proc_dohung_task_timeout_secs(struct ctl_table *table, int write,
+				  void __user *buffer,
+				  size_t *lenp, loff_t *ppos)
 {
 	int ret;
 
@@ -240,6 +288,76 @@ int proc_dohung_task_timeout_secs(struct ctl_table *table, int write,
  out:
 	return ret;
 }
+
+/*
+ * This is needed for proc_doulongvec_minmax of sysctl_hung_task_timeout_secs
+ * and hung_task_check_interval_secs
+ */
+static const unsigned long hung_task_timeout_max = (LONG_MAX / HZ);
+static struct ctl_table hung_task_sysctls[] = {
+#ifdef CONFIG_SMP
+	{
+		.procname	= "hung_task_all_cpu_backtrace",
+		.data		= &sysctl_hung_task_all_cpu_backtrace,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+#endif /* CONFIG_SMP */
+	{
+		.procname	= "hung_task_panic",
+		.data		= &sysctl_hung_task_panic,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+		.extra2		= SYSCTL_ONE,
+	},
+	{
+		.procname	= "hung_task_check_count",
+		.data		= &sysctl_hung_task_check_count,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_ZERO,
+	},
+	{
+		.procname	= "hung_task_timeout_secs",
+		.data		= &sysctl_hung_task_timeout_secs,
+		.maxlen		= sizeof(unsigned long),
+		.mode		= 0644,
+		.proc_handler	= proc_dohung_task_timeout_secs,
+		.extra2		= (void *)&hung_task_timeout_max,
+	},
+	{
+		.procname	= "hung_task_check_interval_secs",
+		.data		= &sysctl_hung_task_check_interval_secs,
+		.maxlen		= sizeof(unsigned long),
+		.mode		= 0644,
+		.proc_handler	= proc_dohung_task_timeout_secs,
+		.extra2		= (void *)&hung_task_timeout_max,
+	},
+	{
+		.procname	= "hung_task_warnings",
+		.data		= &sysctl_hung_task_warnings,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec_minmax,
+		.extra1		= SYSCTL_NEG_ONE,
+	},
+	{}
+};
+
+static void __init hung_task_sysctl_init(void)
+{
+	register_sysctl_init("kernel", hung_task_sysctls);
+}
+#else
+#define hung_task_sysctl_init() do { } while (0)
+#endif /* CONFIG_SYSCTL */
+
 
 static atomic_t reset_hung_task = ATOMIC_INIT(0);
 
@@ -310,6 +428,7 @@ static int __init hung_task_init(void)
 	pm_notifier(hungtask_pm_notify, 0);
 
 	watchdog_task = kthread_run(watchdog, NULL, "khungtaskd");
+	hung_task_sysctl_init();
 
 	return 0;
 }

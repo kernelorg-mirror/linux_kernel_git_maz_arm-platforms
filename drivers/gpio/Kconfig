@@ -471,6 +471,14 @@ config GPIO_PL061
 	help
 	  Say yes here to support the PrimeCell PL061 GPIO device.
 
+config GPIO_PL061_RUST
+	tristate "PrimeCell PL061 GPIO support written in Rust"
+	depends on ARM_AMBA && RUST
+	select IRQ_DOMAIN
+	select GPIOLIB_IRQCHIP
+	help
+	  Say yes here to support the PrimeCell PL061 GPIO device
+
 config GPIO_PMIC_EIC_SPRD
 	tristate "Spreadtrum PMIC EIC support"
 	depends on MFD_SC27XX_PMIC || COMPILE_TEST
@@ -1133,17 +1141,6 @@ config GPIO_ARIZONA
 	help
 	  Support for GPIOs on Wolfson Arizona class devices.
 
-config GPIO_BD70528
-	tristate "ROHM BD70528 GPIO support"
-	depends on MFD_ROHM_BD70528
-	help
-	  Support for GPIOs on ROHM BD70528 PMIC. There are four GPIOs
-	  available on the ROHM PMIC in total. The GPIOs can also
-	  generate interrupts.
-
-	  This driver can also be built as a module. If so, the module
-	  will be called gpio-bd70528.
-
 config GPIO_BD71815
 	tristate "ROHM BD71815 PMIC GPIO support"
 	depends on MFD_ROHM_BD71828
@@ -1693,6 +1690,14 @@ config GPIO_VIRTIO
 
 	  These virtual GPIOs can be routed to real GPIOs or attached to
 	  simulators on the host (like QEMU).
+
+config GPIO_SIM
+	tristate "GPIO Simulator Module"
+	select IRQ_SIM
+	select CONFIGFS_FS
+	help
+	  This enables the GPIO simulator - a configfs-based GPIO testing
+	  driver.
 
 endmenu
 

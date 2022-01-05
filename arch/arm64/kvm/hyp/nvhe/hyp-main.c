@@ -414,7 +414,7 @@ static void flush_shadow_state(struct kvm_vcpu *shadow_vcpu)
 	flush_vgic_state(host_vcpu, shadow_vcpu);
 	flush_timer_state(shadow_vcpu);
 
-	switch (shadow_vcpu->arch.pkvm.exit_code) {
+	switch (ARM_EXCEPTION_CODE(shadow_vcpu->arch.pkvm.exit_code)) {
 	case ARM_EXCEPTION_IRQ:
 	case ARM_EXCEPTION_EL1_SERROR:
 	case ARM_EXCEPTION_IL:

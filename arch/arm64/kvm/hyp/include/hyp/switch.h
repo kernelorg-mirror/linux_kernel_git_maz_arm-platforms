@@ -413,7 +413,8 @@ static inline bool fixup_guest_exit(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * Save PSTATE early so that we can evaluate the vcpu mode
 	 * early on.
 	 */
-	vcpu->arch.ctxt.regs.pstate = read_sysreg_el2(SYS_SPSR);
+	if (*exit_code != ARM_EXCEPTION_IL)
+		vcpu->arch.ctxt.regs.pstate = read_sysreg_el2(SYS_SPSR);
 
 	/*
 	 * Check whether we want to repaint the state one way or

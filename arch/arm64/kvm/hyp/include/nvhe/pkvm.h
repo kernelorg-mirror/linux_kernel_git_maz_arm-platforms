@@ -49,6 +49,14 @@ struct kvm_shadow_vm {
 	struct shadow_vcpu_state shadow_vcpus[0];
 };
 
+static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
+{
+	if (!is_protected_kvm_enabled())
+		return false;
+
+	return vcpu->arch.pkvm.shadow_vm->arch.pkvm.enabled;
+}
+
 extern struct kvm_shadow_vm **shadow_table;
 
 int __pkvm_init_shadow(struct kvm *kvm, void *shadow_va, size_t size, void *pgd);

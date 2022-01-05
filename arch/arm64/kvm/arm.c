@@ -198,9 +198,6 @@ static void kvm_shadow_destroy(struct kvm *kvm)
 	struct arm_smccc_res res;
 	struct list_head *ppages;
 
-	if (!kvm_vm_is_protected(kvm))
-		return;
-
 	arm_smccc_1_1_hvc(KVM_HOST_SMCCC_FUNC(__pkvm_teardown_shadow),
 			kvm, &res);
 	WARN_ON(res.a0 != SMCCC_RET_SUCCESS);

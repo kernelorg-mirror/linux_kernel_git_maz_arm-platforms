@@ -756,6 +756,9 @@ static void update_vtimer_cntvoff(struct kvm_vcpu *vcpu, u64 cntvoff)
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_vcpu *tmp;
 
+	if (unlikely(kvm_vm_is_protected(vcpu->kvm)))
+		cntvoff = 0;
+
 	mutex_lock(&kvm->lock);
 	kvm_for_each_vcpu(i, tmp, kvm)
 		timer_set_offset(vcpu_vtimer(tmp), cntvoff);

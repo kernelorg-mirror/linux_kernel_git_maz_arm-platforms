@@ -446,8 +446,13 @@ static void sync_vgic_state(struct kvm_vcpu *host_vcpu,
 		host_cpu_if->vgic_lr[i] = shadow_cpu_if->vgic_lr[i];
 }
 
-static void flush_timer_state(struct kvm_vcpu *shadow_vcpu)
+static void flush_timer_state(struct pkvm_loaded_state *state)
 {
+	struct kvm_vcpu *shadow_vcpu = state->vcpu;
+
+	if (!state->is_protected)
+		return;
+
 	/*
 	 * A shadow vcpu has no offset, and sees vtime == ptime. The
 	 * ptimer is fully emulated by EL1 and cannot be trusted.
@@ -458,8 +463,13 @@ static void flush_timer_state(struct kvm_vcpu *shadow_vcpu)
 	write_sysreg_el0(__vcpu_sys_reg(shadow_vcpu, CNTV_CTL_EL0), SYS_CNTV_CTL);
 }
 
-static void sync_timer_state(struct kvm_vcpu *shadow_vcpu)
+static void sync_timer_state(struct pkvm_loaded_state *state)
 {
+	struct kvm_vcpu *shadow_vcpu = state->vcpu;
+
+	if (!state->is_protected)
+		return;
+
 	/*
 	 * Preserve the vtimer state so that it is always correct,
 	 * even if the host tries to make a mess.
@@ -514,7 +524,7 @@ static void flush_shadow_state(struct pkvm_loaded_state *state)
 	}
 
 	flush_vgic_state(host_vcpu, shadow_vcpu);
-	flush_timer_state(shadow_vcpu);
+	flush_timer_state(state);
 
 	switch (ARM_EXCEPTION_CODE(shadow_vcpu->arch.pkvm.exit_code)) {
 	case ARM_EXCEPTION_IRQ:
@@ -551,7 +561,7 @@ static void sync_shadow_state(struct pkvm_loaded_state *state, u32 exit_reason)
 	 * leave it in the shadow until someone actually requires it.
 	 */
 	sync_vgic_state(host_vcpu, shadow_vcpu);
-	sync_timer_state(shadow_vcpu);
+	sync_timer_state(state);
 
 	switch (ARM_EXCEPTION_CODE(exit_reason)) {
 	case ARM_EXCEPTION_IRQ:

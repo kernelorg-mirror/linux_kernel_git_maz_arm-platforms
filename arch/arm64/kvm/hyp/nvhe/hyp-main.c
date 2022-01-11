@@ -478,8 +478,16 @@ static void __sync_vcpu_state(struct kvm_vcpu *from_vcpu,
 	to_vcpu->arch.ctxt.spsr_und	= from_vcpu->arch.ctxt.spsr_und;
 	to_vcpu->arch.ctxt.spsr_irq	= from_vcpu->arch.ctxt.spsr_irq;
 	to_vcpu->arch.ctxt.spsr_fiq	= from_vcpu->arch.ctxt.spsr_fiq;
-	for (i = 0 ; i < NR_SYS_REGS; i++)
+
+	/*
+	 * Copy the sysregs, but don't mess with the timer state which
+	 * is directly handled by EL1 and is expected to be preserved.
+	 */
+	for (i = 1; i < NR_SYS_REGS; i++) {
+		if (i >= CNTVOFF_EL2 && i <= CNTP_CTL_EL0)
+			continue;
 		to_vcpu->arch.ctxt.sys_regs[i] = from_vcpu->arch.ctxt.sys_regs[i];
+	}
 }
 
 static void flush_shadow_state(struct pkvm_loaded_state *state)

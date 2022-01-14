@@ -207,12 +207,12 @@ static int handle_trap_exceptions(struct kvm_vcpu *vcpu)
 	 * it as dirty on the host side if it wasn't dirty already
 	 * (which could happen if preemption has taken place).
 	 */
-	if (is_protected_kvm_enabled() &&
-	    !kvm_vm_is_protected(vcpu->kvm) &&
-	    !(vcpu->arch.flags & KVM_ARM64_PKVM_STATE_DIRTY)) {
+	if (is_protected_kvm_enabled() && !kvm_vm_is_protected(vcpu->kvm)) {
 		preempt_disable();
-		kvm_call_hyp_nvhe(__pkvm_vcpu_sync_state, vcpu);
-		vcpu->arch.flags |= KVM_ARM64_PKVM_STATE_DIRTY;
+		if (!(vcpu->arch.flags & KVM_ARM64_PKVM_STATE_DIRTY)) {
+			kvm_call_hyp_nvhe(__pkvm_vcpu_sync_state, vcpu);
+			vcpu->arch.flags |= KVM_ARM64_PKVM_STATE_DIRTY;
+		}
 		preempt_enable();
 	}
 

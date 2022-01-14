@@ -658,7 +658,8 @@ static void handle___pkvm_vcpu_put(struct kvm_cpu_context *host_ctxt)
 			if (state->vcpu->arch.flags & KVM_ARM64_FP_ENABLED)
 				fpsimd_host_restore();
 
-			if (!state->is_protected)
+			if (!state->is_protected &&
+			    !(READ_ONCE(vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY))
 				__sync_vcpu_state(state->vcpu, vcpu);
 
 			put_shadow_vcpu(state->vcpu);

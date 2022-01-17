@@ -45,11 +45,8 @@ struct kvm_shadow_vcpu_state {
  * Holds the relevant data for running a protected vm.
  */
 struct kvm_shadow_vm {
-	/* A unique id to the shadow structs in the hyp shadow area. */
-	int shadow_handle;
-
-	/* Number of vcpus for the vm. */
-	int created_vcpus;
+	/* The data for the shadow kvm. */
+	struct kvm kvm;
 
 	/* The host's kvm structure. */
 	struct kvm *host_kvm;
@@ -57,7 +54,6 @@ struct kvm_shadow_vm {
 	/* The total size of the donated shadow area. */
 	size_t shadow_area_size;
 
-	struct kvm_arch arch;
 	struct kvm_pgtable pgt;
 	struct kvm_pgtable_mm_ops mm_ops;
 	struct hyp_pool pool;
@@ -76,7 +72,7 @@ static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 
 	shadow_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
 
-	return shadow_state->shadow_vm->arch.pkvm.enabled;
+	return shadow_state->shadow_vm->kvm.arch.pkvm.enabled;
 }
 
 void hyp_shadow_table_init(void *tbl);

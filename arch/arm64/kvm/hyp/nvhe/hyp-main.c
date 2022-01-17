@@ -48,7 +48,7 @@ typedef void (*shadow_entry_exit_handler_fn)(struct kvm_vcpu *, struct kvm_vcpu 
 
 static bool is_state_protected(struct kvm_shadow_vcpu_state *shadow_state)
 {
-	return shadow_state->shadow_vm->arch.pkvm.enabled;
+	return shadow_state->shadow_vm->kvm.arch.pkvm.enabled;
 }
 
 static void handle_pvm_entry_wfx(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *shadow_vcpu)
@@ -65,7 +65,7 @@ static int pkvm_refill_memcache(struct kvm_vcpu *shadow_vcpu,
 
 	shadow_vcpu_state = container_of(shadow_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
 
-	nr_pages = VTCR_EL2_LVLS(shadow_vcpu_state->shadow_vm->arch.vtcr) - 1;
+	nr_pages = VTCR_EL2_LVLS(shadow_vcpu_state->shadow_vm->kvm.arch.vtcr) - 1;
 	return refill_memcache(&shadow_vcpu->arch.pkvm_memcache, nr_pages,
 			       &host_vcpu->arch.pkvm_memcache);
 }

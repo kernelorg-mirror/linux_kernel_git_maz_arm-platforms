@@ -253,11 +253,11 @@ static void invalidate_icache_guest_page(void *va, size_t size)
 
 int kvm_guest_prepare_stage2(struct kvm_shadow_vm *vm, void *pgd)
 {
-	struct kvm_s2_mmu *mmu = &vm->arch.mmu;
+	struct kvm_s2_mmu *mmu = &vm->kvm.arch.mmu;
 	unsigned long nr_pages;
 	int ret;
 
-	nr_pages = kvm_pgtable_stage2_pgd_size(vm->arch.vtcr) >> PAGE_SHIFT;
+	nr_pages = kvm_pgtable_stage2_pgd_size(vm->kvm.arch.vtcr) >> PAGE_SHIFT;
 
 	ret = hyp_pool_init(&vm->pool, hyp_virt_to_pfn(pgd), nr_pages, 0);
 	if (ret)
@@ -284,7 +284,7 @@ int kvm_guest_prepare_stage2(struct kvm_shadow_vm *vm, void *pgd)
 	if (ret)
 		return ret;
 
-	vm->arch.mmu.pgd_phys = __hyp_pa(vm->pgt.pgd);
+	vm->kvm.arch.mmu.pgd_phys = __hyp_pa(vm->pgt.pgd);
 
 	return 0;
 }
@@ -329,7 +329,7 @@ void reclaim_guest_pages(struct kvm_shadow_vm *vm, struct kvm_hyp_memcache *mc)
 	/* Reclaim all guest pages, and dump all pgtable pages in the hyp_pool */
 	BUG_ON(kvm_pgtable_walk(&vm->pgt, 0, BIT(vm->pgt.ia_bits), &walker));
 	kvm_pgtable_stage2_destroy(&vm->pgt);
-	vm->arch.mmu.pgd_phys = 0ULL;
+	vm->kvm.arch.mmu.pgd_phys = 0ULL;
 
 	__guest_unlock(vm);
 	host_unlock_component();

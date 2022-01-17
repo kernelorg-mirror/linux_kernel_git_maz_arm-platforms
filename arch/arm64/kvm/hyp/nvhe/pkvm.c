@@ -271,7 +271,7 @@ struct kvm_shadow_vcpu_state *pkvm_get_shadow_vcpu_state(int shadow_handle, unsi
 
 	hyp_spin_lock(&shadow_lock); // XXX read_lock
 	vm = find_shadow_by_handle(shadow_handle);
-	if (!vm || vm->created_vcpus <= vcpu_idx)
+	if (!vm || vm->kvm.created_vcpus <= vcpu_idx)
 		goto unlock;
 	shadow_state = &vm->shadow_vcpu_states[vcpu_idx];
 
@@ -393,8 +393,8 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 	int ret;
 
 	vm->host_kvm = kvm;
-	vm->created_vcpus = nr_vcpus;
-	vm->arch.pkvm.enabled = READ_ONCE(kvm->arch.pkvm.enabled);
+	vm->kvm.created_vcpus = nr_vcpus;
+	vm->kvm.arch.pkvm.enabled = READ_ONCE(kvm->arch.pkvm.enabled);
 
 	for (i = 0; i < nr_vcpus; i++) {
 		struct kvm_shadow_vcpu_state *shadow_vcpu_state = &vm->shadow_vcpu_states[i];
@@ -402,7 +402,7 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		struct kvm_vcpu *host_vcpu = shadow_vcpu_state->host_vcpu;
 		struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
 
-		shadow_vcpu->kvm = kvm;
+		shadow_vcpu->kvm = &vm->kvm;
 		shadow_vcpu->vcpu_id = READ_ONCE(host_vcpu->vcpu_id);
 		shadow_vcpu->vcpu_idx = i;
 
@@ -410,11 +410,11 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		if (ret)
 			return ret;
 
-		if (vm->arch.pkvm.enabled)
+		if (vm->kvm.arch.pkvm.enabled)
 			pkvm_vcpu_init_traps(shadow_vcpu);
 		kvm_reset_pvm_sys_regs(shadow_vcpu);
 
-		shadow_vcpu->arch.hw_mmu = &vm->arch.mmu;
+		shadow_vcpu->arch.hw_mmu = &vm->kvm.arch.mmu;
 		shadow_vcpu->arch.power_off = true;
 
 		shadow_vcpu_state->shadow_vm = vm;
@@ -459,7 +459,7 @@ static bool __exists_shadow(struct kvm *host_kvm)
 static int insert_shadow_table(struct kvm *kvm, struct kvm_shadow_vm *vm,
 			       size_t shadow_size)
 {
-	struct kvm_s2_mmu *mmu = &vm->arch.mmu;
+	struct kvm_s2_mmu *mmu = &vm->kvm.arch.mmu;
 	int shadow_handle;
 	int vmid;
 
@@ -484,7 +484,7 @@ static int insert_shadow_table(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		next_shadow_alloc = (next_shadow_alloc + 1) % KVM_MAX_PVMS;
 	shadow_handle = index_to_shadow_handle(next_shadow_alloc);
 
-	vm->shadow_handle = shadow_handle;
+	vm->kvm.arch.pkvm.shadow_handle = shadow_handle;
 	vm->shadow_area_size = shadow_size;
 
 	/* VMID 0 is reserved for the host */
@@ -493,7 +493,7 @@ static int insert_shadow_table(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		return -ENOMEM;
 
 	atomic64_set(&mmu->vmid.id, vmid);
-	mmu->arch = &vm->arch;
+	mmu->arch = &vm->kvm.arch;
 	mmu->pgt = &vm->pgt;
 
 	shadow_table[next_shadow_alloc] = vm;
@@ -598,7 +598,7 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	/* Ensure we're working with a clean slate. */
 	memset(vm, 0, shadow_size);
 
-	vm->arch.vtcr = host_kvm.arch.vtcr;
+	vm->kvm.arch.vtcr = host_kvm.arch.vtcr;
 	pgd_size = kvm_pgtable_stage2_pgd_size(host_kvm.arch.vtcr);
 	nr_pgd_pages = pgd_size >> PAGE_SHIFT;
 	ret = __pkvm_host_donate_hyp(hyp_virt_to_pfn(pgd), nr_pgd_pages);
@@ -624,10 +624,10 @@ int __pkvm_init_shadow(struct kvm *kvm,
 		goto err_remove_shadow_table;
 
 	hyp_spin_unlock(&shadow_lock);
-	return vm->shadow_handle;
+	return vm->kvm.arch.pkvm.shadow_handle;
 
 err_remove_shadow_table:
-	remove_shadow_table(vm->shadow_handle);
+	remove_shadow_table(vm->kvm.arch.pkvm.shadow_handle);
 err_unlock_unpin_host_vcpus:
 	hyp_spin_unlock(&shadow_lock);
 err_unpin_host_vcpus:
@@ -676,7 +676,7 @@ int __pkvm_teardown_shadow(int shadow_handle)
 	/* Reclaim guest pages, and page-table pages */
 	mc = &vm->host_kvm->arch.pkvm.teardown_mc;
 	reclaim_guest_pages(vm, mc);
-	unpin_host_vcpus(vm->shadow_vcpu_states, vm->created_vcpus);
+	unpin_host_vcpus(vm->shadow_vcpu_states, vm->kvm.created_vcpus);
 
 	/* Push the metadata pages to the teardown memcache */
 	shadow_size = vm->shadow_area_size;
@@ -749,7 +749,7 @@ struct kvm_shadow_vcpu_state *pkvm_mpidr_to_vcpu_state(struct kvm_shadow_vm *vm,
 
 	mpidr &= MPIDR_HWID_BITMASK;
 
-	for (i = 0; i < vm->created_vcpus; i++) {
+	for (i = 0; i < vm->kvm.created_vcpus; i++) {
 		vcpu = &vm->shadow_vcpu_states[i].shadow_vcpu;
 
 		if (mpidr == kvm_vcpu_get_mpidr_aff(vcpu))
@@ -874,7 +874,7 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 	 * then if at least one is PENDING_ON then return PENDING_ON.
 	 * Otherwise, return OFF.
 	 */
-	for (i = 0; i < vm->created_vcpus; i++) {
+	for (i = 0; i < vm->kvm.created_vcpus; i++) {
 		tmp = &vm->shadow_vcpu_states[i];
 		mpidr = kvm_vcpu_get_mpidr_aff(&tmp->shadow_vcpu);
 

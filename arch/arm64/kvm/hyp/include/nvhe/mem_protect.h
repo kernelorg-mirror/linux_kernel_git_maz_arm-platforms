@@ -10,6 +10,7 @@
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_pgtable.h>
 #include <asm/virt.h>
+#include <nvhe/pkvm.h>
 #include <nvhe/spinlock.h>
 
 /*

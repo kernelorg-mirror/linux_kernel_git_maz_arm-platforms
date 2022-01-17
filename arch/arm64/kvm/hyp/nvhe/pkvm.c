@@ -264,20 +264,20 @@ static struct kvm_shadow_vm *find_shadow_by_handle(int shadow_handle)
 	return shadow_table[shadow_index];
 }
 
-struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, unsigned int vcpu_idx)
+struct kvm_shadow_vcpu_state *pkvm_get_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx)
 {
-	struct kvm_vcpu *vcpu = NULL;
+	struct kvm_shadow_vcpu_state *shadow_state = NULL;
 	struct kvm_shadow_vm *vm;
 
 	hyp_spin_lock(&shadow_lock); // XXX read_lock
 	vm = find_shadow_by_handle(shadow_handle);
 	if (!vm || vm->created_vcpus <= vcpu_idx)
 		goto unlock;
-	vcpu = &vm->shadow_vcpus[vcpu_idx].vcpu;
+	shadow_state = &vm->shadow_vcpu_states[vcpu_idx];
 
 	/* Ensure vcpu isn't loaded on more than one cpu simultaneously. */
-	if (unlikely(xchg_relaxed(&vcpu->arch.pkvm.loaded_on_cpu, true))) {
-		vcpu = NULL;
+	if (unlikely(xchg_relaxed(&shadow_state->loaded_on_cpu, true))) {
+		shadow_state = NULL;
 		goto unlock;
 	}
 
@@ -285,14 +285,14 @@ struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, unsigned int vcpu_idx)
 unlock:
 	hyp_spin_unlock(&shadow_lock);
 
-	return vcpu;
+	return shadow_state;
 }
 
-void put_shadow_vcpu(struct kvm_vcpu *vcpu)
+void pkvm_put_shadow_vcpu_state(struct kvm_shadow_vcpu_state *shadow_state)
 {
-	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
+	struct kvm_shadow_vm *vm = shadow_state->shadow_vm;
 
-	WRITE_ONCE(vcpu->arch.pkvm.loaded_on_cpu, false);
+	WRITE_ONCE(shadow_state->loaded_on_cpu, false);
 
 	/*
 	 * Once the refcount hits zero then __pkvm_teardown_shadow() can
@@ -353,18 +353,18 @@ static int copy_features(struct kvm_vcpu *shadow_vcpu, struct kvm_vcpu *host_vcp
 	return 0;
 }
 
-static void unpin_host_vcpus(struct shadow_vcpu_state *shadow_vcpus, int nr_vcpus)
+static void unpin_host_vcpus(struct kvm_shadow_vcpu_state *shadow_vcpu_states, int nr_vcpus)
 {
 	int i;
 
 	for (i = 0; i < nr_vcpus; i++) {
-		struct kvm_vcpu *host_vcpu = shadow_vcpus[i].vcpu.arch.pkvm.host_vcpu;
+		struct kvm_vcpu *host_vcpu = shadow_vcpu_states[i].host_vcpu;
 
 		hyp_unpin_shared_mem(host_vcpu, host_vcpu + 1);
 	}
 }
 
-static int set_host_vcpus(struct shadow_vcpu_state *shadow_vcpus, int nr_vcpus,
+static int set_host_vcpus(struct kvm_shadow_vcpu_state *shadow_vcpu_states, int nr_vcpus,
 			  struct kvm_vcpu **vcpu_array, size_t vcpu_array_size)
 {
 	int i;
@@ -376,11 +376,11 @@ static int set_host_vcpus(struct shadow_vcpu_state *shadow_vcpus, int nr_vcpus,
 		struct kvm_vcpu *host_vcpu = kern_hyp_va(vcpu_array[i]);
 
 		if (hyp_pin_shared_mem(host_vcpu, host_vcpu + 1)) {
-			unpin_host_vcpus(shadow_vcpus, i);
+			unpin_host_vcpus(shadow_vcpu_states, i);
 			return -EBUSY;
 		}
 
-		shadow_vcpus[i].vcpu.arch.pkvm.host_vcpu = host_vcpu;
+		shadow_vcpu_states[i].host_vcpu = host_vcpu;
 	}
 
 	return 0;
@@ -397,9 +397,10 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 	vm->arch.pkvm.enabled = READ_ONCE(kvm->arch.pkvm.enabled);
 
 	for (i = 0; i < nr_vcpus; i++) {
-		struct shadow_vcpu_state *shadow_state = &vm->shadow_vcpus[i];
-		struct kvm_vcpu *shadow_vcpu = &shadow_state->vcpu;
-		struct kvm_vcpu *host_vcpu = shadow_vcpu->arch.pkvm.host_vcpu;
+		struct kvm_shadow_vcpu_state *shadow_vcpu_state = &vm->shadow_vcpu_states[i];
+		struct kvm_vcpu *shadow_vcpu = &shadow_vcpu_state->shadow_vcpu;
+		struct kvm_vcpu *host_vcpu = shadow_vcpu_state->host_vcpu;
+		struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
 
 		shadow_vcpu->kvm = kvm;
 		shadow_vcpu->vcpu_id = READ_ONCE(host_vcpu->vcpu_id);
@@ -413,23 +414,18 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 			pkvm_vcpu_init_traps(shadow_vcpu);
 		kvm_reset_pvm_sys_regs(shadow_vcpu);
 
-		vm->vcpus[i] = shadow_vcpu;
-		shadow_state->vm = vm;
-
 		shadow_vcpu->arch.hw_mmu = &vm->arch.mmu;
-		shadow_vcpu->arch.pkvm.shadow_handle = vm->shadow_handle;
-		shadow_vcpu->arch.pkvm.shadow_vm = vm;
 		shadow_vcpu->arch.power_off = true;
 
-		if (test_bit(KVM_ARM_VCPU_POWER_OFF, shadow_vcpu->arch.features)) {
-			shadow_vcpu->arch.pkvm.power_state = PSCI_0_2_AFFINITY_LEVEL_OFF;
-		} else {
-			struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
+		shadow_vcpu_state->shadow_vm = vm;
 
+		if (test_bit(KVM_ARM_VCPU_POWER_OFF, shadow_vcpu->arch.features)) {
+			shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_OFF;
+		} else {
 			reset_state->pc = READ_ONCE(host_vcpu->arch.ctxt.regs.pc);
 			reset_state->r0 = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
 			reset_state->reset = true;
-			shadow_vcpu->arch.pkvm.power_state = PSCI_0_2_AFFINITY_LEVEL_ON_PENDING;
+			shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_ON_PENDING;
 		}
 	}
 
@@ -521,7 +517,7 @@ static size_t pkvm_get_shadow_size(int num_vcpus)
 {
 	/* Shadow space for the vm struct and all of its vcpu states. */
 	return sizeof(struct kvm_shadow_vm) +
-	       sizeof(struct shadow_vcpu_state) * num_vcpus;
+	       sizeof(struct kvm_shadow_vcpu_state) * num_vcpus;
 }
 
 /*
@@ -609,7 +605,7 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	if (ret)
 		goto err_remove_mappings;
 
-	ret = set_host_vcpus(vm->shadow_vcpus, nr_vcpus, pgd, pgd_size);
+	ret = set_host_vcpus(vm->shadow_vcpu_states, nr_vcpus, pgd, pgd_size);
 	if (ret)
 		goto err_remove_pgd;
 
@@ -635,7 +631,7 @@ err_remove_shadow_table:
 err_unlock_unpin_host_vcpus:
 	hyp_spin_unlock(&shadow_lock);
 err_unpin_host_vcpus:
-	unpin_host_vcpus(vm->shadow_vcpus, nr_vcpus);
+	unpin_host_vcpus(vm->shadow_vcpu_states, nr_vcpus);
 err_remove_pgd:
 	WARN_ON(__pkvm_hyp_donate_host(hyp_virt_to_pfn(pgd), nr_pgd_pages));
 
@@ -680,7 +676,7 @@ int __pkvm_teardown_shadow(int shadow_handle)
 	/* Reclaim guest pages, and page-table pages */
 	mc = &vm->host_kvm->arch.pkvm.teardown_mc;
 	reclaim_guest_pages(vm, mc);
-	unpin_host_vcpus(vm->shadow_vcpus, vm->created_vcpus);
+	unpin_host_vcpus(vm->shadow_vcpu_states, vm->created_vcpus);
 
 	/* Push the metadata pages to the teardown memcache */
 	shadow_size = vm->shadow_area_size;
@@ -706,8 +702,9 @@ err_unlock:
  *
  * Note: Can only be called by the vcpu on itself, after it has been turned on.
  */
-void pkvm_reset_vcpu(struct kvm_vcpu *vcpu)
+void pkvm_reset_vcpu(struct kvm_shadow_vcpu_state *shadow_state)
 {
+	struct kvm_vcpu *vcpu = &shadow_state->shadow_vcpu;
 	struct vcpu_reset_state *reset_state = &vcpu->arch.reset_state;
 
 	WARN_ON(!reset_state->reset);
@@ -738,14 +735,14 @@ void pkvm_reset_vcpu(struct kvm_vcpu *vcpu)
 
 	reset_state->reset = false;
 
-	vcpu->arch.pkvm.exit_code = 0;
+	shadow_state->exit_code = 0;
 
-	WARN_ON(vcpu->arch.pkvm.power_state != PSCI_0_2_AFFINITY_LEVEL_ON_PENDING);
+	WARN_ON(shadow_state->power_state != PSCI_0_2_AFFINITY_LEVEL_ON_PENDING);
 	WRITE_ONCE(vcpu->arch.power_off, false);
-	WRITE_ONCE(vcpu->arch.pkvm.power_state, PSCI_0_2_AFFINITY_LEVEL_ON);
+	WRITE_ONCE(shadow_state->power_state, PSCI_0_2_AFFINITY_LEVEL_ON);
 }
 
-struct kvm_vcpu *pvm_mpidr_to_vcpu(struct kvm_shadow_vm *vm, unsigned long mpidr)
+struct kvm_shadow_vcpu_state *pkvm_mpidr_to_vcpu_state(struct kvm_shadow_vm *vm, unsigned long mpidr)
 {
 	struct kvm_vcpu *vcpu;
 	int i;
@@ -753,24 +750,25 @@ struct kvm_vcpu *pvm_mpidr_to_vcpu(struct kvm_shadow_vm *vm, unsigned long mpidr
 	mpidr &= MPIDR_HWID_BITMASK;
 
 	for (i = 0; i < vm->created_vcpus; i++) {
-		vcpu = vm->vcpus[i];
+		vcpu = &vm->shadow_vcpu_states[i].shadow_vcpu;
 
 		if (mpidr == kvm_vcpu_get_mpidr_aff(vcpu))
-			return vcpu;
+			return &vm->shadow_vcpu_states[i];
 	}
 
 	return NULL;
 }
 
 /*
- * Returns true if the hypervisor handled PSCI call, and control should go back
- * to the guest, or false if the host needs to do some additional work (i.e.,
- * wake up the vcpu).
+ * Returns true if the hypervisor has handled the PSCI call, and control should
+ * go back to the guest, or false if the host needs to do some additional work
+ * (i.e., wake up the vcpu).
  */
 static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 {
-	struct kvm_shadow_vm *vm = source_vcpu->arch.pkvm.shadow_vm;
-	struct kvm_vcpu *vcpu;
+	struct kvm_shadow_vcpu_state *source_vcpu_state;
+	struct kvm_shadow_vcpu_state *target_vcpu_state;
+	struct kvm_shadow_vm *vm;
 	struct vcpu_reset_state *reset_state;
 	unsigned long cpu_id;
 	unsigned long hvc_ret_val;
@@ -782,10 +780,13 @@ static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 		goto error;
 	}
 
-	vcpu = pvm_mpidr_to_vcpu(vm, cpu_id);
+	source_vcpu_state = container_of(source_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+	vm = source_vcpu_state->shadow_vm;
+
+	target_vcpu_state = pkvm_mpidr_to_vcpu_state(vm, cpu_id);
 
 	/* Make sure the caller requested a valid vcpu. */
-	if (!vcpu) {
+	if (!target_vcpu_state) {
 		hvc_ret_val = PSCI_RET_INVALID_PARAMS;
 		goto error;
 	}
@@ -794,7 +795,7 @@ static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 	 * Make sure the requested vcpu is not on to begin with.
 	 * Atomic to avoid race between vcpus trying to power on the same vcpu.
 	 */
-	power_state = cmpxchg(&vcpu->arch.pkvm.power_state,
+	power_state = cmpxchg(&target_vcpu_state->power_state,
 		PSCI_0_2_AFFINITY_LEVEL_OFF,
 		PSCI_0_2_AFFINITY_LEVEL_ON_PENDING);
 	switch (power_state) {
@@ -811,7 +812,7 @@ static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 		goto error;
 	}
 
-	reset_state = &vcpu->arch.reset_state;
+	reset_state = &target_vcpu_state->shadow_vcpu.arch.reset_state;
 
 	reset_state->pc = smccc_get_arg2(source_vcpu);
 	reset_state->r0 = smccc_get_arg3(source_vcpu);
@@ -840,8 +841,9 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 	unsigned long target_affinity;
 	unsigned long target_affinity_mask;
 	unsigned long lowest_affinity_level;
-	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
-	struct kvm_vcpu *tmp;
+	struct kvm_shadow_vcpu_state *vcpu_state;
+	struct kvm_shadow_vcpu_state *tmp;
+	struct kvm_shadow_vm *vm;
 	unsigned long hvc_ret_val;
 
 	target_affinity = smccc_get_arg1(vcpu);
@@ -859,6 +861,9 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 		goto done;
 	}
 
+	vcpu_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+	vm = vcpu_state->shadow_vm;
+
 	/* Ignore other bits of target affinity */
 	target_affinity &= target_affinity_mask;
 
@@ -870,14 +875,14 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 	 * Otherwise, return OFF.
 	 */
 	for (i = 0; i < vm->created_vcpus; i++) {
-		tmp = vm->vcpus[i];
-		mpidr = kvm_vcpu_get_mpidr_aff(tmp);
+		tmp = &vm->shadow_vcpu_states[i];
+		mpidr = kvm_vcpu_get_mpidr_aff(&tmp->shadow_vcpu);
 
 		if ((mpidr & target_affinity_mask) == target_affinity) {
 			int power_state;
 
 			matching_cpus++;
-			power_state = READ_ONCE(tmp->arch.pkvm.power_state);
+			power_state = READ_ONCE(tmp->power_state);
 			switch (power_state) {
 			case PSCI_0_2_AFFINITY_LEVEL_ON_PENDING:
 				hvc_ret_val = PSCI_0_2_AFFINITY_LEVEL_ON_PENDING;
@@ -910,11 +915,14 @@ done:
  */
 static bool pvm_psci_vcpu_off(struct kvm_vcpu *vcpu)
 {
+	struct kvm_shadow_vcpu_state *vcpu_state =
+		container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+
 	WARN_ON(vcpu->arch.power_off);
-	WARN_ON(vcpu->arch.pkvm.power_state != PSCI_0_2_AFFINITY_LEVEL_ON);
+	WARN_ON(vcpu_state->power_state != PSCI_0_2_AFFINITY_LEVEL_ON);
 
 	WRITE_ONCE(vcpu->arch.power_off, true);
-	WRITE_ONCE(vcpu->arch.pkvm.power_state, PSCI_0_2_AFFINITY_LEVEL_OFF);
+	WRITE_ONCE(vcpu_state->power_state, PSCI_0_2_AFFINITY_LEVEL_OFF);
 
 	/* Return to the host so that it can finish powering off the vcpu. */
 	return false;

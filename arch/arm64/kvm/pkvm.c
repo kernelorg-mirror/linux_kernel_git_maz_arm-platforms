@@ -98,14 +98,6 @@ void __init kvm_hyp_reserve(void)
 }
 
 /*
- * Updates the state of the host's version of the vcpu state.
- */
-static void update_vcpu_state(struct kvm_vcpu *vcpu, int shadow_handle)
-{
-	vcpu->arch.pkvm.shadow_handle = shadow_handle;
-}
-
-/*
  * Allocates and donates memory for EL2 shadow structs.
  *
  * Allocates space for the shadow state, which includes the shadow vm as well as
@@ -139,7 +131,7 @@ static int __create_el2_shadow(struct kvm *kvm)
 
 	/* Allocate memory to donate to hyp for the kvm and vcpu state. */
 	shadow_sz = PAGE_ALIGN(KVM_SHADOW_VM_SIZE +
-			       SHADOW_VCPU_STATE_SIZE * kvm->created_vcpus);
+			       KVM_SHADOW_VCPU_STATE_SIZE * kvm->created_vcpus);
 	shadow_addr = alloc_pages_exact(shadow_sz, GFP_KERNEL_ACCOUNT);
 	if (!shadow_addr) {
 		ret = -ENOMEM;
@@ -162,10 +154,6 @@ static int __create_el2_shadow(struct kvm *kvm)
 
 	/* Store the shadow handle given by hyp for future call reference. */
 	kvm->arch.pkvm.shadow_handle = shadow_handle;
-
-	/* Adjust host's vcpu state as it doesn't control it anymore. */
-	kvm_for_each_vcpu(idx, vcpu, kvm)
-		update_vcpu_state(vcpu, shadow_handle);
 
 	return 0;
 

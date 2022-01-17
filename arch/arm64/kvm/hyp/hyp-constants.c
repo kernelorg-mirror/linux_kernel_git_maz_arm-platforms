@@ -8,6 +8,6 @@ int main(void)
 {
 	DEFINE(STRUCT_HYP_PAGE_SIZE,	sizeof(struct hyp_page));
 	DEFINE(KVM_SHADOW_VM_SIZE,	sizeof(struct kvm_shadow_vm));
-	DEFINE(SHADOW_VCPU_STATE_SIZE,	sizeof(struct shadow_vcpu_state));
+	DEFINE(KVM_SHADOW_VCPU_STATE_SIZE, sizeof(struct kvm_shadow_vcpu_state));
 	return 0;
 }

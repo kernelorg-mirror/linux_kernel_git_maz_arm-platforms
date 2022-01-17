@@ -38,6 +38,15 @@ static pkvm_id pkvm_guest_id(struct kvm_vcpu *vcpu)
 static DEFINE_PER_CPU(struct kvm_shadow_vm *, __current_vm);
 #define current_vm (*this_cpu_ptr(&__current_vm))
 
+static struct kvm_shadow_vm *get_shadow_vm(struct kvm_vcpu *vcpu)
+{
+	struct kvm_shadow_vcpu_state *shadow_state;
+
+	shadow_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+
+	return shadow_state->shadow_vm;
+}
+
 static void __guest_lock(struct kvm_shadow_vm *vm)
 {
 	hyp_spin_lock(&vm->lock);
@@ -72,12 +81,12 @@ static void hyp_unlock_component(void)
 
 static void guest_lock_component(struct kvm_vcpu *vcpu)
 {
-	__guest_lock(vcpu->arch.pkvm.shadow_vm);
+	__guest_lock(get_shadow_vm(vcpu));
 }
 
 static void guest_unlock_component(struct kvm_vcpu *vcpu)
 {
-	__guest_unlock(vcpu->arch.pkvm.shadow_vm);
+	__guest_unlock(get_shadow_vm(vcpu));
 }
 
 static void *host_s2_zalloc_pages_exact(size_t size)
@@ -964,7 +973,7 @@ static enum pkvm_page_state guest_get_page_state(kvm_pte_t pte)
 static int __guest_check_page_state_range(struct kvm_vcpu *vcpu, u64 addr,
 					  u64 size, enum pkvm_page_state state)
 {
-	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
+	struct kvm_shadow_vm *vm = get_shadow_vm(vcpu);
 	struct check_walk_data d = {
 		.desired	= state,
 		.get_page_state	= guest_get_page_state,
@@ -998,7 +1007,7 @@ static int guest_complete_share(u64 addr, const struct pkvm_mem_transition *tx,
 				enum kvm_pgtable_prot perms)
 {
 	struct kvm_vcpu *vcpu = tx->completer.guest.vcpu;
-	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
+	struct kvm_shadow_vm *vm = get_shadow_vm(vcpu);
 	u64 size = tx->nr_pages * PAGE_SIZE;
 	enum kvm_pgtable_prot prot;
 
@@ -1011,7 +1020,7 @@ static int guest_complete_donation(u64 addr, const struct pkvm_mem_transition *t
 {
 	enum kvm_pgtable_prot prot = pkvm_mkstate(KVM_PGTABLE_PROT_RWX, PKVM_PAGE_OWNED);
 	struct kvm_vcpu *vcpu = tx->completer.guest.vcpu;
-	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
+	struct kvm_shadow_vm *vm = get_shadow_vm(vcpu);
 	u64 size = tx->nr_pages * PAGE_SIZE;
 
 	return kvm_pgtable_stage2_map(&vm->pgt, addr, size, tx->completer.guest.phys,
@@ -1040,8 +1049,7 @@ static int __guest_request_page_transition(u64 *completer_addr,
 					   enum pkvm_page_state desired)
 {
 	struct kvm_vcpu *vcpu = tx->initiator.guest.vcpu;
-	struct kvm_protected_vcpu *pkvm = &vcpu->arch.pkvm;
-	struct kvm_shadow_vm *vm = pkvm->shadow_vm;
+	struct kvm_shadow_vm *vm = get_shadow_vm(vcpu);
 	enum pkvm_page_state state;
 	phys_addr_t phys;
 	kvm_pte_t pte;
@@ -1097,8 +1105,7 @@ static int __guest_initiate_page_transition(u64 *completer_addr,
 					    enum pkvm_page_state state)
 {
 	struct kvm_vcpu *vcpu = tx->initiator.guest.vcpu;
-	struct kvm_protected_vcpu *pkvm = &vcpu->arch.pkvm;
-	struct kvm_shadow_vm *vm = pkvm->shadow_vm;
+	struct kvm_shadow_vm *vm = get_shadow_vm(vcpu);
 	struct kvm_hyp_memcache *mc = &vcpu->arch.pkvm_memcache;
 	u64 size = tx->nr_pages * PAGE_SIZE;
 	u64 addr = tx->initiator.addr;

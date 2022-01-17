@@ -213,32 +213,6 @@ struct kvm_arch {
 	struct kvm_protected_vm pkvm;
 };
 
-struct kvm_protected_vcpu {
-	/* A unique id to the shadow structs in the hyp shadow area. */
-	int shadow_handle;
-
-	/* A pointer to the host's vcpu. */
-	struct kvm_vcpu *host_vcpu;
-
-	/* A pointer to the shadow vm. */
-	struct kvm_shadow_vm *shadow_vm;
-
-	/* Tracks exit code for the protected guest. */
-	int exit_code;
-
-	/*
-	 * Track the power state transition of a protected vcpu.
-	 * Can be in one of three states:
-	 * PSCI_0_2_AFFINITY_LEVEL_ON
-	 * PSCI_0_2_AFFINITY_LEVEL_OFF
-	 * PSCI_0_2_AFFINITY_LEVEL_PENDING
-	 */
-	int power_state;
-
-	/* True if this vcpu is currently loaded on a cpu. */
-	bool loaded_on_cpu;
-};
-
 struct kvm_vcpu_fault_info {
 	u32 esr_el2;		/* Hyp Syndrom Register */
 	u64 far_el2;		/* Hyp Fault Address Register */
@@ -484,8 +458,6 @@ struct kvm_vcpu_arch {
 		u64 last_steal;
 		gpa_t base;
 	} steal;
-
-	struct kvm_protected_vcpu pkvm;
 };
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */

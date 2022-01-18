@@ -400,6 +400,7 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 
 	vm->host_kvm = kvm;
 	vm->kvm.created_vcpus = nr_vcpus;
+	vm->kvm.arch.flags = 0;
 	vm->kvm.arch.pkvm.enabled = READ_ONCE(kvm->arch.pkvm.enabled);
 
 	for (i = 0; i < nr_vcpus; i++) {
@@ -408,9 +409,18 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		struct kvm_vcpu *host_vcpu = shadow_vcpu_state->host_vcpu;
 		struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
 
+		shadow_vcpu_state->shadow_vm = vm;
+		shadow_vcpu_state->exit_code = 0;
+		shadow_vcpu_state->loaded_on_cpu = false;
+
 		shadow_vcpu->kvm = &vm->kvm;
 		shadow_vcpu->vcpu_id = READ_ONCE(host_vcpu->vcpu_id);
 		shadow_vcpu->vcpu_idx = i;
+
+		shadow_vcpu->arch.hw_mmu = &vm->kvm.arch.mmu;
+		shadow_vcpu->arch.power_off = true;
+		shadow_vcpu->arch.flags = 0;
+		shadow_vcpu->arch.pkvm_memcache.nr_pages = 0;
 
 		ret = copy_features(shadow_vcpu, host_vcpu);
 		if (ret)
@@ -418,11 +428,6 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 
 		pkvm_vcpu_init_traps(shadow_vcpu, host_vcpu);
 		kvm_reset_pvm_sys_regs(shadow_vcpu);
-
-		shadow_vcpu->arch.hw_mmu = &vm->kvm.arch.mmu;
-		shadow_vcpu->arch.power_off = true;
-
-		shadow_vcpu_state->shadow_vm = vm;
 
 		if (test_bit(KVM_ARM_VCPU_POWER_OFF, shadow_vcpu->arch.features)) {
 			shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_OFF;

@@ -549,6 +549,11 @@ static int check_shadow_size(int nr_vcpus, size_t shadow_size)
 	return 0;
 }
 
+static void poison_memory(void *memory, size_t size)
+{
+	memset(memory, 0x0badc0de, size);
+}
+
 /*
  * Initialize the shadow copy of the protected VM state using the memory
  * donated by the host.
@@ -605,8 +610,8 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	if (ret)
 		goto err;
 
-	/* Ensure we're working with a clean slate. */
-	memset(vm, 0, shadow_size);
+	/* Ensure all needed values are explicitly initialized. */
+	poison_memory(vm, shadow_size);
 
 	vm->kvm.arch.vtcr = host_kvm.arch.vtcr;
 	pgd_size = kvm_pgtable_stage2_pgd_size(host_kvm.arch.vtcr);

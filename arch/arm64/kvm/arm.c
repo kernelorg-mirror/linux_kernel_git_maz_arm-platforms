@@ -208,7 +208,9 @@ void kvm_arch_destroy_vm(struct kvm *kvm)
 	free_cpumask_var(kvm->arch.supported_cpus);
 
 	kvm_vgic_destroy(kvm);
-	kvm_shadow_destroy(kvm);
+
+	if (is_protected_kvm_enabled())
+		kvm_shadow_destroy(kvm);
 
 	kvm_destroy_vcpus(kvm);
 

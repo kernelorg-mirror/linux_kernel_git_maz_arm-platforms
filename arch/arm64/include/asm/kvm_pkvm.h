@@ -18,6 +18,7 @@
 
 int kvm_init_pvm(struct kvm *kvm, unsigned long type);
 int create_el2_shadow(struct kvm *kvm);
+void kvm_shadow_destroy(struct kvm *kvm);
 
 /*
  * Definitions for features to be allowed or restricted for guest virtual

@@ -400,6 +400,7 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 
 	vm->host_kvm = kvm;
 	vm->kvm.created_vcpus = nr_vcpus;
+	vm->kvm.arch.vtcr = host_kvm.arch.vtcr;
 	vm->kvm.arch.flags = 0;
 	vm->kvm.arch.pkvm.enabled = READ_ONCE(kvm->arch.pkvm.enabled);
 
@@ -613,7 +614,6 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	/* Ensure all needed values are explicitly initialized. */
 	poison_memory(vm, shadow_size);
 
-	vm->kvm.arch.vtcr = host_kvm.arch.vtcr;
 	pgd_size = kvm_pgtable_stage2_pgd_size(host_kvm.arch.vtcr);
 	nr_pgd_pages = pgd_size >> PAGE_SHIFT;
 	ret = __pkvm_host_donate_hyp(hyp_virt_to_pfn(pgd), nr_pgd_pages);

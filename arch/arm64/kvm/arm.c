@@ -655,7 +655,7 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 		/* Start with the vcpu in a dirty state */
 		if (!kvm_vm_is_protected(vcpu->kvm))
 			vcpu->arch.flags |= KVM_ARM64_PKVM_STATE_DIRTY;
-		ret = create_el2_shadow(kvm);
+		ret = kvm_shadow_create(kvm);
 		if (ret)
 			return ret;
 	}

@@ -107,7 +107,7 @@ void __init kvm_hyp_reserve(void)
  *
  * Return 0 on success, negative error code on failure.
  */
-static int __create_el2_shadow(struct kvm *kvm)
+static int __kvm_shadow_create(struct kvm *kvm)
 {
 	struct kvm_vcpu *vcpu, **vcpu_array;
 	size_t pgd_sz, shadow_sz;
@@ -171,13 +171,13 @@ free_pgd:
 	return ret;
 }
 
-int create_el2_shadow(struct kvm *kvm)
+int kvm_shadow_create(struct kvm *kvm)
 {
 	int ret = 0;
 
 	mutex_lock(&kvm->arch.pkvm.shadow_lock);
 	if (!kvm->arch.pkvm.shadow_handle)
-		ret = __create_el2_shadow(kvm);
+		ret = __kvm_shadow_create(kvm);
 	mutex_unlock(&kvm->arch.pkvm.shadow_lock);
 
 	return ret;

@@ -352,18 +352,18 @@ static int copy_features(struct kvm_vcpu *shadow_vcpu, struct kvm_vcpu *host_vcp
 	 * - Pointer Authentication
 	 */
 	if (FIELD_GET(ARM64_FEATURE_MASK(ID_AA64DFR0_PMUVER), PVM_ID_AA64DFR0_ALLOW))
-	        set_bit(KVM_ARM_VCPU_PMU_V3, allowed_features);
+		set_bit(KVM_ARM_VCPU_PMU_V3, allowed_features);
 
 	if (FIELD_GET(ARM64_FEATURE_MASK(ID_AA64PFR0_SVE), PVM_ID_AA64PFR0_ALLOW))
-	        set_bit(KVM_ARM_VCPU_SVE, allowed_features);
+		set_bit(KVM_ARM_VCPU_SVE, allowed_features);
 
 	if (FIELD_GET(ARM64_FEATURE_MASK(ID_AA64ISAR1_API), PVM_ID_AA64ISAR1_ALLOW) &&
 	    FIELD_GET(ARM64_FEATURE_MASK(ID_AA64ISAR1_APA), PVM_ID_AA64ISAR1_ALLOW))
-	        set_bit(KVM_ARM_VCPU_PTRAUTH_ADDRESS, allowed_features);
+		set_bit(KVM_ARM_VCPU_PTRAUTH_ADDRESS, allowed_features);
 
 	if (FIELD_GET(ARM64_FEATURE_MASK(ID_AA64ISAR1_GPI), PVM_ID_AA64ISAR1_ALLOW) &&
 	    FIELD_GET(ARM64_FEATURE_MASK(ID_AA64ISAR1_GPA), PVM_ID_AA64ISAR1_ALLOW))
-	        set_bit(KVM_ARM_VCPU_PTRAUTH_GENERIC, allowed_features);
+		set_bit(KVM_ARM_VCPU_PTRAUTH_GENERIC, allowed_features);
 
 	bitmap_and(shadow_vcpu->arch.features, host_vcpu->arch.features,
 		allowed_features, KVM_VCPU_MAX_FEATURES);
@@ -586,7 +586,7 @@ static int check_shadow_size(unsigned int nr_vcpus, size_t shadow_size)
 	 * so it's likely to be larger than the sum of the struct sizes.
 	 */
 	if (shadow_size < pkvm_get_shadow_size(nr_vcpus))
-		return -EINVAL;
+		return -ENOMEM;
 
 	return 0;
 }
@@ -604,13 +604,13 @@ static void poison_memory(void *memory, size_t size)
  *
  * kvm: A pointer to the host's struct kvm (host va).
  * shadow_va: The host va of the area being donated for the shadow state.
- * 	      Must be page aligned.
+ *	      Must be page aligned.
  * shadow_size: The size of the area being donated for the shadow state.
- * 		Must be a multiple of the page size.
+ *		Must be a multiple of the page size.
  * pgd: The host va of the area being donated for the stage-2 PGD for the VM.
- * 	Must be page aligned. Its size is implied by the VM's VTCR.
+ *	Must be page aligned. Its size is implied by the VM's VTCR.
  * Note: An array to the host KVM VCPUs (host VA) is passed via the pgd, as to
- * 	 not to be dependent on how the VCPU's are layed out in struct kvm.
+ *	 not to be dependent on how the VCPU's are layed out in struct kvm.
  *
  * Return a unique handle to the protected VM on success,
  * negative error code on failure.
@@ -642,7 +642,6 @@ int __pkvm_init_shadow(struct kvm *kvm,
 	if (ret)
 		return ret;
 
-	/* Ensure the host has donated enough memory for the shadow structs. */
 	nr_vcpus = READ_ONCE(kvm->created_vcpus);
 	ret = check_shadow_size(nr_vcpus, shadow_size);
 	if (ret)
@@ -774,12 +773,10 @@ void pkvm_reset_vcpu(struct kvm_shadow_vcpu_state *shadow_state)
 		WARN_ON(kvm_vcpu_enable_ptrauth(vcpu));
 	}
 
-	/* Reset core registers */
 	memset(vcpu_gp_regs(vcpu), 0, sizeof(*vcpu_gp_regs(vcpu)));
 	memset(&vcpu->arch.ctxt.fp_regs, 0, sizeof(vcpu->arch.ctxt.fp_regs));
 	vcpu_gp_regs(vcpu)->pstate = VCPU_RESET_PSTATE_EL1;
 
-	/* Reset system registers */
 	kvm_reset_pvm_sys_regs(vcpu);
 
 	/* Propagate initiator's endianness, after kvm_reset_pvm_sys_regs. */
@@ -1076,7 +1073,7 @@ static u64 __pkvm_memshare_page_req(struct kvm_vcpu *vcpu, u64 ipa)
 
 	/* Rewind the ELR so we return to the HVC once the IPA is mapped */
 	elr = read_sysreg(elr_el2);
-	elr -=4;
+	elr -= 4;
 	write_sysreg(elr, elr_el2);
 
 	return ARM_EXCEPTION_TRAP;

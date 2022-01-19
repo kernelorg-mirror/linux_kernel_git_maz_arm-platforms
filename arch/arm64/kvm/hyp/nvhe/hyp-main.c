@@ -54,12 +54,9 @@ static void handle_pvm_entry_wfx(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *sh
 static int pkvm_refill_memcache(struct kvm_vcpu *shadow_vcpu,
 				struct kvm_vcpu *host_vcpu)
 {
-	u64 nr_pages;
-	struct kvm_shadow_vcpu_state *shadow_vcpu_state;
+	struct kvm_shadow_vcpu_state *shadow_vcpu_state = get_shadow_state(shadow_vcpu);
+	u64 nr_pages = VTCR_EL2_LVLS(shadow_vcpu_state->shadow_vm->kvm.arch.vtcr) - 1;
 
-	shadow_vcpu_state = get_shadow_state(shadow_vcpu);
-
-	nr_pages = VTCR_EL2_LVLS(shadow_vcpu_state->shadow_vm->kvm.arch.vtcr) - 1;
 	return refill_memcache(&shadow_vcpu->arch.pkvm_memcache, nr_pages,
 			       &host_vcpu->arch.pkvm_memcache);
 }
@@ -136,7 +133,6 @@ static void handle_pvm_entry_sys64(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *
 
 		return;
 	}
-
 
 	if (host_flags & KVM_ARM64_INCREMENT_PC) {
 		shadow_vcpu->arch.flags &= ~(KVM_ARM64_PENDING_EXCEPTION |
@@ -535,9 +531,8 @@ static void flush_shadow_state(struct kvm_shadow_vcpu_state *shadow_state)
 		pkvm_reset_vcpu(shadow_state);
 
 	/*
-	 * If we deal with a non-protected guest and that the state is
-	 * dirty (from a host perspective), copy the state back into
-	 * the shadow.
+	 * If we deal with a non-protected guest and that the state is dirty
+	 * (from a host perspective), copy the state back into the shadow.
 	 */
 	if (!is_state_protected(shadow_state)) {
 		if (READ_ONCE(host_vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY)
@@ -644,7 +639,6 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 	struct kvm_shadow_vcpu_state *shadow_state;
 	struct kvm_vcpu *shadow_vcpu;
 
-	/* Why did you bother? */
 	if (!is_protected_kvm_enabled())
 		return;
 
@@ -667,35 +661,41 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 
 static void handle___pkvm_vcpu_put(struct kvm_cpu_context *host_ctxt)
 {
-	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
+	struct kvm_shadow_vcpu_state *shadow_state;
 
-		if (shadow_state) {
-			struct kvm_vcpu *host_vcpu = shadow_state->host_vcpu;
-			struct kvm_vcpu *shadow_vcpu = &shadow_state->shadow_vcpu;
+	if (!is_protected_kvm_enabled())
+		return;
 
-			if (shadow_vcpu->arch.flags & KVM_ARM64_FP_ENABLED)
-				fpsimd_host_restore();
+	shadow_state = pkvm_loaded_shadow_vcpu_state();
 
-			if (!is_state_protected(shadow_state) &&
-			    !(READ_ONCE(host_vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY))
-				__sync_vcpu_state(shadow_state);
+	if (shadow_state) {
+		struct kvm_vcpu *host_vcpu = shadow_state->host_vcpu;
+		struct kvm_vcpu *shadow_vcpu = &shadow_state->shadow_vcpu;
 
-			pkvm_put_shadow_vcpu_state(shadow_state);
-		}
+		if (shadow_vcpu->arch.flags & KVM_ARM64_FP_ENABLED)
+			fpsimd_host_restore();
+
+		if (!is_state_protected(shadow_state) &&
+			!(READ_ONCE(host_vcpu->arch.flags) & KVM_ARM64_PKVM_STATE_DIRTY))
+			__sync_vcpu_state(shadow_state);
+
+		pkvm_put_shadow_vcpu_state(shadow_state);
 	}
 }
 
 static void handle___pkvm_vcpu_sync_state(struct kvm_cpu_context *host_ctxt)
 {
-	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
+	struct kvm_shadow_vcpu_state *shadow_state;
 
-		if (!shadow_state || is_state_protected(shadow_state))
-			return;
+	if (!is_protected_kvm_enabled())
+		return;
 
-		__sync_vcpu_state(shadow_state);
-	}
+	shadow_state = pkvm_loaded_shadow_vcpu_state();
+
+	if (!shadow_state || is_state_protected(shadow_state))
+		return;
+
+	__sync_vcpu_state(shadow_state);
 }
 
 static void handle___kvm_vcpu_run(struct kvm_cpu_context *host_ctxt)
@@ -719,6 +719,7 @@ static void handle___kvm_vcpu_run(struct kvm_cpu_context *host_ctxt)
 			 * from the host (both FP and SVE).
 			 */
 			u64 reg = CPTR_EL2_TFP;
+
 			if (system_supports_sve())
 				reg |= CPTR_EL2_TZ;
 

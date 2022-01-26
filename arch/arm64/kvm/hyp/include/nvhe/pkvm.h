@@ -63,6 +63,16 @@ struct kvm_shadow_vm {
 	struct kvm_shadow_vcpu_state shadow_vcpu_states[0];
 };
 
+static inline struct kvm_shadow_vcpu_state *get_shadow_state(struct kvm_vcpu *shadow_vcpu)
+{
+	return container_of(shadow_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+}
+
+static inline struct kvm_shadow_vm *get_shadow_vm(struct kvm_vcpu *shadow_vcpu)
+{
+	return get_shadow_state(shadow_vcpu)->shadow_vm;
+}
+
 static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 {
 	struct kvm_shadow_vcpu_state *shadow_state;
@@ -70,7 +80,7 @@ static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 	if (!is_protected_kvm_enabled())
 		return false;
 
-	shadow_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+	shadow_state = get_shadow_state(vcpu);
 
 	return shadow_state->shadow_vm->kvm.arch.pkvm.enabled;
 }

@@ -38,15 +38,6 @@ static pkvm_id pkvm_guest_id(struct kvm_vcpu *vcpu)
 static DEFINE_PER_CPU(struct kvm_shadow_vm *, __current_vm);
 #define current_vm (*this_cpu_ptr(&__current_vm))
 
-static struct kvm_shadow_vm *get_shadow_vm(struct kvm_vcpu *vcpu)
-{
-	struct kvm_shadow_vcpu_state *shadow_state;
-
-	shadow_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
-
-	return shadow_state->shadow_vm;
-}
-
 static void __guest_lock(struct kvm_shadow_vm *vm)
 {
 	hyp_spin_lock(&vm->lock);

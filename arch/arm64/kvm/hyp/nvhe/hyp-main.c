@@ -63,7 +63,7 @@ static int pkvm_refill_memcache(struct kvm_vcpu *shadow_vcpu,
 	u64 nr_pages;
 	struct kvm_shadow_vcpu_state *shadow_vcpu_state;
 
-	shadow_vcpu_state = container_of(shadow_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+	shadow_vcpu_state = get_shadow_state(shadow_vcpu);
 
 	nr_pages = VTCR_EL2_LVLS(shadow_vcpu_state->shadow_vm->kvm.arch.vtcr) - 1;
 	return refill_memcache(&shadow_vcpu->arch.pkvm_memcache, nr_pages,
@@ -87,13 +87,11 @@ static void handle_pvm_entry_psci(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *s
 		 */
 		if (ret != PSCI_RET_SUCCESS) {
 			unsigned long cpu_id = smccc_get_arg1(shadow_vcpu);
-			struct kvm_shadow_vcpu_state *shadow_vcpu_state;
+			struct kvm_shadow_vm *shadow_vm;
 			struct kvm_shadow_vcpu_state *target_vcpu_state;
-			struct kvm_shadow_vm *vm;
 
-			shadow_vcpu_state = container_of(shadow_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
-			vm = shadow_vcpu_state->shadow_vm;
-			target_vcpu_state = pkvm_mpidr_to_vcpu_state(vm, cpu_id);
+			shadow_vm = get_shadow_vm(shadow_vcpu);
+			target_vcpu_state = pkvm_mpidr_to_vcpu_state(shadow_vm, cpu_id);
 
 			if (target_vcpu_state && READ_ONCE(target_vcpu_state->power_state) == PSCI_0_2_AFFINITY_LEVEL_ON_PENDING)
 				WRITE_ONCE(target_vcpu_state->power_state, PSCI_0_2_AFFINITY_LEVEL_OFF);

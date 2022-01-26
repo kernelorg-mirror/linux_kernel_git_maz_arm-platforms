@@ -796,7 +796,6 @@ struct kvm_shadow_vcpu_state *pkvm_mpidr_to_vcpu_state(struct kvm_shadow_vm *vm,
  */
 static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 {
-	struct kvm_shadow_vcpu_state *source_vcpu_state;
 	struct kvm_shadow_vcpu_state *target_vcpu_state;
 	struct kvm_shadow_vm *vm;
 	struct vcpu_reset_state *reset_state;
@@ -810,9 +809,7 @@ static bool pvm_psci_vcpu_on(struct kvm_vcpu *source_vcpu)
 		goto error;
 	}
 
-	source_vcpu_state = container_of(source_vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
-	vm = source_vcpu_state->shadow_vm;
-
+	vm = get_shadow_vm(source_vcpu);
 	target_vcpu_state = pkvm_mpidr_to_vcpu_state(vm, cpu_id);
 
 	/* Make sure the caller requested a valid vcpu. */
@@ -871,8 +868,6 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 	unsigned long target_affinity;
 	unsigned long target_affinity_mask;
 	unsigned long lowest_affinity_level;
-	struct kvm_shadow_vcpu_state *vcpu_state;
-	struct kvm_shadow_vcpu_state *tmp;
 	struct kvm_shadow_vm *vm;
 	unsigned long hvc_ret_val;
 
@@ -891,8 +886,7 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 		goto done;
 	}
 
-	vcpu_state = container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
-	vm = vcpu_state->shadow_vm;
+	vm = get_shadow_vm(vcpu);
 
 	/* Ignore other bits of target affinity */
 	target_affinity &= target_affinity_mask;
@@ -905,7 +899,8 @@ static bool pvm_psci_vcpu_affinity_info(struct kvm_vcpu *vcpu)
 	 * Otherwise, return OFF.
 	 */
 	for (i = 0; i < vm->kvm.created_vcpus; i++) {
-		tmp = &vm->shadow_vcpu_states[i];
+		struct kvm_shadow_vcpu_state *tmp = &vm->shadow_vcpu_states[i];
+
 		mpidr = kvm_vcpu_get_mpidr_aff(&tmp->shadow_vcpu);
 
 		if ((mpidr & target_affinity_mask) == target_affinity) {
@@ -945,8 +940,7 @@ done:
  */
 static bool pvm_psci_vcpu_off(struct kvm_vcpu *vcpu)
 {
-	struct kvm_shadow_vcpu_state *vcpu_state =
-		container_of(vcpu, struct kvm_shadow_vcpu_state, shadow_vcpu);
+	struct kvm_shadow_vcpu_state *vcpu_state = get_shadow_state(vcpu);
 
 	WARN_ON(vcpu->arch.power_off);
 	WARN_ON(vcpu_state->power_state != PSCI_0_2_AFFINITY_LEVEL_ON);

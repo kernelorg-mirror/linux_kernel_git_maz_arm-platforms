@@ -42,7 +42,7 @@ static void pend_sync_exception(struct kvm_vcpu *vcpu)
 		vcpu->arch.flags |= KVM_ARM64_EXCEPT_AA64_EL1;
 		break;
 	case PSR_MODE_EL0t:
-		if (vcpu_el2_tge_is_set(vcpu) & HCR_TGE)
+		if (vcpu_el2_tge_is_set(vcpu))
 			vcpu->arch.flags |= KVM_ARM64_EXCEPT_AA64_EL2;
 		else
 			vcpu->arch.flags |= KVM_ARM64_EXCEPT_AA64_EL1;

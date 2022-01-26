@@ -312,37 +312,6 @@ static bool access_vbar_el1(struct kvm_vcpu *vcpu,
 	return access_rw(vcpu, p, r);
 }
 
-static bool access_sctlr_el2(struct kvm_vcpu *vcpu,
-			     struct sys_reg_params *p,
-			     const struct sys_reg_desc *r)
-{
-	if (el12_reg(p) && forward_nv_traps(vcpu))
-		return false;
-
-	if (p->is_write) {
-		u64 val = p->regval;
-
-		if (vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)) {
-			val &= ~(GENMASK_ULL(63,45) | GENMASK_ULL(34, 32) |
-				 BIT_ULL(17) | BIT_ULL(9));
-			val |=  SCTLR_EL1_RES1;
-		} else {
-			val &= ~(GENMASK_ULL(63,45) | BIT_ULL(42) |
-				 GENMASK_ULL(39, 38) | GENMASK_ULL(35, 32) |
-				 BIT_ULL(26) | BIT_ULL(24) | BIT_ULL(20) |
-				 BIT_ULL(17) | GENMASK_ULL(15, 14) |
-				 GENMASK(10, 7));
-			val |=  SCTLR_EL2_RES1;
-		}
-
-		vcpu_write_sys_reg(vcpu, val, r->reg);
-	} else {
-		p->regval = vcpu_read_sys_reg(vcpu, r->reg);
-	}
-
-	return true;
-}
-
 /*
  * See note at ARMv7 ARM B1.14.4 (TL;DR: S/W ops are not easily virtualized).
  */
@@ -2452,7 +2421,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	EL2_REG(VPIDR_EL2, access_rw, reset_vpidr, 0),
 	EL2_REG(VMPIDR_EL2, access_rw, reset_vmpidr, 0),
-	EL2_REG(SCTLR_EL2, access_sctlr_el2, reset_val, SCTLR_EL2_RES1),
+	EL2_REG(SCTLR_EL2, access_rw, reset_val, SCTLR_EL2_RES1),
 	EL2_REG(ACTLR_EL2, access_rw, reset_val, 0),
 	EL2_REG(HCR_EL2, access_rw, reset_val, 0),
 	EL2_REG(MDCR_EL2, access_rw, reset_val, 0),

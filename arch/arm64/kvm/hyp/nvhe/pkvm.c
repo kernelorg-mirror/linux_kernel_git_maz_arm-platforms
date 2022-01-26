@@ -392,6 +392,27 @@ static int set_host_vcpus(struct kvm_shadow_vcpu_state *shadow_vcpu_states, int 
 	return 0;
 }
 
+static int init_shadow_psci(struct kvm_shadow_vm *vm,
+			    struct kvm_shadow_vcpu_state *shadow_vcpu_state,
+			    struct kvm_vcpu *host_vcpu)
+{
+	struct kvm_vcpu *shadow_vcpu = &shadow_vcpu_state->shadow_vcpu;
+	struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
+
+	if (test_bit(KVM_ARM_VCPU_POWER_OFF, shadow_vcpu->arch.features)) {
+		reset_state->reset = false;
+		shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_OFF;
+		return 0;
+	}
+
+	reset_state->pc = READ_ONCE(host_vcpu->arch.ctxt.regs.pc);
+	reset_state->r0 = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
+	reset_state->reset = true;
+	shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_ON_PENDING;
+
+	return 0;
+}
+
 static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 			       struct kvm_vcpu **vcpu_array, int nr_vcpus)
 {
@@ -408,7 +429,6 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		struct kvm_shadow_vcpu_state *shadow_vcpu_state = &vm->shadow_vcpu_states[i];
 		struct kvm_vcpu *shadow_vcpu = &shadow_vcpu_state->shadow_vcpu;
 		struct kvm_vcpu *host_vcpu = shadow_vcpu_state->host_vcpu;
-		struct vcpu_reset_state *reset_state = &shadow_vcpu->arch.reset_state;
 
 		shadow_vcpu_state->shadow_vm = vm;
 		shadow_vcpu_state->exit_code = 0;
@@ -430,14 +450,9 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 		pkvm_vcpu_init_traps(shadow_vcpu, host_vcpu);
 		kvm_reset_pvm_sys_regs(shadow_vcpu);
 
-		if (test_bit(KVM_ARM_VCPU_POWER_OFF, shadow_vcpu->arch.features)) {
-			shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_OFF;
-		} else {
-			reset_state->pc = READ_ONCE(host_vcpu->arch.ctxt.regs.pc);
-			reset_state->r0 = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
-			reset_state->reset = true;
-			shadow_vcpu_state->power_state = PSCI_0_2_AFFINITY_LEVEL_ON_PENDING;
-		}
+		ret = init_shadow_psci(vm, shadow_vcpu_state, host_vcpu);
+		if (ret)
+			return ret;
 	}
 
 	return 0;

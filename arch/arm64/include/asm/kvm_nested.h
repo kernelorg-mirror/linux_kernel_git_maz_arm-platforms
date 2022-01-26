@@ -51,10 +51,14 @@ static inline u64 translate_cptr_el2_to_cpacr_el1(u64 cptr_el2)
 	return cpacr_el1;
 }
 
-static inline u64 translate_sctlr_el2_to_sctlr_el1(u64 sctlr)
+static inline u64 translate_sctlr_el2_to_sctlr_el1(u64 val)
 {
-	/* Bit 20 is RES1 in SCTLR_EL1, but RES0 in SCTLR_EL2 */
-	return sctlr | BIT(20);
+	/* Only preserve the minimal set of bits we support */
+	val &= (SCTLR_ELx_M | SCTLR_ELx_A | SCTLR_ELx_C | SCTLR_ELx_SA |
+		SCTLR_ELx_I | SCTLR_ELx_IESB | SCTLR_ELx_WXN | SCTLR_ELx_EE);
+	val |= SCTLR_EL1_RES1;
+
+	return val;
 }
 
 static inline u64 translate_ttbr0_el2_to_ttbr0_el1(u64 ttbr0)

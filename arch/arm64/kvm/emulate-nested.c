@@ -43,6 +43,31 @@ bool forward_nv1_traps(struct kvm_vcpu *vcpu)
 	return forward_traps(vcpu, HCR_NV1);
 }
 
+static u64 kvm_check_illegal_exception_return(struct kvm_vcpu *vcpu, u64 spsr)
+{
+	u64 mode = spsr & (PSR_MODE_MASK | PSR_MODE32_BIT);
+
+	/* Possible causes for an Illegal Exception Return */
+	if ((vcpu_el2_tge_is_set(vcpu) &
+	     (mode == PSR_MODE_EL1t || mode == PSR_MODE_EL1h)) ||
+	    (mode & PSR_MODE32_BIT)) {
+		/*
+		 * The guest is playing with our nerves. Preserve EL, SP,
+		 * masks, flags from the existing PSTATE, and set IL.
+		 * The HW will then generate an Illegal State Exception
+		 * immediately after ERET.
+		 */
+		spsr = *vcpu_cpsr(vcpu);
+
+		spsr &= (PSR_D_BIT | PSR_A_BIT | PSR_I_BIT | PSR_F_BIT |
+			 PSR_N_BIT | PSR_Z_BIT | PSR_C_BIT | PSR_V_BIT |
+			 PSR_MODE_MASK | PSR_MODE32_BIT);
+		spsr |= PSR_IL_BIT;
+	}
+
+	return spsr;
+}
+
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 {
 	u64 spsr, elr;
@@ -59,6 +84,8 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 
 	spsr = __vcpu_sys_reg(vcpu, SPSR_EL2);
 	elr = __vcpu_sys_reg(vcpu, ELR_EL2);
+
+	spsr = kvm_check_illegal_exception_return(vcpu, spsr);
 
 	trace_kvm_nested_eret(vcpu, elr, spsr);
 

@@ -193,12 +193,19 @@ static bool vcpu_allowed_register_width(struct kvm_vcpu *vcpu)
 	unsigned long i;
 
 	is32bit = vcpu_has_feature(vcpu, KVM_ARM_VCPU_EL1_32BIT);
-	if (!cpus_have_const_cap(ARM64_HAS_32BIT_EL1) && is32bit)
-		return false;
+	if (is32bit) {
+		/* The HW must obviously support AArch32 at EL1 */
+		if (!cpus_have_const_cap(ARM64_HAS_32BIT_EL1))
+			return false;
 
-	/* MTE and NV are incompatible with AArch32 */
-	if ((kvm_has_mte(vcpu->kvm) || nested_virt_in_use(vcpu)) && is32bit)
-		return false;
+		/* MTE is incompatible with AArch32 */
+		if (kvm_has_mte(vcpu->kvm))
+			return false;
+
+		/* NV is incompatible with AArch32 */
+		if (nested_virt_in_use(vcpu))
+			return false;
+	}
 
 	/* Check that the vcpus are either all 32bit or all 64bit */
 	kvm_for_each_vcpu(i, tmp, vcpu->kvm) {
@@ -266,6 +273,12 @@ int kvm_reset_vcpu(struct kvm_vcpu *vcpu)
 	}
 
 	if (!vcpu_allowed_register_width(vcpu)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (nested_virt_in_use(vcpu) &&
+	    vcpu_has_feature(vcpu, KVM_ARM_VCPU_SVE)) {
 		ret = -EINVAL;
 		goto out;
 	}

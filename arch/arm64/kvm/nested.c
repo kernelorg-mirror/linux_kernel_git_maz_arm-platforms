@@ -535,7 +535,7 @@ struct kvm_s2_mmu *lookup_s2_mmu(struct kvm *kvm, u64 vttbr, u64 hcr)
 	 *
 	 * - or S2 is disabled, and we need a context that is S2-disabled
          *   and matches the VMID only, as all TLBs are tagged by VMID even
-         *   if S2 translation is enabled.
+         *   if S2 translation is disabled.
 	 */
 	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
 		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];

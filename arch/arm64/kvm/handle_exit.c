@@ -217,7 +217,7 @@ static int kvm_handle_ptrauth(struct kvm_vcpu *vcpu)
 
 static int kvm_handle_eret(struct kvm_vcpu *vcpu)
 {
-	if (kvm_vcpu_get_esr(vcpu) & ESR_ELx_ERET_ISS_ERET_ERETAx)
+	if (kvm_vcpu_get_esr(vcpu) & ESR_ELx_ERET_ISS_ERET)
 		return kvm_handle_ptrauth(vcpu);
 
 	kvm_emulate_nested_eret(vcpu);

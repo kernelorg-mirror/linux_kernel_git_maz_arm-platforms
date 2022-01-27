@@ -259,9 +259,8 @@
 		 ESR_ELx_SYS64_ISS_OP2_SHIFT))
 
 /* ISS field definitions for ERET/ERETAA/ERETAB trapping */
-
-#define ESR_ELx_ERET_ISS_ERET_ERETAx	0x2
-#define ESR_ELx_ERET_ISS_ERETA_ERATAB	0x1
+#define ESR_ELx_ERET_ISS_ERET		0x2
+#define ESR_ELx_ERET_ISS_ERETA		0x1
 
 /*
  * ISS field definitions for floating-point exception traps

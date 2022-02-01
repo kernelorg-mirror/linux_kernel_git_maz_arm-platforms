@@ -193,6 +193,8 @@ void kvm_shadow_destroy(struct kvm *kvm)
 		WARN_ON(kvm_call_hyp_nvhe(__pkvm_teardown_shadow,
 					  kvm->arch.pkvm.shadow_handle));
 
+	kvm->arch.pkvm.shadow_handle = 0;
+
 	free_hyp_memcache(&kvm->arch.pkvm.teardown_mc);
 
 	ppages = &kvm->arch.pkvm.pinned_pages;

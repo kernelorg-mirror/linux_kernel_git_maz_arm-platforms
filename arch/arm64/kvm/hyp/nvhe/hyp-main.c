@@ -295,6 +295,11 @@ static void handle_pvm_exit_hvc64(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *s
 		n = 4;
 		break;
 
+	case PSCI_1_1_FN_SYSTEM_RESET2:
+	case PSCI_1_1_FN64_SYSTEM_RESET2:
+		n = 3;
+		break;
+
 	/*
 	 * The rest are either blocked or handled by HYP, so we should
 	 * really never be here.

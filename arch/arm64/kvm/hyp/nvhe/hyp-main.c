@@ -51,7 +51,8 @@ typedef void (*shadow_entry_exit_handler_fn)(struct kvm_vcpu *, struct kvm_vcpu 
 
 static void handle_pvm_entry_wfx(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *shadow_vcpu)
 {
-	shadow_vcpu->arch.flags |= host_vcpu->arch.flags & KVM_ARM64_INCREMENT_PC;
+	shadow_vcpu->arch.flags |= READ_ONCE(host_vcpu->arch.flags) &
+				   KVM_ARM64_INCREMENT_PC;
 }
 
 static int pkvm_refill_memcache(struct kvm_vcpu *shadow_vcpu,
@@ -67,7 +68,7 @@ static int pkvm_refill_memcache(struct kvm_vcpu *shadow_vcpu,
 static void handle_pvm_entry_psci(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *shadow_vcpu)
 {
 	u32 psci_fn = smccc_get_function(shadow_vcpu);
-	u64 ret = vcpu_get_reg(host_vcpu, 0);
+	u64 ret = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
 
 	switch (psci_fn) {
 	case PSCI_0_2_FN_CPU_ON:
@@ -143,7 +144,7 @@ static void handle_pvm_entry_sys64(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *
 
 	if (!esr_sys64_to_params(shadow_vcpu->arch.fault.esr_el2).is_write) {
 		/* r0 as transfer register between the guest and the host. */
-		u64 rt_val = vcpu_get_reg(host_vcpu, 0);
+		u64 rt_val = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
 		int rt = kvm_vcpu_sys_get_rt(shadow_vcpu);
 
 		vcpu_set_reg(shadow_vcpu, rt, rt_val);
@@ -230,7 +231,7 @@ static void handle_pvm_entry_dabt(struct kvm_vcpu *host_vcpu, struct kvm_vcpu *s
 
 	if (rd_update) {
 		/* r0 as transfer register between the guest and the host. */
-		u64 rd_val = vcpu_get_reg(host_vcpu, 0);
+		u64 rd_val = READ_ONCE(host_vcpu->arch.ctxt.regs.regs[0]);
 		int rd = kvm_vcpu_dabt_get_rd(shadow_vcpu);
 
 		vcpu_set_reg(shadow_vcpu, rd, rd_val);
@@ -420,7 +421,7 @@ static void flush_vgic_state(struct kvm_vcpu *host_vcpu,
 	used_lrs = READ_ONCE(host_cpu_if->used_lrs);
 	used_lrs = min(used_lrs, max_lrs);
 
-	shadow_cpu_if->vgic_hcr	= host_cpu_if->vgic_hcr;
+	shadow_cpu_if->vgic_hcr	= READ_ONCE(host_cpu_if->vgic_hcr);
 	/* Should be a one-off */
 	shadow_cpu_if->vgic_sre = (ICC_SRE_EL1_DIB |
 				   ICC_SRE_EL1_DFB |
@@ -428,7 +429,7 @@ static void flush_vgic_state(struct kvm_vcpu *host_vcpu,
 	shadow_cpu_if->used_lrs	= used_lrs;
 
 	for (i = 0; i < used_lrs; i++)
-		shadow_cpu_if->vgic_lr[i] = host_cpu_if->vgic_lr[i];
+		shadow_cpu_if->vgic_lr[i] = READ_ONCE(host_cpu_if->vgic_lr[i]);
 }
 
 static void sync_vgic_state(struct kvm_vcpu *host_vcpu,
@@ -534,7 +535,7 @@ static void flush_shadow_state(struct pkvm_loaded_state *state)
 			__flush_vcpu_state(shadow_vcpu);
 
 		state->vcpu->arch.hcr_el2 = HCR_GUEST_FLAGS & ~(HCR_RW | HCR_TWI | HCR_TWE);
-		state->vcpu->arch.hcr_el2 |= host_vcpu->arch.hcr_el2;
+		state->vcpu->arch.hcr_el2 |= READ_ONCE(host_vcpu->arch.hcr_el2);
 	}
 
 	flush_vgic_state(host_vcpu, shadow_vcpu);
@@ -569,6 +570,7 @@ static void sync_shadow_state(struct pkvm_loaded_state *state, u32 exit_reason)
 	struct kvm_vcpu *host_vcpu = shadow_vcpu->arch.pkvm.host_vcpu;
 	u8 esr_ec;
 	shadow_entry_exit_handler_fn ec_handler;
+	unsigned long host_flags;
 
 	/*
 	 * Don't sync the vcpu GPR/sysreg state after a run. Instead,
@@ -598,7 +600,9 @@ static void sync_shadow_state(struct pkvm_loaded_state *state, u32 exit_reason)
 		BUG();
 	}
 
-	host_vcpu->arch.flags &= ~(KVM_ARM64_PENDING_EXCEPTION | KVM_ARM64_INCREMENT_PC);
+	host_flags = READ_ONCE(host_vcpu->arch.flags) &
+		~(KVM_ARM64_PENDING_EXCEPTION | KVM_ARM64_INCREMENT_PC);
+	host_vcpu->arch.flags = host_flags;
 	shadow_vcpu->arch.pkvm.exit_code = exit_reason;
 }
 

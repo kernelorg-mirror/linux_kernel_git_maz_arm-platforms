@@ -21,6 +21,12 @@
 #include <nvhe/pkvm.h>
 #include <nvhe/trap_handler.h>
 
+/*
+ * The shadow state for the currently loaded vcpu. Used only when protected KVM
+ * is enabled for both protected and non-protected VMs.
+ */
+static DEFINE_PER_CPU(struct kvm_shadow_vcpu_state *, loaded_shadow_state);
+
 /* Used by icache_is_vpipt(). */
 unsigned long __icache_flags;
 
@@ -270,10 +276,14 @@ static struct kvm_shadow_vm *find_shadow_by_handle(int shadow_handle)
 	return shadow_table[shadow_index];
 }
 
-struct kvm_shadow_vcpu_state *pkvm_get_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx)
+struct kvm_shadow_vcpu_state *pkvm_load_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx)
 {
 	struct kvm_shadow_vcpu_state *shadow_state = NULL;
 	struct kvm_shadow_vm *vm;
+
+	/* Cannot load a new vcpu without putting the old one first. */
+	if (__this_cpu_read(loaded_shadow_state))
+		return NULL;
 
 	hyp_spin_lock(&shadow_lock); // XXX read_lock
 	vm = find_shadow_by_handle(shadow_handle);
@@ -282,14 +292,19 @@ struct kvm_shadow_vcpu_state *pkvm_get_shadow_vcpu_state(int shadow_handle, unsi
 	shadow_state = &vm->shadow_vcpu_states[vcpu_idx];
 
 	/* Ensure vcpu isn't loaded on more than one cpu simultaneously. */
-	if (unlikely(xchg_relaxed(&shadow_state->loaded_on_cpu, true))) {
+	if (unlikely(cmpxchg_relaxed(&shadow_state->loaded_shadow_state,
+				     NULL,
+				     this_cpu_ptr(&loaded_shadow_state)))) {
 		shadow_state = NULL;
 		goto unlock;
 	}
 
 	hyp_page_ref_inc(hyp_virt_to_page(vm));
+
 unlock:
 	hyp_spin_unlock(&shadow_lock);
+
+	__this_cpu_write(loaded_shadow_state, shadow_state);
 
 	return shadow_state;
 }
@@ -298,7 +313,8 @@ void pkvm_put_shadow_vcpu_state(struct kvm_shadow_vcpu_state *shadow_state)
 {
 	struct kvm_shadow_vm *vm = shadow_state->shadow_vm;
 
-	WRITE_ONCE(shadow_state->loaded_on_cpu, false);
+	WRITE_ONCE(shadow_state->loaded_shadow_state, NULL);
+	__this_cpu_write(loaded_shadow_state, NULL);
 
 	/*
 	 * Once the refcount hits zero then __pkvm_teardown_shadow() can
@@ -307,6 +323,11 @@ void pkvm_put_shadow_vcpu_state(struct kvm_shadow_vcpu_state *shadow_state)
 	 */
 	smp_wmb();
 	hyp_page_ref_dec(hyp_virt_to_page(vm));
+}
+
+struct kvm_shadow_vcpu_state *pkvm_loaded_shadow_vcpu_state(void)
+{
+	return __this_cpu_read(loaded_shadow_state);
 }
 
 /* Check and copy the supported features for the vcpu from the host. */
@@ -432,7 +453,7 @@ static int init_shadow_structs(struct kvm *kvm, struct kvm_shadow_vm *vm,
 
 		shadow_vcpu_state->shadow_vm = vm;
 		shadow_vcpu_state->exit_code = 0;
-		shadow_vcpu_state->loaded_on_cpu = false;
+		shadow_vcpu_state->loaded_shadow_state = NULL;
 
 		shadow_vcpu->kvm = &vm->kvm;
 		shadow_vcpu->vcpu_id = READ_ONCE(host_vcpu->vcpu_id);

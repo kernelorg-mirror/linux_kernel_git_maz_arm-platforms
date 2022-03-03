@@ -37,8 +37,11 @@ struct kvm_shadow_vcpu_state {
 	 */
 	int power_state;
 
-	/* True if this vcpu is currently loaded on a cpu. */
-	bool loaded_on_cpu;
+	/*
+	 * Points to the per-cpu pointer of the cpu where it's loaded, or NULL
+	 * if not loaded.
+	 */
+	struct kvm_shadow_vcpu_state **loaded_shadow_state;
 };
 
 /*
@@ -88,8 +91,9 @@ static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 void hyp_shadow_table_init(void *tbl);
 int __pkvm_init_shadow(struct kvm *kvm, void *shadow_va, size_t size, void *pgd);
 int __pkvm_teardown_shadow(int shadow_handle);
-struct kvm_shadow_vcpu_state *pkvm_get_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx);
+struct kvm_shadow_vcpu_state *pkvm_load_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx);
 void pkvm_put_shadow_vcpu_state(struct kvm_shadow_vcpu_state *shadow_state);
+struct kvm_shadow_vcpu_state *pkvm_loaded_shadow_vcpu_state(void);
 
 u64 pvm_read_id_reg(const struct kvm_vcpu *vcpu, u32 id);
 bool kvm_handle_pvm_sysreg(struct kvm_vcpu *vcpu, u64 *exit_code);

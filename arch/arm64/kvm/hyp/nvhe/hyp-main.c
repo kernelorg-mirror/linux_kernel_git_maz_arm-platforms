@@ -26,12 +26,6 @@
 #include "../../sys_regs.h"
 
 /*
- * The shadow state for the currently loaded vcpu. Used only when protected KVM
- * is enabled for both protected and non-protected VMs.
- */
-static DEFINE_PER_CPU(struct kvm_shadow_vcpu_state *, loaded_shadow_state);
-
-/*
  * Host FPSIMD state. Written to when the guest accesses its own FPSIMD state,
  * and read when the guest state is live and that it needs to be switched back
  * to the host.
@@ -627,7 +621,7 @@ static void fpsimd_host_restore(void)
 	isb();
 
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 		struct kvm_vcpu *shadow_vcpu = &shadow_state->shadow_vcpu;
 		struct user_fpsimd_state *host_fpsimd_state = this_cpu_ptr(&loaded_host_fpsimd_state);
 
@@ -654,15 +648,7 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 	if (!is_protected_kvm_enabled())
 		return;
 
-	shadow_state = __this_cpu_read(loaded_shadow_state);
-
-	/* Nice try */
-	if (shadow_state)
-		return;
-
-	shadow_state = pkvm_get_shadow_vcpu_state(shadow_handle, vcpu_idx);
-	__this_cpu_write(loaded_shadow_state, shadow_state);
-
+	shadow_state = pkvm_load_shadow_vcpu_state(shadow_handle, vcpu_idx);
 	if (!shadow_state)
 		return;
 
@@ -682,7 +668,7 @@ static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 static void handle___pkvm_vcpu_put(struct kvm_cpu_context *host_ctxt)
 {
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 
 		if (shadow_state) {
 			struct kvm_vcpu *host_vcpu = shadow_state->host_vcpu;
@@ -696,9 +682,6 @@ static void handle___pkvm_vcpu_put(struct kvm_cpu_context *host_ctxt)
 				__sync_vcpu_state(shadow_state);
 
 			pkvm_put_shadow_vcpu_state(shadow_state);
-
-			/* "It's over and done with..." */
-			__this_cpu_write(loaded_shadow_state, NULL);
 		}
 	}
 }
@@ -706,7 +689,7 @@ static void handle___pkvm_vcpu_put(struct kvm_cpu_context *host_ctxt)
 static void handle___pkvm_vcpu_sync_state(struct kvm_cpu_context *host_ctxt)
 {
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 
 		if (!shadow_state || is_state_protected(shadow_state))
 			return;
@@ -721,7 +704,7 @@ static void handle___kvm_vcpu_run(struct kvm_cpu_context *host_ctxt)
 	int ret;
 
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 		struct kvm_vcpu *shadow_vcpu = &shadow_state->shadow_vcpu;
 
 		flush_shadow_state(shadow_state);
@@ -760,7 +743,7 @@ static void handle___pkvm_host_donate_guest(struct kvm_cpu_context *host_ctxt)
 	if (!is_protected_kvm_enabled())
 		goto out;
 
-	shadow_state = __this_cpu_read(loaded_shadow_state);
+	shadow_state = pkvm_loaded_shadow_vcpu_state();
 	if (!shadow_state)
 		goto out;
 
@@ -786,7 +769,7 @@ static void handle___kvm_adjust_pc(struct kvm_cpu_context *host_ctxt)
 	host_vcpu = kern_hyp_va(host_vcpu);
 
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 
 		/*
 		 * A shadow vcpu can never be updated from EL1, and we
@@ -860,7 +843,7 @@ static void handle___kvm_get_mdcr_el2(struct kvm_cpu_context *host_ctxt)
 static struct vgic_v3_cpu_if *get_shadow_vgic_v3_cpu_if(struct vgic_v3_cpu_if *cpu_if)
 {
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *shadow_state = __this_cpu_read(loaded_shadow_state);
+		struct kvm_shadow_vcpu_state *shadow_state = pkvm_loaded_shadow_vcpu_state();
 		struct kvm_vcpu *host_vcpu;
 
 		if (!shadow_state)

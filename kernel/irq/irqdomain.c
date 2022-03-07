@@ -521,6 +521,10 @@ static void irq_domain_set_mapping(struct irq_domain *domain,
 		return;
 
 	mutex_lock(&domain->revmap_mutex);
+
+	/* Catch bad drivers overriding existing mappings */
+	WARN_ON(__irq_resolve_mapping(domain, hwirq, NULL));
+
 	if (hwirq < domain->revmap_size)
 		rcu_assign_pointer(domain->revmap[hwirq], irq_data);
 	else

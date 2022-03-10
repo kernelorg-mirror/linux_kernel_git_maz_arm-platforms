@@ -24,6 +24,7 @@ unsigned long hyp_nr_cpus;
 			 (unsigned long)__per_cpu_start)
 
 static void *vmemmap_base;
+static void *shadow_table_base;
 static void *hyp_pgt_base;
 static void *host_s2_pgt_base;
 static struct kvm_pgtable_mm_ops pkvm_pgtable_mm_ops;
@@ -41,8 +42,8 @@ static int divide_memory_pool(void *virt, unsigned long size)
 		return -ENOMEM;
 
 	nr_pages = hyp_shadow_table_pages(sizeof(struct kvm_shadow_vm));
-	shadow_table = hyp_early_alloc_contig(nr_pages);
-	if (!shadow_table)
+	shadow_table_base = hyp_early_alloc_contig(nr_pages);
+	if (!shadow_table_base)
 		return -ENOMEM;
 
 	nr_pages = hyp_s1_pgtable_pages();
@@ -298,6 +299,7 @@ void __noreturn __pkvm_init_finalise(void)
 	if (ret)
 		goto out;
 
+	hyp_shadow_table_init(shadow_table_base);
 out:
 	/*
 	 * We tail-called to here from handle___pkvm_init() and will not return,

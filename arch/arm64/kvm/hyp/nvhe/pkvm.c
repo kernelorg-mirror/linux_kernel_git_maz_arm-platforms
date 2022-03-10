@@ -225,6 +225,7 @@ static int index_to_shadow_handle(int index)
 
 extern unsigned long hyp_nr_cpus;
 
+// XXX: fix this comment
 /*
  * Spinlock for protecting the shadow table related state.
  * Protects writes to shadow_table, num_shadow_entries, and next_shadow_alloc,
@@ -268,7 +269,7 @@ struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, unsigned int vcpu_idx)
 	struct kvm_vcpu *vcpu = NULL;
 	struct kvm_shadow_vm *vm;
 
-	hyp_spin_lock(&shadow_lock);
+	hyp_spin_lock(&shadow_lock); // XXX read_lock
 	vm = find_shadow_by_handle(shadow_handle);
 	if (!vm || vm->created_vcpus <= vcpu_idx)
 		goto unlock;
@@ -617,7 +618,7 @@ int __pkvm_init_shadow(struct kvm *kvm,
 		goto err_unpin_host_vcpus;
 
 	/* Add the entry to the shadow table. */
-	hyp_spin_lock(&shadow_lock);
+	hyp_spin_lock(&shadow_lock); // XXX: write lock
 	ret = insert_shadow_table(kvm, vm, shadow_size);
 	if (ret < 0)
 		goto err_unlock_unpin_host_vcpus;
@@ -661,7 +662,7 @@ int __pkvm_teardown_shadow(int shadow_handle)
 	void *addr;
 
 	/* Lookup then remove entry from the shadow table. */
-	hyp_spin_lock(&shadow_lock);
+	hyp_spin_lock(&shadow_lock); // XXX: write lock
 	vm = find_shadow_by_handle(shadow_handle);
 	if (!vm) {
 		err = -ENOENT;

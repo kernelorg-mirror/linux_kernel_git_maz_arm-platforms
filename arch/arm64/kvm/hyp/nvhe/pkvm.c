@@ -275,11 +275,10 @@ struct kvm_vcpu *get_shadow_vcpu(int shadow_handle, unsigned int vcpu_idx)
 	vcpu = &vm->shadow_vcpus[vcpu_idx].vcpu;
 
 	/* Ensure vcpu isn't loaded on more than one cpu simultaneously. */
-	if (unlikely(vcpu->arch.pkvm.loaded_on_cpu)) {
+	if (unlikely(xchg_relaxed(&vcpu->arch.pkvm.loaded_on_cpu, true))) {
 		vcpu = NULL;
 		goto unlock;
 	}
-	vcpu->arch.pkvm.loaded_on_cpu = true;
 
 	hyp_page_ref_inc(hyp_virt_to_page(vm));
 unlock:
@@ -293,7 +292,7 @@ void put_shadow_vcpu(struct kvm_vcpu *vcpu)
 	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
 
 	hyp_spin_lock(&shadow_lock);
-	vcpu->arch.pkvm.loaded_on_cpu = false;
+	WRITE_ONCE(vcpu->arch.pkvm.loaded_on_cpu, false);
 	hyp_page_ref_dec(hyp_virt_to_page(vm));
 	hyp_spin_unlock(&shadow_lock);
 }

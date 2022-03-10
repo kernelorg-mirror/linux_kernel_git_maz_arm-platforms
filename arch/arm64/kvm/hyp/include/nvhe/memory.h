@@ -6,6 +6,7 @@
 #include <asm/page.h>
 
 #include <linux/types.h>
+#include <nvhe/spinlock.h>
 
 /*
  * Accesses to struct hyp_page flags must be serialized by the host stage-2
@@ -46,34 +47,63 @@ static inline phys_addr_t hyp_virt_to_phys(void *addr)
 #define hyp_page_to_virt(page)	__hyp_va(hyp_page_to_phys(page))
 #define hyp_page_to_pool(page)	(((struct hyp_page *)page)->pool)
 
+/*
+ * Refcount manipulators for 'struct hyp_page'.
+ * Please note: with the exception of hyp_page_ref_dec_and_lock(), none
+ * of these helpers provide any memory ordering guarantees!
+ */
 static inline int hyp_page_count(void *addr)
 {
 	struct hyp_page *p = hyp_virt_to_page(addr);
 
-	return p->refcount;
+	return READ_ONCE(p->refcount);
 }
 
 static inline void hyp_page_ref_inc(struct hyp_page *p)
 {
-	BUG_ON(p->refcount == USHRT_MAX);
-	p->refcount++;
+	u16 cnt;
+
+	do {
+		cnt = READ_ONCE(p->refcount);
+		BUG_ON(cnt == USHRT_MAX);
+	} while (cmpxchg_relaxed(&p->refcount, cnt, cnt + 1) != cnt);
 }
 
 static inline void hyp_page_ref_dec(struct hyp_page *p)
 {
-	BUG_ON(!p->refcount);
-	p->refcount--;
+	u16 cnt;
+
+	do {
+		cnt = READ_ONCE(p->refcount);
+		BUG_ON(!cnt);
+	} while (cmpxchg_relaxed(&p->refcount, cnt, cnt - 1) != cnt);
 }
 
-static inline int hyp_page_ref_dec_and_test(struct hyp_page *p)
+static inline bool hyp_page_ref_dec_and_lock(struct hyp_page *p,
+					     hyp_spinlock_t *l)
 {
-	hyp_page_ref_dec(p);
-	return (p->refcount == 0);
+	bool locked = false;
+	u16 cnt;
+
+	do {
+		cnt = READ_ONCE(p->refcount);
+		BUG_ON(!cnt);
+
+		if (cnt == 1 && !locked) {
+			hyp_spin_lock(l);
+			locked = true;
+		}
+	} while (cmpxchg_relaxed(&p->refcount, cnt, cnt - 1) != cnt);
+
+	if (locked && cnt != 1)
+		hyp_spin_unlock(l);
+
+	return locked;
 }
 
 static inline void hyp_set_page_refcounted(struct hyp_page *p)
 {
-	BUG_ON(p->refcount);
-	p->refcount = 1;
+	BUG_ON(READ_ONCE(p->refcount));
+	WRITE_ONCE(p->refcount, 1);
 }
 #endif /* __KVM_HYP_MEMORY_H */

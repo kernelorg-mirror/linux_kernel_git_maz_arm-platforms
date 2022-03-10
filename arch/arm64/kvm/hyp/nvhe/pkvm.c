@@ -291,10 +291,15 @@ void put_shadow_vcpu(struct kvm_vcpu *vcpu)
 {
 	struct kvm_shadow_vm *vm = vcpu->arch.pkvm.shadow_vm;
 
-	hyp_spin_lock(&shadow_lock);
 	WRITE_ONCE(vcpu->arch.pkvm.loaded_on_cpu, false);
+
+	/*
+	 * Once the refcount hits zero then __pkvm_teardown_shadow() can
+	 * destroy the shadow structures, so make sure we're finished with
+	 * the vCPU first.
+	 */
+	smp_wmb();
 	hyp_page_ref_dec(hyp_virt_to_page(vm));
-	hyp_spin_unlock(&shadow_lock);
 }
 
 /* Check and copy the supported features for the vcpu from the host. */

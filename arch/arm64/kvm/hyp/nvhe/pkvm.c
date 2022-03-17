@@ -225,14 +225,14 @@ static void pkvm_vcpu_init_traps(struct kvm_vcpu *shadow_vcpu, struct kvm_vcpu *
  */
 #define HANDLE_OFFSET 0x1000
 
-static unsigned int shadow_handle_to_index(unsigned int shadow_handle)
+static unsigned int shadow_handle_to_idx(unsigned int shadow_handle)
 {
 	return shadow_handle - HANDLE_OFFSET;
 }
 
-static unsigned int index_to_shadow_handle(unsigned int index)
+static unsigned int idx_to_shadow_handle(unsigned int idx)
 {
-	return index + HANDLE_OFFSET;
+	return idx + HANDLE_OFFSET;
 }
 
 extern unsigned long hyp_nr_cpus;
@@ -240,7 +240,7 @@ extern unsigned long hyp_nr_cpus;
 // XXX: fix this comment
 /*
  * Spinlock for protecting the shadow table related state.
- * Protects writes to shadow_table, num_shadow_entries, and next_shadow_alloc,
+ * Protects writes to shadow_table, nr_shadow_entries, and next_shadow_alloc,
  * as well as reads and writes to last_shadow_vcpu_lookup.
  */
 static DEFINE_HYP_SPINLOCK(shadow_lock);
@@ -252,7 +252,7 @@ static DEFINE_HYP_SPINLOCK(shadow_lock);
 static struct kvm_shadow_vm **shadow_table;
 
 /* Current number of vms in the shadow table. */
-static unsigned int num_shadow_entries;
+static unsigned int nr_shadow_entries;
 
 /* The next entry index to try to allocate from. */
 static unsigned int next_shadow_alloc;
@@ -268,12 +268,12 @@ void hyp_shadow_table_init(void *tbl)
  */
 static struct kvm_shadow_vm *find_shadow_by_handle(unsigned int shadow_handle)
 {
-	unsigned int shadow_index = shadow_handle_to_index(shadow_handle);
+	unsigned int shadow_idx = shadow_handle_to_idx(shadow_handle);
 
-	if (unlikely(shadow_index >= KVM_MAX_PVMS))
+	if (unlikely(shadow_idx >= KVM_MAX_PVMS))
 		return NULL;
 
-	return shadow_table[shadow_index];
+	return shadow_table[shadow_idx];
 }
 
 struct kvm_shadow_vcpu_state *pkvm_load_shadow_vcpu_state(unsigned int shadow_handle, unsigned int vcpu_idx)
@@ -486,16 +486,16 @@ static int init_shadow_structs(struct kvm *kvm,
 static bool __exists_shadow(struct kvm *host_kvm)
 {
 	int i;
-	unsigned int num_checked = 0;
+	unsigned int nr_checked = 0;
 
-	for (i = 0; i < KVM_MAX_PVMS && num_checked < num_shadow_entries; i++) {
+	for (i = 0; i < KVM_MAX_PVMS && nr_checked < nr_shadow_entries; i++) {
 		if (!shadow_table[i])
 			continue;
 
 		if (unlikely(shadow_table[i]->host_kvm == host_kvm))
 			return true;
 
-		num_checked++;
+		nr_checked++;
 	}
 
 	return false;
@@ -517,7 +517,7 @@ static unsigned int insert_shadow_table(struct kvm *kvm,
 
 	hyp_assert_lock_held(&shadow_lock);
 
-	if (unlikely(num_shadow_entries >= KVM_MAX_PVMS))
+	if (unlikely(nr_shadow_entries >= KVM_MAX_PVMS))
 		return -ENOMEM;
 
 	/*
@@ -534,7 +534,7 @@ static unsigned int insert_shadow_table(struct kvm *kvm,
 	/* Find the next free entry in the shadow table. */
 	while (shadow_table[next_shadow_alloc])
 		next_shadow_alloc = (next_shadow_alloc + 1) % KVM_MAX_PVMS;
-	shadow_handle = index_to_shadow_handle(next_shadow_alloc);
+	shadow_handle = idx_to_shadow_handle(next_shadow_alloc);
 
 	vm->kvm.arch.pkvm.shadow_handle = shadow_handle;
 	vm->shadow_area_size = shadow_size;
@@ -550,7 +550,7 @@ static unsigned int insert_shadow_table(struct kvm *kvm,
 
 	shadow_table[next_shadow_alloc] = vm;
 	next_shadow_alloc = (next_shadow_alloc + 1) % KVM_MAX_PVMS;
-	num_shadow_entries++;
+	nr_shadow_entries++;
 
 	return shadow_handle;
 }
@@ -561,15 +561,15 @@ static unsigned int insert_shadow_table(struct kvm *kvm,
 static void remove_shadow_table(unsigned int shadow_handle)
 {
 	hyp_assert_lock_held(&shadow_lock);
-	shadow_table[shadow_handle_to_index(shadow_handle)] = NULL;
-	num_shadow_entries--;
+	shadow_table[shadow_handle_to_idx(shadow_handle)] = NULL;
+	nr_shadow_entries--;
 }
 
-static size_t pkvm_get_shadow_size(unsigned int num_vcpus)
+static size_t pkvm_get_shadow_size(unsigned int nr_vcpus)
 {
 	/* Shadow space for the vm struct and all of its vcpu states. */
 	return sizeof(struct kvm_shadow_vm) +
-	       sizeof(struct kvm_shadow_vcpu_state) * num_vcpus;
+	       sizeof(struct kvm_shadow_vcpu_state) * nr_vcpus;
 }
 
 /*

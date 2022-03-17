@@ -113,7 +113,7 @@ static int __kvm_shadow_create(struct kvm *kvm)
 	size_t pgd_sz, shadow_sz;
 	void *pgd, *shadow_addr;
 	unsigned long idx;
-	int shadow_handle;
+	unsigned int shadow_handle;
 	int ret;
 
 	if (kvm->created_vcpus < 1)

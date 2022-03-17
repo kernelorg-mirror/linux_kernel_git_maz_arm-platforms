@@ -638,8 +638,8 @@ static void fpsimd_host_restore(void)
 
 static void handle___pkvm_vcpu_load(struct kvm_cpu_context *host_ctxt)
 {
-	DECLARE_REG(int, shadow_handle, host_ctxt, 1);
-	DECLARE_REG(int, vcpu_idx, host_ctxt, 2);
+	DECLARE_REG(unsigned int, shadow_handle, host_ctxt, 1);
+	DECLARE_REG(unsigned int, vcpu_idx, host_ctxt, 2);
 	DECLARE_REG(u64, hcr_el2, host_ctxt, 3);
 	struct kvm_shadow_vcpu_state *shadow_state;
 	struct kvm_vcpu *shadow_vcpu;
@@ -976,7 +976,7 @@ static void handle___pkvm_init_shadow(struct kvm_cpu_context *host_ctxt)
 
 static void handle___pkvm_teardown_shadow(struct kvm_cpu_context *host_ctxt)
 {
-	DECLARE_REG(int, shadow_handle, host_ctxt, 1);
+	DECLARE_REG(unsigned int, shadow_handle, host_ctxt, 1);
 
 	cpu_reg(host_ctxt, 1) = __pkvm_teardown_shadow(shadow_handle);
 }

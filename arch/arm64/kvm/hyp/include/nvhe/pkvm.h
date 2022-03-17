@@ -90,8 +90,8 @@ static inline bool vcpu_is_protected(struct kvm_vcpu *vcpu)
 
 void hyp_shadow_table_init(void *tbl);
 int __pkvm_init_shadow(struct kvm *kvm, void *shadow_va, size_t size, void *pgd);
-int __pkvm_teardown_shadow(int shadow_handle);
-struct kvm_shadow_vcpu_state *pkvm_load_shadow_vcpu_state(int shadow_handle, unsigned int vcpu_idx);
+int __pkvm_teardown_shadow(unsigned int shadow_handle);
+struct kvm_shadow_vcpu_state *pkvm_load_shadow_vcpu_state(unsigned int shadow_handle, unsigned int vcpu_idx);
 void pkvm_put_shadow_vcpu_state(struct kvm_shadow_vcpu_state *shadow_state);
 struct kvm_shadow_vcpu_state *pkvm_loaded_shadow_vcpu_state(void);
 

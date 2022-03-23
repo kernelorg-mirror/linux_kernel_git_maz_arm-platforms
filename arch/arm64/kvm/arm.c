@@ -367,6 +367,9 @@ static int pkvm_check_extension(struct kvm *kvm, long ext, int kvm_cap)
 		    FIELD_GET(ARM64_FEATURE_MASK(ID_AA64ISAR1_GPA),
 			      PVM_ID_AA64ISAR1_ALLOW);
 		break;
+	case KVM_CAP_STEAL_TIME:
+		r = 0;
+		break;
 	default:
 		r = (kvm && kvm_vm_is_protected(kvm)) ? 0 : kvm_cap;
 		break;

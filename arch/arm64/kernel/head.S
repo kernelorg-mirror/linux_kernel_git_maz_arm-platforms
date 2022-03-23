@@ -532,31 +532,15 @@ SYM_INNER_LABEL(init_el2, SYM_L_LOCAL)
 	/* Switching to VHE requires a sane SCTLR_EL1 as a start */
 	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
 	msr_s	SYS_SCTLR_EL12, x0
-
-	/*
-	 * Force an eret into a helper "function", and let it return
-	 * to our original caller... This makes sure that we have
-	 * initialised the basic PSTATE state.
-	 */
-	mov	x0, #INIT_PSTATE_EL2
-	msr	spsr_el1, x0
-	adr	x0, __cpu_stick_to_vhe
-	msr	elr_el1, x0
-	eret
+	b	2f
 
 1:
 	mov_q	x0, INIT_SCTLR_EL1_MMU_OFF
 	msr	sctlr_el1, x0
-
+2:
 	msr	elr_el2, lr
 	mov	w0, #BOOT_CPU_MODE_EL2
 	eret
-
-__cpu_stick_to_vhe:
-	mov	x0, #HVC_VHE_RESTART
-	hvc	#0
-	mov	x0, #BOOT_CPU_MODE_EL2
-	ret
 SYM_FUNC_END(init_kernel_el)
 
 /*

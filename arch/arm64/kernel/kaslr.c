@@ -51,8 +51,6 @@ static __init u64 get_kaslr_seed(void *fdt)
 	return ret;
 }
 
-struct arm64_ftr_override kaslr_feature_override __initdata;
-
 /*
  * This routine will be executed with the kernel mapped at its default virtual
  * address, and if it returns successfully, the kernel will be remapped, and
@@ -96,7 +94,9 @@ u64 __init kaslr_early_init(void)
 	 * Check if 'nokaslr' appears on the command line, and
 	 * return 0 if that is the case.
 	 */
-	if (kaslr_feature_override.val & kaslr_feature_override.mask & 0xf) {
+	if (cpuid_feature_extract_unsigned_field(arm64_sw_feature_override.val &
+						 arm64_sw_feature_override.mask,
+						 ARM64_SW_FEATURE_OVERRIDE_NOKASLR)) {
 		kaslr_status = KASLR_DISABLED_CMDLINE;
 		return 0;
 	}

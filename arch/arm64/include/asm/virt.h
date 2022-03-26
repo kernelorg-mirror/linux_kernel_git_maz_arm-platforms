@@ -103,8 +103,13 @@ static inline bool is_hyp_mode_mismatched(void)
 	return __boot_cpu_mode[0] != __boot_cpu_mode[1];
 }
 
-static inline bool is_kernel_in_hyp_mode(void)
+extern void gotcha_is_kernel_in_hyp_mode(void);
+
+static __always_inline bool is_kernel_in_hyp_mode(void)
 {
+#if defined(__KVM_NVHE_HYPERVISOR__) || defined(__KVM_VHE_HYPERVISOR__)
+	gotcha_is_kernel_in_hyp_mode();
+#endif
 	return read_sysreg(CurrentEL) == CurrentEL_EL2;
 }
 

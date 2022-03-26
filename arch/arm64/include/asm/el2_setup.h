@@ -140,7 +140,17 @@
 	ubfx	x1, x1, #ID_AA64PFR0_SVE_SHIFT, #4
 	cbz	x1, .Lskip_sve_\@
 
+	mrs	x1, hcr_el2
+	and	x1, x1, #HCR_E2H
+	cbz	x1, .LnVHE_\@
+
+	mov	x1, #(CPACR_EL1_ZEN_EL1EN | CPACR_EL1_ZEN_EL0EN)
+	orr	x0, x1, #(CPACR_EL1_FPEN_EL1EN | CPACR_EL1_FPEN_EL0EN)
+	b	.Lset_cptr_\@
+
+.LnVHE_\@:
 	bic	x0, x0, #CPTR_EL2_TZ		// Also disable SVE traps
+.Lset_cptr_\@:
 	msr	cptr_el2, x0			// Disable copro. traps to EL2
 	isb
 	mov	x1, #ZCR_ELx_LEN_MASK		// SVE: Enable full vector

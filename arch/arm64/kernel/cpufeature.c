@@ -1798,6 +1798,15 @@ static void cpu_copy_el2regs(const struct arm64_cpu_capabilities *__unused)
 		write_sysreg(read_sysreg(tpidr_el1), tpidr_el2);
 }
 
+static bool nvhe_on_vhe_possible(const struct arm64_cpu_capabilities *entry,
+				 int __unused)
+{
+	u64 val;
+
+	val = arm64_sw_feature_override.val & arm64_sw_feature_override.mask;
+	return cpuid_feature_extract_unsigned_field(val, ARM64_SW_FEATURE_OVERRIDE_VHE_EL2);
+}
+
 #ifdef CONFIG_ARM64_PAN
 static void cpu_enable_pan(const struct arm64_cpu_capabilities *__unused)
 {
@@ -2443,6 +2452,12 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.field_width = 4,
 		.matches = has_cpuid_feature,
 		.min_field_value = 1,
+	},
+	{
+		.desc = "VHE for hypervisor only",
+		.capability = ARM64_KVM_NVHE_ON_VHE,
+		.type = ARM64_CPUCAP_STRICT_BOOT_CPU_FEATURE,
+		.matches = nvhe_on_vhe_possible,
 	},
 	{},
 };

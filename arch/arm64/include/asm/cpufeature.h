@@ -15,6 +15,7 @@
 #define cpu_feature(x)		KERNEL_HWCAP_ ## x
 
 #define ARM64_SW_FEATURE_OVERRIDE_NOKASLR	0
+#define ARM64_SW_FEATURE_OVERRIDE_VHE_EL2	4
 
 #ifndef __ASSEMBLY__
 

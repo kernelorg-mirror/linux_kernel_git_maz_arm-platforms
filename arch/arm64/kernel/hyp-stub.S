@@ -98,6 +98,17 @@ SYM_CODE_START_LOCAL(mutate_to_vhe)
 1:	mov_q	x0, HVC_STUB_ERR
 	eret
 2:
+	// Check whether we only want the hypervisor to run VHE, not the kernel
+	adr_l	x1, arm64_sw_feature_override
+	ldr	x2, [x1, FTR_OVR_VAL_OFFSET]
+	ldr	x1, [x1, FTR_OVR_MASK_OFFSET]
+	ubfx	x2, x2, #ARM64_SW_FEATURE_OVERRIDE_VHE_EL2, #4
+	ubfx	x1, x1, #ARM64_SW_FEATURE_OVERRIDE_VHE_EL2, #4
+	cmp	x1, xzr
+	and	x2, x2, x1
+	csinv	x2, x2, xzr, ne
+	cbnz	x2, 1b
+
 	// Engage the VHE magic!
 	mov_q	x0, HCR_HOST_VHE_FLAGS
 	msr	hcr_el2, x0

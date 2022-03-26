@@ -37,6 +37,7 @@ static bool __init mmfr1_vh_filter(u64 val)
 	 * the user was trying to force nVHE on us, proceed with
 	 * attitude adjustment.
 	 */
+	/* FIXME: not working anymore with M1 */
 	return !(is_kernel_in_hyp_mode() && val == 0);
 }
 

@@ -81,11 +81,21 @@ static const struct ftr_set_desc isar2 __initconst = {
 	},
 };
 
+static bool __init vhe_el2_filter(u64 val)
+{
+	u64 mmfr1 = read_sysreg(id_aa64mmfr1_el1);
+
+	return cpuid_feature_extract_unsigned_field(mmfr1,
+						    ID_AA64MMFR1_VHE_SHIFT);
+}
+
 static const struct ftr_set_desc kaslr __initconst = {
 	.name		= "arm64_sw",
 	.override	= &arm64_sw_feature_override,
 	.fields		= {
 		{ "nokaslr", ARM64_SW_FEATURE_OVERRIDE_NOKASLR },
+		{ "vhe_el2", ARM64_SW_FEATURE_OVERRIDE_VHE_EL2,
+		  vhe_el2_filter },
 		{}
 	},
 };

@@ -1259,6 +1259,11 @@ static int timer_irq_set_vcpu_affinity(struct irq_data *d, void *vcpu)
 	return 0;
 }
 
+void __aic_timer_fiq_clear_set(u64 clear, u64 set)
+{
+	kvm_call_hyp_nvhe(__aic_timer_fiq_clear_set, clear, set);
+}
+
 static int timer_irq_set_irqchip_state(struct irq_data *d,
 				       enum irqchip_irq_state which, bool val)
 {

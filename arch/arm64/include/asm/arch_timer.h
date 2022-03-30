@@ -232,4 +232,12 @@ static inline bool arch_timer_have_evtstrm_feature(void)
 {
 	return cpu_have_named_feature(EVTSTRM);
 }
+
+#ifdef CONFIG_APPLE_AIC
+#define SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2	sys_reg(3, 5, 15, 1, 3)
+DECLARE_STATIC_KEY_FALSE(aic_impdef_timer_control);
+#endif
+
+void __aic_timer_fiq_clear_set(u64 clear, u64 set);
+
 #endif

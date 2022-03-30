@@ -60,3 +60,12 @@ void __timer_enable_traps(struct kvm_vcpu *vcpu)
 
 	sysreg_clear_set(cnthctl_el2, clr, set);
 }
+
+
+void __aic_timer_fiq_clear_set(u64 clear, u64 set)
+{
+#ifdef CONFIG_APPLE_AIC
+	if (has_hvhe() && static_branch_likely(&aic_impdef_timer_control))
+		sysreg_clear_set_s(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, clear, set);
+#endif
+}

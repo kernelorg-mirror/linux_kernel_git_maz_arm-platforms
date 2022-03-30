@@ -192,6 +192,16 @@ static void handle___vgic_v3_restore_aprs(struct kvm_cpu_context *host_ctxt)
 	__vgic_v3_restore_aprs(kern_hyp_va(cpu_if));
 }
 
+#define SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2	sys_reg(3, 5, 15, 1, 3)
+
+static void handle___aic_timer_fiq_clear_set(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(u64, clear, host_ctxt, 1);
+	DECLARE_REG(u64, set, host_ctxt, 2);
+
+	__aic_timer_fiq_clear_set(clear, set);
+}
+
 static void handle___pkvm_init(struct kvm_cpu_context *host_ctxt)
 {
 	DECLARE_REG(phys_addr_t, phys, host_ctxt, 1);
@@ -322,6 +332,7 @@ static const hcall_t host_hcall[] = {
 	HANDLE_FUNC(__vgic_v3_write_vmcr),
 	HANDLE_FUNC(__vgic_v3_save_aprs),
 	HANDLE_FUNC(__vgic_v3_restore_aprs),
+	HANDLE_FUNC(__aic_timer_fiq_clear_set),
 	HANDLE_FUNC(__pkvm_vcpu_init_traps),
 	HANDLE_FUNC(__pkvm_init_vm),
 	HANDLE_FUNC(__pkvm_init_vcpu),

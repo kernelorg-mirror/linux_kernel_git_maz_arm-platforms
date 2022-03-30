@@ -180,7 +180,6 @@
 #define IPI_SR_PENDING			BIT(0)
 
 /* Guest timer FIQ enable register */
-#define SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2	sys_reg(3, 5, 15, 1, 3)
 #define VM_TMR_FIQ_ENABLE_V		BIT(0)
 #define VM_TMR_FIQ_ENABLE_P		BIT(1)
 
@@ -235,6 +234,8 @@ enum fiq_hwirq {
 };
 
 static DEFINE_STATIC_KEY_TRUE(use_fast_ipi);
+
+DEFINE_STATIC_KEY_FALSE(aic_impdef_timer_control);
 
 struct aic_info {
 	int version;
@@ -458,6 +459,40 @@ static unsigned long aic_fiq_get_idx(struct irq_data *d)
 	return AIC_HWIRQ_IRQ(irqd_to_hwirq(d));
 }
 
+void __weak __aic_timer_fiq_clear_set(u64 clear, u64 set) { }
+
+static bool aic_check_timer_enabled(int timer)
+{
+	if (IS_ENABLED(CONFIG_KVM) &&
+	    static_branch_unlikely(&aic_impdef_timer_control))
+		return __this_cpu_read(aic_fiq_unmasked) & BIT(timer);
+	return true;
+}
+
+static void aic_hvhe_timer_mask(int timer, bool mask)
+{
+	u64 clr, set, bit;
+
+	if (!(IS_ENABLED(CONFIG_KVM) &&
+	      static_branch_unlikely(&aic_impdef_timer_control)))
+		return;
+
+	if (timer == AIC_TMR_EL0_VIRT)
+		bit = VM_TMR_FIQ_ENABLE_V;
+	else
+	        bit = VM_TMR_FIQ_ENABLE_P;
+
+	if (mask) {
+		clr = bit;
+		set = 0;
+	} else {
+		clr = 0;
+		set = bit;
+	}
+
+	__aic_timer_fiq_clear_set(clr, set);
+}
+
 static void aic_fiq_set_mask(struct irq_data *d)
 {
 	/* Only the guest timers have real mask bits, unfortunately. */
@@ -469,6 +504,9 @@ static void aic_fiq_set_mask(struct irq_data *d)
 	case AIC_TMR_EL02_VIRT:
 		sysreg_clear_set_s(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, VM_TMR_FIQ_ENABLE_V, 0);
 		isb();
+		break;
+	case AIC_TMR_EL0_VIRT:
+		aic_hvhe_timer_mask(AIC_TMR_EL0_VIRT, true);
 		break;
 	default:
 		break;
@@ -485,6 +523,9 @@ static void aic_fiq_clear_mask(struct irq_data *d)
 	case AIC_TMR_EL02_VIRT:
 		sysreg_clear_set_s(SYS_IMP_APL_VM_TMR_FIQ_ENA_EL2, 0, VM_TMR_FIQ_ENABLE_V);
 		isb();
+		break;
+	case AIC_TMR_EL0_VIRT:
+		aic_hvhe_timer_mask(AIC_TMR_EL0_VIRT, false);
 		break;
 	default:
 		break;
@@ -545,7 +586,8 @@ static void __exception_irq_entry aic_handle_fiq(struct pt_regs *regs)
 		generic_handle_domain_irq(aic_irqc->hw_domain,
 					  AIC_FIQ_HWIRQ(AIC_TMR_EL0_PHYS));
 
-	if (TIMER_FIRING(read_sysreg(cntv_ctl_el0)))
+	if (TIMER_FIRING(read_sysreg(cntv_ctl_el0)) &&
+	    aic_check_timer_enabled(AIC_TMR_EL0_VIRT))
 		generic_handle_domain_irq(aic_irqc->hw_domain,
 					  AIC_FIQ_HWIRQ(AIC_TMR_EL0_VIRT));
 
@@ -1040,6 +1082,10 @@ static int __init aic_of_ic_init(struct device_node *node, struct device_node *p
 
 	if (static_branch_likely(&use_fast_ipi))
 		pr_info("Using Fast IPIs");
+
+	/* Caps are not final at this stage :-/ */
+	if (cpus_have_cap(ARM64_KVM_HVHE))
+		static_branch_enable(&aic_impdef_timer_control);
 
 	cpuhp_setup_state(CPUHP_AP_IRQ_APPLE_AIC_STARTING,
 			  "irqchip/apple-aic/ipi:starting",

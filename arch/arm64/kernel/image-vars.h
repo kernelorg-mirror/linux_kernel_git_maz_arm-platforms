@@ -106,6 +106,9 @@ KVM_NVHE_ALIAS(__hyp_rodata_end);
 /* pKVM static key */
 KVM_NVHE_ALIAS(kvm_protected_mode_initialized);
 
+/* Hack for M1 timer control in hVHE mode */
+KVM_NVHE_ALIAS(aic_impdef_timer_control);
+
 #endif /* CONFIG_KVM */
 
 #ifdef CONFIG_EFI_ZBOOT

@@ -64,11 +64,13 @@
  */
 .macro kern_hyp_va	reg
 alternative_cb kvm_update_va_mask
+	tbz	\req, #55, .Lnaka_\@	/* Not A Kernel Address? */
 	and     \reg, \reg, #1		/* mask with va_mask */
 	ror	\reg, \reg, #1		/* rotate to the first tag bit */
 	add	\reg, \reg, #0		/* insert the low 12 bits of the tag */
 	add	\reg, \reg, #0, lsl 12	/* insert the top 12 bits of the tag */
 	ror	\reg, \reg, #63		/* rotate back */
+.Lnaka_\@:
 alternative_cb_end
 .endm
 
@@ -126,11 +128,18 @@ void kvm_apply_hyp_relocations(void);
 
 static __always_inline unsigned long __kern_hyp_va(unsigned long v)
 {
-	asm volatile(ALTERNATIVE_CB("and %0, %0, #1\n"
+	/*
+	 * Do not be tempted to move this 'tbz' outside of the asm (as
+	 * a simple 'if (v & BIT(55))', for example) as we rely on it
+	 * to have the exact same size as the assembly version.
+	 */
+	asm volatile(ALTERNATIVE_CB("tbz %0, #55, 1f\n"
+				    "and %0, %0, #1\n"
 				    "ror %0, %0, #1\n"
 				    "add %0, %0, #0\n"
 				    "add %0, %0, #0, lsl 12\n"
-				    "ror %0, %0, #63\n",
+				    "ror %0, %0, #63\n"
+				    "1:\n",
 				    kvm_update_va_mask)
 		     : "+r" (v));
 	return v;

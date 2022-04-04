@@ -109,39 +109,73 @@ __init void kvm_apply_hyp_relocations(void)
 	}
 }
 
-static u32 compute_instruction(int n, u32 rd, u32 rn)
+/*
+ * Expected instruction layout (see the kern_hyp_va macro):
+ *
+ * [0]	tst	\req, #(1 << 55)
+ * [1]	and     \reg, \reg, #1
+ * [2]	ror	\reg, \reg, #1
+ * [3]	add	\reg, \reg, #0
+ * [4]	add	\reg, \reg, #0, lsl 12
+ * [5]	ror	\reg, \reg, #63
+ * [6]	csel	\req, \reg, xzr, ne
+ */
+static u32 compute_instruction(int n, u32 oinsn)
 {
-	u32 insn = AARCH64_BREAK_FAULT;
+	u32 insn = AARCH64_BREAK_FAULT, rd, rn;
+
+	/*
+	 * VHE doesn't need any address translation, let's NOP
+	 * everything.
+	 */
+	if (has_vhe())
+		return aarch64_insn_gen_nop();
+
+	/* Skip 'tst/csel' */
+	if (n == 0 || n == 6)
+		return oinsn;
+
+	/*
+	 * If the tag is zero (because the layout dictates it and we
+	 * don't have any spare bits in the address), NOP everything
+	 * after masking the kernel VA (which is the 2rd instruction).
+	 * Keep the csel around.
+	 */
+	if (!tag_val && n > 1 && n < 6)
+		return aarch64_insn_gen_nop();
+
+	rd = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RD, oinsn);
+	rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, oinsn);
 
 	switch (n) {
-	case 0:
+	case 1:
 		insn = aarch64_insn_gen_logical_immediate(AARCH64_INSN_LOGIC_AND,
 							  AARCH64_INSN_VARIANT_64BIT,
 							  rn, rd, va_mask);
 		break;
 
-	case 1:
+	case 2:
 		/* ROR is a variant of EXTR with Rm = Rn */
 		insn = aarch64_insn_gen_extr(AARCH64_INSN_VARIANT_64BIT,
 					     rn, rn, rd,
 					     tag_lsb);
 		break;
 
-	case 2:
+	case 3:
 		insn = aarch64_insn_gen_add_sub_imm(rd, rn,
 						    tag_val & GENMASK(11, 0),
 						    AARCH64_INSN_VARIANT_64BIT,
 						    AARCH64_INSN_ADSB_ADD);
 		break;
 
-	case 3:
+	case 4:
 		insn = aarch64_insn_gen_add_sub_imm(rd, rn,
 						    tag_val & GENMASK(23, 12),
 						    AARCH64_INSN_VARIANT_64BIT,
 						    AARCH64_INSN_ADSB_ADD);
 		break;
 
-	case 4:
+	case 5:
 		/* ROR is a variant of EXTR with Rm = Rn */
 		insn = aarch64_insn_gen_extr(AARCH64_INSN_VARIANT_64BIT,
 					     rn, rn, rd, 64 - tag_lsb);
@@ -156,29 +190,13 @@ void __init kvm_update_va_mask(struct alt_instr *alt,
 {
 	int i;
 
-	BUG_ON(nr_inst != 5);
+	BUG_ON(nr_inst != 7);
 
 	for (i = 0; i < nr_inst; i++) {
-		u32 rd, rn, insn, oinsn;
-
-		/*
-		 * VHE doesn't need any address translation, let's NOP
-		 * everything.
-		 *
-		 * Alternatively, if the tag is zero (because the layout
-		 * dictates it and we don't have any spare bits in the
-		 * address), NOP everything after masking the kernel VA.
-		 */
-		if (has_vhe() || (!tag_val && i > 0)) {
-			updptr[i] = cpu_to_le32(aarch64_insn_gen_nop());
-			continue;
-		}
+		u32 insn, oinsn;
 
 		oinsn = le32_to_cpu(origptr[i]);
-		rd = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RD, oinsn);
-		rn = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RN, oinsn);
-
-		insn = compute_instruction(i, rd, rn);
+		insn = compute_instruction(i, oinsn);
 		BUG_ON(insn == AARCH64_BREAK_FAULT);
 
 		updptr[i] = cpu_to_le32(insn);

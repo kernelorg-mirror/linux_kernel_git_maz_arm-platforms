@@ -701,33 +701,38 @@ static void handle___pkvm_vcpu_sync_state(struct kvm_cpu_context *host_ctxt)
 static struct kvm_vcpu *__get_current_vcpu(struct kvm_vcpu *vcpu,
 					   struct kvm_shadow_vcpu_state **state)
 {
+	struct kvm_shadow_vcpu_state *sstate = NULL;
+
 	vcpu = kern_hyp_va(vcpu);
 
 	if (unlikely(is_protected_kvm_enabled())) {
-		struct kvm_shadow_vcpu_state *sstate;
-
 		sstate = pkvm_loaded_shadow_vcpu_state();
 		if (!sstate || vcpu != sstate->host_vcpu) {
 			sstate = NULL;
 			vcpu = NULL;
 		}
-
-		*state = sstate;
-		return vcpu;
 	}
 
-	*state = NULL;
+	*state = sstate;
 	return vcpu;
 }
 
-/* This *really* assumes that the first argument to the call is the vcpu */
-static struct kvm_vcpu *get_current_vcpu(struct kvm_cpu_context *host_ctxt,
-					 struct kvm_shadow_vcpu_state **state)
-{
-	DECLARE_REG(struct kvm_vcpu *, vcpu, host_ctxt, 1);
+#define get_current_vcpu(ctxt, regnr, statepp)				\
+	({								\
+		DECLARE_REG(struct kvm_vcpu *, __vcpu, ctxt, regnr);	\
+		__get_current_vcpu(__vcpu, statepp);			\
+	})
 
-	return __get_current_vcpu(vcpu, state);
-}
+#define get_current_vcpu_from_cpu_if(ctxt, regnr, statepp)		\
+	({								\
+		DECLARE_REG(struct vgic_v3_cpu_if *, cif, ctxt, regnr); \
+		struct kvm_vcpu *__vcpu;				\
+		__vcpu = container_of(cif,				\
+				      struct kvm_vcpu,			\
+				      arch.vgic_cpu.vgic_v3);		\
+									\
+		__get_current_vcpu(__vcpu, statepp);			\
+	})
 
 static void handle___kvm_vcpu_run(struct kvm_cpu_context *host_ctxt)
 {
@@ -735,7 +740,7 @@ static void handle___kvm_vcpu_run(struct kvm_cpu_context *host_ctxt)
 	struct kvm_vcpu *vcpu;
 	int ret;
 
-	vcpu = get_current_vcpu(host_ctxt, &shadow_state);
+	vcpu = get_current_vcpu(host_ctxt, 1, &shadow_state);
 	if (!vcpu) {
 		cpu_reg(host_ctxt, 1) =  -EINVAL;
 		return;
@@ -803,7 +808,7 @@ static void handle___kvm_adjust_pc(struct kvm_cpu_context *host_ctxt)
 	struct kvm_shadow_vcpu_state *shadow_state;
 	struct kvm_vcpu *vcpu;
 
-	vcpu = get_current_vcpu(host_ctxt, &shadow_state);
+	vcpu = get_current_vcpu(host_ctxt, 1, &shadow_state);
 	if (!vcpu)
 		return;
 
@@ -875,24 +880,12 @@ static void handle___kvm_get_mdcr_el2(struct kvm_cpu_context *host_ctxt)
 	cpu_reg(host_ctxt, 1) = __kvm_get_mdcr_el2();
 }
 
-/* This *really* assumes that the first argument to the call is the cpu_if */
-static struct kvm_vcpu *
-get_current_vcpu_from_cpu_if(struct kvm_cpu_context *host_ctxt,
-			     struct kvm_shadow_vcpu_state **state)
-{
-	DECLARE_REG(struct vgic_v3_cpu_if *, cpu_if, host_ctxt, 1);
-	struct kvm_vcpu *vcpu;
-
-	vcpu = container_of(cpu_if, struct kvm_vcpu, arch.vgic_cpu.vgic_v3);
-	return __get_current_vcpu(vcpu, state);
-}
-
 static void handle___vgic_v3_save_vmcr_aprs(struct kvm_cpu_context *host_ctxt)
 {
 	struct kvm_shadow_vcpu_state *shadow_state;
 	struct kvm_vcpu *vcpu;
 
-	vcpu = get_current_vcpu_from_cpu_if(host_ctxt, &shadow_state);
+	vcpu = get_current_vcpu_from_cpu_if(host_ctxt, 1, &shadow_state);
 	if (!vcpu)
 		return;
 
@@ -920,7 +913,7 @@ static void handle___vgic_v3_restore_vmcr_aprs(struct kvm_cpu_context *host_ctxt
 	struct kvm_shadow_vcpu_state *shadow_state;
 	struct kvm_vcpu *vcpu;
 
-	vcpu = get_current_vcpu_from_cpu_if(host_ctxt, &shadow_state);
+	vcpu = get_current_vcpu_from_cpu_if(host_ctxt, 1, &shadow_state);
 	if (!vcpu)
 		return;
 

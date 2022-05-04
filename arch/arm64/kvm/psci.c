@@ -343,7 +343,10 @@ static int kvm_psci_1_x_call(struct kvm_vcpu *vcpu, u32 minor)
 			break;
 		case PSCI_1_0_FN_SYSTEM_SUSPEND:
 		case PSCI_1_0_FN64_SYSTEM_SUSPEND:
-			if (test_bit(KVM_ARCH_FLAG_SYSTEM_SUSPEND_ENABLED, &kvm->arch.flags))
+			if (test_bit(KVM_ARCH_FLAG_SYSTEM_SUSPEND_ENABLED,
+				     &kvm->arch.flags) &&
+			    test_bit(KVM_REG_ARM_STD_BIT_PSCI_SUSPEND,
+				     &kvm->arch.smccc_feat.std_bmap))
 				val = 0;
 			break;
 		case PSCI_1_1_FN_SYSTEM_RESET2:
@@ -362,7 +365,10 @@ static int kvm_psci_1_x_call(struct kvm_vcpu *vcpu, u32 minor)
 		 * registers. Userspace depends on reading the SMCCC parameters
 		 * to implement SYSTEM_SUSPEND.
 		 */
-		if (test_bit(KVM_ARCH_FLAG_SYSTEM_SUSPEND_ENABLED, &kvm->arch.flags)) {
+		if (test_bit(KVM_ARCH_FLAG_SYSTEM_SUSPEND_ENABLED,
+			     &kvm->arch.flags) &&
+		    test_bit(KVM_REG_ARM_STD_BIT_PSCI_SUSPEND,
+			     &kvm->arch.smccc_feat.std_bmap)) {
 			kvm_psci_system_suspend(vcpu);
 			return 0;
 		}

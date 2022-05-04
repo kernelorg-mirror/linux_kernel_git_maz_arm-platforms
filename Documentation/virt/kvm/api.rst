@@ -6070,7 +6070,10 @@ For arm/arm64:
    KVM_SYSTEM_EVENT_SUSPEND exits are enabled with the
    KVM_CAP_ARM_SYSTEM_SUSPEND VM capability. If a guest invokes the PSCI
    SYSTEM_SUSPEND function, KVM will exit to userspace with this event
-   type.
+   type. Note that the visibility of the hypercall to the guest is
+   gated on both KVM_CAP_ARM_SYSTEM_SUSPEND being enabled and the
+   KVM_REG_ARM_STD_BIT_PSCI_SUSPEND bit being set in the
+   KVM_REG_ARM_STD_BMAP hypercall selection pseudo-register.
 
    It is the sole responsibility of userspace to implement the PSCI
    SYSTEM_SUSPEND call according to ARM DEN0022D.b 5.19 "SYSTEM_SUSPEND".

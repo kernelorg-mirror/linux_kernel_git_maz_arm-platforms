@@ -510,6 +510,21 @@ static void rockchip_irq_disable(struct irq_data *d)
 	irq_gc_mask_set_bit(d);
 }
 
+static const struct irq_chip rockchip_irq_chip = {
+	.name			= "rockchip_gpio_irq",
+	.irq_ack		= irq_gc_ack_set_bit,
+	.irq_mask		= irq_gc_mask_set_bit,
+	.irq_unmask		= irq_gc_mask_clr_bit,
+	.irq_enable		= rockchip_irq_enable,
+	.irq_disable		= rockchip_irq_disable,
+	.irq_set_wake		= irq_gc_set_wake,
+	.irq_suspend		= rockchip_irq_suspend,
+	.irq_resume		= rockchip_irq_resume,
+	.irq_set_type		= rockchip_irq_set_type,
+	.irq_request_resources	= rockchip_irq_reqres,
+	.irq_release_resources	= rockchip_irq_relres,
+};
+
 static int rockchip_interrupts_register(struct rockchip_pin_bank *bank)
 {
 	unsigned int clr = IRQ_NOREQUEST | IRQ_NOPROBE | IRQ_NOAUTOEN;
@@ -525,7 +540,7 @@ static int rockchip_interrupts_register(struct rockchip_pin_bank *bank)
 	}
 
 	ret = irq_alloc_domain_generic_chips(bank->domain, 32, 1,
-					     "rockchip_gpio_irq",
+					     NULL,
 					     handle_level_irq,
 					     clr, 0, 0);
 	if (ret) {
@@ -545,17 +560,7 @@ static int rockchip_interrupts_register(struct rockchip_pin_bank *bank)
 	gc->private = bank;
 	gc->chip_types[0].regs.mask = bank->gpio_regs->int_mask;
 	gc->chip_types[0].regs.ack = bank->gpio_regs->port_eoi;
-	gc->chip_types[0].chip.irq_ack = irq_gc_ack_set_bit;
-	gc->chip_types[0].chip.irq_mask = irq_gc_mask_set_bit;
-	gc->chip_types[0].chip.irq_unmask = irq_gc_mask_clr_bit;
-	gc->chip_types[0].chip.irq_enable = rockchip_irq_enable;
-	gc->chip_types[0].chip.irq_disable = rockchip_irq_disable;
-	gc->chip_types[0].chip.irq_set_wake = irq_gc_set_wake;
-	gc->chip_types[0].chip.irq_suspend = rockchip_irq_suspend;
-	gc->chip_types[0].chip.irq_resume = rockchip_irq_resume;
-	gc->chip_types[0].chip.irq_set_type = rockchip_irq_set_type;
-	gc->chip_types[0].chip.irq_request_resources = rockchip_irq_reqres;
-	gc->chip_types[0].chip.irq_release_resources = rockchip_irq_relres;
+	irq_gc_set_chip(gc, &rockchip_irq_chip, 0);
 	gc->wake_enabled = IRQ_MSK(bank->nr_pins);
 
 	/*

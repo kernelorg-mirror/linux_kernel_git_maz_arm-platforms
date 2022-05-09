@@ -1004,12 +1004,20 @@ struct irq_chip_regs {
  * flow types.
  */
 struct irq_chip_type {
-	struct irq_chip		chip;
+	union {
+		struct irq_chip		chip;
+		struct irq_chip		*chipp;
+	};
 	struct irq_chip_regs	regs;
 	irq_flow_handler_t	handler;
 	u32			type;
 	u32			mask_cache_priv;
 	u32			*mask_cache;
+};
+
+
+enum irq_gc_type_flags {
+	IRQ_GC_TYPE_POINTER = 1 << 0,
 };
 
 /**
@@ -1063,10 +1071,32 @@ struct irq_chip_generic {
 	void			*private;
 	unsigned long		installed;
 	unsigned long		unused;
+	enum irq_gc_type_flags	chip_type_flags;
 	struct irq_domain	*domain;
 	struct list_head	list;
 	struct irq_chip_type	chip_types[];
 };
+
+#define get_chip_type_from_icg(icg, idx) ({		\
+	struct irq_chip *__chip;			\
+							\
+	if (icg->chip_type_flags & IRQ_GC_TYPE_POINTER) \
+		__chip = icg->chip_types[idx].chipp;	\
+	else						\
+		__chip = &icg->chip_types[idx].chip;	\
+							\
+	__chip;						\
+})
+
+static inline void irq_gc_set_chip(struct irq_chip_generic *gc,
+				   const struct irq_chip *chip, int index)
+{
+	if (WARN_ONCE(!(gc->chip_type_flags & IRQ_GC_TYPE_POINTER),
+		      "irq_gc_set_chip() without IRQ_GC_TYPE_POINTER\n"))
+		return;
+
+	gc->chip_types[index].chipp = (struct irq_chip *)chip;
+}
 
 /**
  * enum irq_gc_flags - Initialization flags for generic irq chips

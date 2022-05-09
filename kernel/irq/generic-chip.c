@@ -223,7 +223,10 @@ void irq_init_generic_chip(struct irq_chip_generic *gc, const char *name,
 	gc->num_ct = num_ct;
 	gc->irq_base = irq_base;
 	gc->reg_base = reg_base;
-	gc->chip_types->chip.name = name;
+	if (!name)
+		gc->chip_type_flags = IRQ_GC_TYPE_POINTER;
+	if (!(gc->chip_type_flags & IRQ_GC_TYPE_POINTER))
+		gc->chip_types->chip.name = name;
 	gc->chip_types->handler = handler;
 }
 
@@ -405,7 +408,7 @@ int irq_map_generic_chip(struct irq_domain *d, unsigned int virq,
 		return -EBUSY;
 
 	ct = gc->chip_types;
-	chip = &ct->chip;
+	chip = get_chip_type_from_icg(gc, 0);
 
 	/* We only init the cache for the first mapping of a generic chip */
 	if (!gc->installed) {
@@ -475,7 +478,7 @@ void irq_setup_generic_chip(struct irq_chip_generic *gc, u32 msk,
 			    unsigned int set)
 {
 	struct irq_chip_type *ct = gc->chip_types;
-	struct irq_chip *chip = &ct->chip;
+	struct irq_chip *chip = get_chip_type_from_icg(gc, 0);
 	unsigned int i;
 
 	raw_spin_lock(&gc_lock);
@@ -523,7 +526,7 @@ int irq_setup_alt_chip(struct irq_data *d, unsigned int type)
 
 	for (i = 0; i < gc->num_ct; i++, ct++) {
 		if (ct->type & type) {
-			d->chip = &ct->chip;
+			d->chip = get_chip_type_from_icg(gc, i);
 			irq_data_to_desc(d)->handle_irq = ct->handler;
 			return 0;
 		}
@@ -587,13 +590,13 @@ static int irq_gc_suspend(void)
 	struct irq_chip_generic *gc;
 
 	list_for_each_entry(gc, &gc_list, list) {
-		struct irq_chip_type *ct = gc->chip_types;
+		struct irq_chip *chip = get_chip_type_from_icg(gc, 0);
 
-		if (ct->chip.irq_suspend) {
+		if (chip->irq_suspend) {
 			struct irq_data *data = irq_gc_get_irq_data(gc);
 
 			if (data)
-				ct->chip.irq_suspend(data);
+				chip->irq_suspend(data);
 		}
 
 		if (gc->suspend)
@@ -607,16 +610,16 @@ static void irq_gc_resume(void)
 	struct irq_chip_generic *gc;
 
 	list_for_each_entry(gc, &gc_list, list) {
-		struct irq_chip_type *ct = gc->chip_types;
+		struct irq_chip *chip = get_chip_type_from_icg(gc, 0);
 
 		if (gc->resume)
 			gc->resume(gc);
 
-		if (ct->chip.irq_resume) {
+		if (chip->irq_resume) {
 			struct irq_data *data = irq_gc_get_irq_data(gc);
 
 			if (data)
-				ct->chip.irq_resume(data);
+				chip->irq_resume(data);
 		}
 	}
 }
@@ -630,13 +633,13 @@ static void irq_gc_shutdown(void)
 	struct irq_chip_generic *gc;
 
 	list_for_each_entry(gc, &gc_list, list) {
-		struct irq_chip_type *ct = gc->chip_types;
+		struct irq_chip *chip = get_chip_type_from_icg(gc, 0);
 
-		if (ct->chip.irq_pm_shutdown) {
+		if (chip->irq_pm_shutdown) {
 			struct irq_data *data = irq_gc_get_irq_data(gc);
 
 			if (data)
-				ct->chip.irq_pm_shutdown(data);
+				chip->irq_pm_shutdown(data);
 		}
 	}
 }

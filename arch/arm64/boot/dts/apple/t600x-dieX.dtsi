@@ -101,6 +101,192 @@
 		#interrupt-cells = <2>;
 	};
 
+	die_node(efuse): efuse@2922bc000 {
+		compatible = "apple,t6000-efuses", "apple,efuses";
+		reg = <0x2 0x922bc000 0x0 0x2000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		die_node(atcphy0_auspll_rodco_bias_adjust): efuse@a10,22 {
+			reg = <0xa10 4>;
+			bits = <22 3>;
+		};
+
+		die_node(atcphy0_auspll_rodco_encap): efuse@a10,25 {
+			reg = <0xa10 4>;
+			bits = <25 2>;
+		};
+
+		die_node(atcphy0_auspll_dtc_vreg_adjust): efuse@a10,27 {
+			reg = <0xa10 4>;
+			bits = <27 3>;
+		};
+
+		die_node(atcphy0_auspll_fracn_dll_start_capcode): efuse@a10,30 {
+			reg = <0xa10 4>;
+			bits = <30 2>;
+		};
+
+		die_node(atcphy0_aus_cmn_shm_vreg_trim): efuse@a14,0 {
+			reg = <0xa14 4>;
+			bits = <0 5>;
+		};
+
+		die_node(atcphy0_cio3pll_dco_coarsebin0): efuse@a14,5 {
+			reg = <0xa14 4>;
+			bits = <5 6>;
+		};
+
+		die_node(atcphy0_cio3pll_dco_coarsebin1): efuse@a14,11 {
+			reg = <0xa14 4>;
+			bits = <11 6>;
+		};
+
+		die_node(atcphy0_cio3pll_dll_start_capcode): efuse@a14,17 {
+			reg = <0xa14 4>;
+			bits = <17 2>;
+		};
+
+		die_node(atcphy0_cio3pll_dtc_vreg_adjust): efuse@a14,19 {
+			reg = <0xa14 4>;
+			bits = <19 3>;
+		};
+
+		die_node(atcphy1_auspll_rodco_bias_adjust): efuse@a18,0 {
+			reg = <0xa18 4>;
+			bits = <0 3>;
+		};
+
+		die_node(atcphy1_auspll_rodco_encap): efuse@a18,3 {
+			reg = <0xa18 4>;
+			bits = <3 2>;
+		};
+
+		die_node(atcphy1_auspll_dtc_vreg_adjust): efuse@a18,5 {
+			reg = <0xa18 4>;
+			bits = <5 3>;
+		};
+
+		die_node(atcphy1_auspll_fracn_dll_start_capcode): efuse@a18,8 {
+			reg = <0xa18 4>;
+			bits = <8 2>;
+		};
+
+		die_node(atcphy1_aus_cmn_shm_vreg_trim): efuse@a18,10 {
+			reg = <0xa18 4>;
+			bits = <10 5>;
+		};
+
+		die_node(atcphy1_cio3pll_dco_coarsebin0): efuse@a18,15 {
+			reg = <0xa18 4>;
+			bits = <15 6>;
+		};
+
+		die_node(atcphy1_cio3pll_dco_coarsebin1): efuse@a18,21 {
+			reg = <0xa18 4>;
+			bits = <21 6>;
+		};
+
+		die_node(atcphy1_cio3pll_dll_start_capcode): efuse@a18,27 {
+			reg = <0xa18 4>;
+			bits = <27 2>;
+		};
+
+		die_node(atcphy1_cio3pll_dtc_vreg_adjust): efuse@a18,29 {
+			reg = <0xa18 4>;
+			bits = <29 3>;
+		};
+
+		die_node(atcphy2_auspll_rodco_bias_adjust): efuse@a1c,10 {
+			reg = <0xa1c 4>;
+			bits = <10 3>;
+		};
+
+		die_node(atcphy2_auspll_rodco_encap): efuse@a1c,13 {
+			reg = <0xa1c 4>;
+			bits = <13 2>;
+		};
+
+		die_node(atcphy2_auspll_dtc_vreg_adjust): efuse@a1c,15 {
+			reg = <0xa1c 4>;
+			bits = <15 3>;
+		};
+
+		die_node(atcphy2_auspll_fracn_dll_start_capcode): efuse@a1c,18 {
+			reg = <0xa1c 4>;
+			bits = <18 2>;
+		};
+
+		die_node(atcphy2_aus_cmn_shm_vreg_trim): efuse@a1c,20 {
+			reg = <0xa1c 4>;
+			bits = <20 5>;
+		};
+
+		die_node(atcphy2_cio3pll_dco_coarsebin0): efuse@a1c,25 {
+			reg = <0xa1c 4>;
+			bits = <25 6>;
+		};
+
+		die_node(atcphy2_cio3pll_dco_coarsebin1): efuse@a1c,31 {
+			reg = <0xa1c 8>;
+			bits = <31 6>;
+		};
+
+		die_node(atcphy2_cio3pll_dll_start_capcode): efuse@a20,5 {
+			reg = <0xa20 4>;
+			bits = <5 2>;
+		};
+
+		die_node(atcphy2_cio3pll_dtc_vreg_adjust): efuse@a20,7 {
+			reg = <0xa20 4>;
+			bits = <7 3>;
+		};
+
+		die_node(atcphy3_auspll_rodco_bias_adjust): efuse@a20,20 {
+			reg = <0xa20 4>;
+			bits = <20 3>;
+		};
+
+		die_node(atcphy3_auspll_rodco_encap): efuse@a20,23 {
+			reg = <0xa20 4>;
+			bits = <23 2>;
+		};
+
+		die_node(atcphy3_auspll_dtc_vreg_adjust): efuse@a20,25 {
+			reg = <0xa20 4>;
+			bits = <25 3>;
+		};
+
+		die_node(atcphy3_auspll_fracn_dll_start_capcode): efuse@a20,28 {
+			reg = <0xa20 4>;
+			bits = <28 2>;
+		};
+
+		die_node(atcphy3_aus_cmn_shm_vreg_trim): efuse@a20,30 {
+			reg = <0xa20 8>;
+			bits = <30 5>;
+		};
+
+		die_node(atcphy3_cio3pll_dco_coarsebin0): efuse@a24,3 {
+			reg = <0xa24 4>;
+			bits = <3 6>;
+		};
+
+		die_node(atcphy3_cio3pll_dco_coarsebin1): efuse@a24,9 {
+			reg = <0xa24 4>;
+			bits = <9 6>;
+		};
+
+		die_node(atcphy3_cio3pll_dll_start_capcode): efuse@a24,15 {
+			reg = <0xa24 4>;
+			bits = <15 2>;
+		};
+
+		die_node(atcphy3_cio3pll_dtc_vreg_adjust): efuse@a24,17 {
+			reg = <0xa24 4>;
+			bits = <17 3>;
+		};
+	};
+
 	die_node(dwc3_0_dart_0): iommu@702f00000 {
 		compatible = "apple,t6000-dart";
 		reg = <0x7 0x02f00000 0x0 0x4000>;
@@ -129,6 +315,47 @@
 		role-switch-default-mode = "host";
 		iommus = <&die_node(dwc3_0_dart_0) 0>,
 			<&die_node(dwc3_0_dart_1) 1>;
+		power-domains = <&die_node(ps_atc0_usb)>;
+		resets = <&die_node(atcphy0)>;
+		phys = <&die_node(atcphy0) PHY_TYPE_USB2>,
+		       <&die_node(atcphy0) PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+	};
+
+	die_node(atcphy0): phy@703000000 {
+		compatible = "apple,t8103-atcphy";
+		reg = <0x7 0x03000000 0x0 0x50000>,
+			<0x7 0x00000000 0x0 0x4000>,
+			<0x7 0x02a90000 0x0 0x4000>,
+			<0x7 0x02a84000 0x0 0x4000>;
+		reg-names = "core", "axi2af", "usb2phy",
+			"pipehandler";
+
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+
+		nvmem-cells = <&die_node(atcphy0_aus_cmn_shm_vreg_trim)>,
+			<&die_node(atcphy0_auspll_rodco_encap)>,
+			<&die_node(atcphy0_auspll_rodco_bias_adjust)>,
+			<&die_node(atcphy0_auspll_fracn_dll_start_capcode)>,
+			<&die_node(atcphy0_auspll_dtc_vreg_adjust)>,
+			<&die_node(atcphy0_cio3pll_dco_coarsebin0)>,
+			<&die_node(atcphy0_cio3pll_dco_coarsebin1)>,
+			<&die_node(atcphy0_cio3pll_dll_start_capcode)>,
+			<&die_node(atcphy0_cio3pll_dtc_vreg_adjust)>;
+		nvmem-cell-names =  "aus_cmn_shm_vreg_trim",
+			"auspll_rodco_encap",
+			"auspll_rodco_bias_adjust",
+			"auspll_fracn_dll_start_capcode",
+			"auspll_dtc_vreg_adjust",
+			"cio3pll_dco_coarsebin0",
+			"cio3pll_dco_coarsebin1",
+			"cio3pll_dll_start_capcode",
+			"cio3pll_dtc_vreg_adjust";
+
+		orientation-switch;
+		mode-switch;
+		accessory; // TODO: this sounds wrong but is required for the mux
 		power-domains = <&die_node(ps_atc0_usb)>;
 	};
 
@@ -161,6 +388,47 @@
 		iommus = <&die_node(dwc3_1_dart_0) 0>,
 			<&die_node(dwc3_1_dart_1) 1>;
 		power-domains = <&die_node(ps_atc1_usb)>;
+		resets = <&die_node(atcphy1)>;
+		phys = <&die_node(atcphy1) PHY_TYPE_USB2>,
+		       <&die_node(atcphy1) PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+	};
+
+	die_node(atcphy1): phy@b03000000 {
+		compatible = "apple,t8103-atcphy";
+		reg = <0xb 0x03000000 0x0 0x50000>,
+			<0xb 0x00000000 0x0 0x4000>,
+			<0xb 0x02a90000 0x0 0x4000>,
+			<0xb 0x02a84000 0x0 0x4000>;
+		reg-names = "core", "axi2af", "usb2phy",
+			"pipehandler";
+
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+
+		nvmem-cells = <&die_node(atcphy1_aus_cmn_shm_vreg_trim)>,
+			<&die_node(atcphy1_auspll_rodco_encap)>,
+			<&die_node(atcphy1_auspll_rodco_bias_adjust)>,
+			<&die_node(atcphy1_auspll_fracn_dll_start_capcode)>,
+			<&die_node(atcphy1_auspll_dtc_vreg_adjust)>,
+			<&die_node(atcphy1_cio3pll_dco_coarsebin0)>,
+			<&die_node(atcphy1_cio3pll_dco_coarsebin1)>,
+			<&die_node(atcphy1_cio3pll_dll_start_capcode)>,
+			<&die_node(atcphy1_cio3pll_dtc_vreg_adjust)>;
+		nvmem-cell-names =  "aus_cmn_shm_vreg_trim",
+			"auspll_rodco_encap",
+			"auspll_rodco_bias_adjust",
+			"auspll_fracn_dll_start_capcode",
+			"auspll_dtc_vreg_adjust",
+			"cio3pll_dco_coarsebin0",
+			"cio3pll_dco_coarsebin1",
+			"cio3pll_dll_start_capcode",
+			"cio3pll_dtc_vreg_adjust";
+
+		orientation-switch;
+		mode-switch;
+		accessory; // TODO: this sounds wrong but is required for the mux
+		power-domains = <&die_node(ps_atc1_usb)>;
 	};
 
 	die_node(dwc3_2_dart_0): iommu@f02f00000 {
@@ -192,6 +460,47 @@
 		iommus = <&die_node(dwc3_2_dart_0) 0>,
 			<&die_node(dwc3_2_dart_1) 1>;
 		power-domains = <&die_node(ps_atc2_usb)>;
+		resets = <&die_node(atcphy2)>;
+		phys = <&die_node(atcphy2) PHY_TYPE_USB2>,
+		       <&die_node(atcphy2) PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+	};
+
+	die_node(atcphy2): phy@f03000000 {
+		compatible = "apple,t8103-atcphy";
+		reg = <0xf 0x03000000 0x0 0x50000>,
+			<0xf 0x00000000 0x0 0x4000>,
+			<0xf 0x02a90000 0x0 0x4000>,
+			<0xf 0x02a84000 0x0 0x4000>;
+		reg-names = "core", "axi2af", "usb2phy",
+			"pipehandler";
+
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+
+		nvmem-cells = <&die_node(atcphy2_aus_cmn_shm_vreg_trim)>,
+			<&die_node(atcphy2_auspll_rodco_encap)>,
+			<&die_node(atcphy2_auspll_rodco_bias_adjust)>,
+			<&die_node(atcphy2_auspll_fracn_dll_start_capcode)>,
+			<&die_node(atcphy2_auspll_dtc_vreg_adjust)>,
+			<&die_node(atcphy2_cio3pll_dco_coarsebin0)>,
+			<&die_node(atcphy2_cio3pll_dco_coarsebin1)>,
+			<&die_node(atcphy2_cio3pll_dll_start_capcode)>,
+			<&die_node(atcphy2_cio3pll_dtc_vreg_adjust)>;
+		nvmem-cell-names =  "aus_cmn_shm_vreg_trim",
+			"auspll_rodco_encap",
+			"auspll_rodco_bias_adjust",
+			"auspll_fracn_dll_start_capcode",
+			"auspll_dtc_vreg_adjust",
+			"cio3pll_dco_coarsebin0",
+			"cio3pll_dco_coarsebin1",
+			"cio3pll_dll_start_capcode",
+			"cio3pll_dtc_vreg_adjust";
+
+		orientation-switch;
+		mode-switch;
+		accessory; // TODO: this sounds wrong but is required for the mux
+		power-domains = <&die_node(ps_atc2_usb)>;
 	};
 
 	die_node(dwc3_3_dart_0): iommu@1302f00000 {
@@ -222,5 +531,46 @@
 		role-switch-default-mode = "host";
 		iommus = <&die_node(dwc3_3_dart_0) 0>,
 			<&die_node(dwc3_3_dart_1) 1>;
+		power-domains = <&die_node(ps_atc3_usb)>;
+		resets = <&die_node(atcphy3)>;
+		phys = <&die_node(atcphy3) PHY_TYPE_USB2>,
+		       <&die_node(atcphy3) PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
+	};
+
+	die_node(atcphy3): phy@1303000000 {
+		compatible = "apple,t8103-atcphy";
+		reg = <0x13 0x03000000 0x0 0x50000>,
+			<0x13 0x00000000 0x0 0x4000>,
+			<0x13 0x02a90000 0x0 0x4000>,
+			<0x13 0x02a84000 0x0 0x4000>;
+		reg-names = "core", "axi2af", "usb2phy",
+			"pipehandler";
+
+		#phy-cells = <1>;
+		#reset-cells = <0>;
+
+		nvmem-cells = <&die_node(atcphy3_aus_cmn_shm_vreg_trim)>,
+			<&die_node(atcphy3_auspll_rodco_encap)>,
+			<&die_node(atcphy3_auspll_rodco_bias_adjust)>,
+			<&die_node(atcphy3_auspll_fracn_dll_start_capcode)>,
+			<&die_node(atcphy3_auspll_dtc_vreg_adjust)>,
+			<&die_node(atcphy3_cio3pll_dco_coarsebin0)>,
+			<&die_node(atcphy3_cio3pll_dco_coarsebin1)>,
+			<&die_node(atcphy3_cio3pll_dll_start_capcode)>,
+			<&die_node(atcphy3_cio3pll_dtc_vreg_adjust)>;
+		nvmem-cell-names =  "aus_cmn_shm_vreg_trim",
+			"auspll_rodco_encap",
+			"auspll_rodco_bias_adjust",
+			"auspll_fracn_dll_start_capcode",
+			"auspll_dtc_vreg_adjust",
+			"cio3pll_dco_coarsebin0",
+			"cio3pll_dco_coarsebin1",
+			"cio3pll_dll_start_capcode",
+			"cio3pll_dtc_vreg_adjust";
+
+		orientation-switch;
+		mode-switch;
+		accessory; // TODO: this sounds wrong but is required for the mux
 		power-domains = <&die_node(ps_atc3_usb)>;
 	};

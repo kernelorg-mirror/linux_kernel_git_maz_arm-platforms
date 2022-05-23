@@ -418,6 +418,39 @@ struct kvm_vcpu_arch {
 	} steal;
 };
 
+#define __vcpu_get_flag(v, flagset, f, m)			\
+	({							\
+		v->arch.flagset & (m);				\
+	})
+
+#define __vcpu_set_flag(v, flagset, f, m)			\
+	do {							\
+		typeof(v->arch.flagset) *fset;			\
+								\
+		fset = &v->arch.flagset;			\
+		if (HWEIGHT(m) > 1)				\
+			*fset &= ~(m);				\
+		*fset |= (f);					\
+	} while (0)
+
+#define __vcpu_clear_flag(v, flagset, f, m)			\
+	do {							\
+		typeof(v->arch.flagset) *fset;			\
+								\
+		fset = &v->arch.flagset;			\
+		*fset &= ~(m);					\
+	} while (0)
+
+#define vcpu_get_flag(v, ...)	__vcpu_get_flag(v, __VA_ARGS__)
+#define vcpu_set_flag(v, ...)	__vcpu_set_flag(v, __VA_ARGS__)
+#define vcpu_clear_flag(v, ...)	__vcpu_clear_flag(v, __VA_ARGS__)
+
+#define __vcpu_single_flag(_set, _f)	_set, (_f), (_f)
+
+#define __vcpu_flag_unpack(_set, _f, _m)	_f
+#define vcpu_flag_unpack(...)			__vcpu_flag_unpack(__VA_ARGS__)
+
+
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
 #define vcpu_sve_pffr(vcpu) (kern_hyp_va((vcpu)->arch.sve_state) +	\
 			     sve_ffr_offset((vcpu)->arch.sve_max_vl))

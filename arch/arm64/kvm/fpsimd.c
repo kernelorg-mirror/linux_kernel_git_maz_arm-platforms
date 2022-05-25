@@ -79,9 +79,9 @@ void kvm_arch_vcpu_load_fp(struct kvm_vcpu *vcpu)
 
 	vcpu->arch.fp_state = FP_STATE_DIRTY_HOST;
 
-	vcpu->arch.flags &= ~KVM_ARM64_HOST_SVE_ENABLED;
+	vcpu_clear_flag(vcpu, HOST_SVE_ENABLED);
 	if (read_sysreg(cpacr_el1) & CPACR_EL1_ZEN_EL0EN)
-		vcpu->arch.flags |= KVM_ARM64_HOST_SVE_ENABLED;
+		vcpu_set_flag(vcpu, HOST_SVE_ENABLED);
 
 	/*
 	 * We don't currently support SME guests but if we leave
@@ -93,9 +93,9 @@ void kvm_arch_vcpu_load_fp(struct kvm_vcpu *vcpu)
 	 * operations. Do this for ZA as well for now for simplicity.
 	 */
 	if (system_supports_sme()) {
-		vcpu->arch.flags &= ~KVM_ARM64_HOST_SME_ENABLED;
+		vcpu_clear_flag(vcpu, HOST_SME_ENABLED);
 		if (read_sysreg(cpacr_el1) & CPACR_EL1_SMEN_EL0EN)
-			vcpu->arch.flags |= KVM_ARM64_HOST_SME_ENABLED;
+			vcpu_set_flag(vcpu, HOST_SME_ENABLED);
 
 		if (read_sysreg_s(SYS_SVCR_EL0) &
 		    (SYS_SVCR_EL0_SM_MASK | SYS_SVCR_EL0_ZA_MASK)) {
@@ -165,7 +165,7 @@ void kvm_arch_vcpu_put_fp(struct kvm_vcpu *vcpu)
 	 */
 	if (has_vhe() && system_supports_sme()) {
 		/* Also restore EL0 state seen on entry */
-		if (vcpu->arch.flags & KVM_ARM64_HOST_SME_ENABLED)
+		if (vcpu_get_flag(vcpu, HOST_SME_ENABLED))
 			sysreg_clear_set(CPACR_EL1, 0,
 					 CPACR_EL1_SMEN_EL0EN |
 					 CPACR_EL1_SMEN_EL1EN);
@@ -194,7 +194,7 @@ void kvm_arch_vcpu_put_fp(struct kvm_vcpu *vcpu)
 		 * for EL0.  To avoid spurious traps, restore the trap state
 		 * seen by kvm_arch_vcpu_load_fp():
 		 */
-		if (vcpu->arch.flags & KVM_ARM64_HOST_SVE_ENABLED)
+		if (vcpu_get_flag(vcpu, HOST_SVE_ENABLED))
 			sysreg_clear_set(CPACR_EL1, 0, CPACR_EL1_ZEN_EL0EN);
 		else
 			sysreg_clear_set(CPACR_EL1, CPACR_EL1_ZEN_EL0EN, 0);

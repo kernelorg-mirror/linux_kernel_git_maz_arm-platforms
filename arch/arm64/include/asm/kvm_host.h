@@ -335,9 +335,6 @@ struct kvm_vcpu_arch {
 		FP_STATE_DIRTY_GUEST,
 	} fp_state;
 
-	/* Miscellaneous vcpu state flags */
-	u64 flags;
-
 	/* Configuration flags */
 	u64 cflags;
 

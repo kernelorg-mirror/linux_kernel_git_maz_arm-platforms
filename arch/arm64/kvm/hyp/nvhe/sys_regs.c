@@ -38,6 +38,8 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 	*vcpu_pc(vcpu) = read_sysreg_el2(SYS_ELR);
 	*vcpu_cpsr(vcpu) = read_sysreg_el2(SYS_SPSR);
 
+	WARN_ON(vcpu_get_flag(vcpu, INCREMENT_PC));
+
 	vcpu_set_flag(vcpu, PENDING_EXCEPTION);
 	vcpu_set_flag(vcpu, EXCEPT_AA64_EL1_SYNC);
 

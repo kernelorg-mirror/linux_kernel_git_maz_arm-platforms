@@ -20,6 +20,8 @@ static void inject_abt64(struct kvm_vcpu *vcpu, bool is_iabt, unsigned long addr
 	bool is_aarch32 = vcpu_mode_is_32bit(vcpu);
 	u32 esr = 0;
 
+	WARN_ON(vcpu_get_flag(vcpu, INCREMENT_PC));
+
 	vcpu_set_flag(vcpu, PENDING_EXCEPTION);
 	vcpu_set_flag(vcpu, EXCEPT_AA64_EL1_SYNC);
 
@@ -51,6 +53,8 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 {
 	u32 esr = (ESR_ELx_EC_UNKNOWN << ESR_ELx_EC_SHIFT);
 
+	WARN_ON(vcpu_get_flag(vcpu, INCREMENT_PC));
+
 	vcpu_set_flag(vcpu, PENDING_EXCEPTION);
 	vcpu_set_flag(vcpu, EXCEPT_AA64_EL1_SYNC);
 
@@ -71,6 +75,8 @@ static void inject_undef64(struct kvm_vcpu *vcpu)
 
 static void inject_undef32(struct kvm_vcpu *vcpu)
 {
+	WARN_ON(vcpu_get_flag(vcpu, INCREMENT_PC));
+
 	vcpu_set_flag(vcpu, PENDING_EXCEPTION);
 	vcpu_set_flag(vcpu, EXCEPT_AA32_UND);
 }
@@ -93,6 +99,8 @@ static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt, u32 addr)
 	}
 
 	far = vcpu_read_sys_reg(vcpu, FAR_EL1);
+
+	WARN_ON(vcpu_get_flag(vcpu, INCREMENT_PC));
 
 	if (is_pabt) {
 		vcpu_set_flag(vcpu, PENDING_EXCEPTION);

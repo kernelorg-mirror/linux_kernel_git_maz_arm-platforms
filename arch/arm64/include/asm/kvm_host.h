@@ -338,6 +338,15 @@ struct kvm_vcpu_arch {
 	/* Miscellaneous vcpu state flags */
 	u64 flags;
 
+	/* Configuration flags */
+	u64 cflags;
+
+	/* Input flags to the hypervisor code */
+	u64 iflags;
+
+	/* State flags, unused by the hypervisor code */
+	u64 sflags;
+
 	/*
 	 * We maintain more than a single set of debug registers to support
 	 * debugging the guest from the host and to maintain separate host and

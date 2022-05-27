@@ -420,14 +420,28 @@ struct kvm_vcpu_arch {
 	} steal;
 };
 
+#define __build_check_flag(v, flagset, f, m)			\
+	do {							\
+		typeof(v->arch.flagset) *_fset;			\
+								\
+		/* Check that the flags fit in the mask */	\
+		BUILD_BUG_ON(HWEIGHT(m) != HWEIGHT((f) | (m)));	\
+		/* Check that the flags fit in the type */	\
+		BUILD_BUG_ON((sizeof(*_fset) * 8) <= __fls(m));	\
+	} while (0)
+
 #define __vcpu_get_flag(v, flagset, f, m)			\
 	({							\
+		__build_check_flag(v, flagset, f, m);		\
+								\
 		v->arch.flagset & (m);				\
 	})
 
 #define __vcpu_set_flag(v, flagset, f, m)			\
 	do {							\
 		typeof(v->arch.flagset) *fset;			\
+								\
+		__build_check_flag(v, flagset, f, m);		\
 								\
 		fset = &v->arch.flagset;			\
 		if (HWEIGHT(m) > 1)				\
@@ -438,6 +452,8 @@ struct kvm_vcpu_arch {
 #define __vcpu_clear_flag(v, flagset, f, m)			\
 	do {							\
 		typeof(v->arch.flagset) *fset;			\
+								\
+		__build_check_flag(v, flagset, f, m);		\
 								\
 		fset = &v->arch.flagset;			\
 		*fset &= ~(m);					\

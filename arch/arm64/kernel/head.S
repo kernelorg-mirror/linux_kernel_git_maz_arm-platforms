@@ -463,7 +463,7 @@ SYM_FUNC_START_LOCAL(__primary_switched)
 	ret					// to __primary_switch()
 0:
 #endif
-	bl	switch_to_vhe			// Prefer VHE if possible
+	bl	finalise_el2			// Prefer VHE if possible
 	ldp	x29, x30, [sp], #16
 	bl	start_kernel
 	ASM_BUG()
@@ -553,7 +553,7 @@ SYM_INNER_LABEL(init_el2, SYM_L_LOCAL)
 	eret
 
 __cpu_stick_to_vhe:
-	mov	x0, #HVC_VHE_RESTART
+	mov	x0, #HVC_FINALISE_EL2
 	hvc	#0
 	mov	x0, #BOOT_CPU_MODE_EL2
 	ret
@@ -634,7 +634,7 @@ SYM_FUNC_START_LOCAL(secondary_startup)
 	/*
 	 * Common entry point for secondary CPUs.
 	 */
-	bl	switch_to_vhe
+	bl	finalise_el2
 	bl	__cpu_secondary_check52bitva
 	bl	__cpu_setup			// initialise processor
 	adrp	x1, swapper_pg_dir

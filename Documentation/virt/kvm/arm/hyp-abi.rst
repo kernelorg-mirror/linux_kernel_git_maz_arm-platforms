@@ -60,7 +60,7 @@ these functions (see arch/arm{,64}/include/asm/virt.h):
 
 * ::
 
-    x0 = HVC_VHE_RESTART (arm64 only)
+    x0 = HVC_FINALISE_EL2 (arm64 only)
 
   Attempt to upgrade the kernel's exception level from EL1 to EL2 by enabling
   the VHE mode. This is conditioned by the CPU supporting VHE, the EL2 MMU

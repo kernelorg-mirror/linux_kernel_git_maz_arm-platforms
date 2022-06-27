@@ -31,13 +31,13 @@ struct ftr_set_desc {
 
 static bool __init mmfr1_vh_filter(u64 val)
 {
+	extern u64 __e2h_state;
 	/*
-	 * If we ever reach this point while running VHE, we're
-	 * guaranteed to be on one of these funky, VHE-stuck CPUs. If
-	 * the user was trying to force nVHE on us, proceed with
-	 * attitude adjustment.
+	 * If the boot CPU has HCR_EL2.E2H set, we're guaranteed to be
+	 * on one of these funky, VHE-stuck CPUs. If the user was
+	 * trying to force nVHE on us, proceed with attitude adjustment.
 	 */
-	return !(is_kernel_in_hyp_mode() && val == 0);
+	return !(__e2h_state != 0 && val == 0);
 }
 
 static const struct ftr_set_desc mmfr1 __initconst = {

@@ -527,6 +527,8 @@ SYM_INNER_LABEL(init_el2, SYM_L_LOCAL)
 	 */
 	mrs	x0, hcr_el2
 	and	x0, x0, #HCR_E2H
+	adr_l	x1, __e2h_state
+	str	x0, [x1]
 	cbz	x0, 1f
 
 	/* Switching to VHE requires a sane SCTLR_EL1 as a start */
@@ -599,6 +601,15 @@ SYM_DATA_END(__boot_cpu_mode)
 SYM_DATA_START(__early_cpu_boot_status)
 	.quad 	0
 SYM_DATA_END(__early_cpu_boot_status)
+/*
+ * The value of the boot CPU's HCR_EL2.E2H state before dropping to
+ * EL1, so that the idreg override code can work out whether it can
+ * run in nVHE mode. Note that this is meaningless once a secondary
+ * CPU has booted, as it will have been overwritten.
+ */
+SYM_DATA_START(__e2h_state)
+	.quad 	0
+SYM_DATA_END(__e2h_state)
 
 	.popsection
 

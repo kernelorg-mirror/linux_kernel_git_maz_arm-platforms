@@ -1671,6 +1671,8 @@ static void _kvm_arch_hardware_enable(void *discard)
 {
 	if (!__this_cpu_read(kvm_arm_hardware_enabled)) {
 		cpu_hyp_reinit();
+		kvm_vgic_cpu_up();
+		kvm_timer_cpu_up();
 		__this_cpu_write(kvm_arm_hardware_enabled, 1);
 	}
 }
@@ -1684,6 +1686,8 @@ int kvm_arch_hardware_enable(void)
 static void _kvm_arch_hardware_disable(void *discard)
 {
 	if (__this_cpu_read(kvm_arm_hardware_enabled)) {
+		kvm_timer_cpu_down();
+		kvm_vgic_cpu_down();
 		cpu_hyp_reset();
 		__this_cpu_write(kvm_arm_hardware_enabled, 0);
 	}

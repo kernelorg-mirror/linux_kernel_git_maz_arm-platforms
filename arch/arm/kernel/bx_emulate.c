@@ -39,7 +39,7 @@ static int bx_proc_show(struct seq_file *m, void *v)
 
 static int bx_proc_open(struct inode *inode, struct file *file)
 {
-	return single_open(file, bx_proc_show, PDE_DATA(inode));
+	return single_open(file, bx_proc_show, pde_data(inode));
 }
 
 static ssize_t bx_proc_write(struct file *file, const char __user *buf,

@@ -508,7 +508,8 @@ void aarch64_get_supported_page_sizes(uint32_t ipa,
  */
 void __attribute__((constructor)) init_guest_modes(void)
 {
-       guest_modes_append_default();
+	guest_modes_append_default();
+	kvm_vm_mem_default.mode = VM_MODE_DEFAULT;
 }
 
 void smccc_hvc(uint32_t function_id, uint64_t arg0, uint64_t arg1,

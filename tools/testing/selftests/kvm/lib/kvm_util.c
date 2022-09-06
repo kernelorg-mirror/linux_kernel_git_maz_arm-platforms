@@ -143,12 +143,37 @@ const struct vm_guest_mode_params vm_guest_mode_params[] = {
 _Static_assert(sizeof(vm_guest_mode_params)/sizeof(struct vm_guest_mode_params) == NUM_VM_MODES,
 	       "Missing new mode params?");
 
-struct kvm_vm *____vm_create(enum vm_guest_mode mode, uint64_t nr_pages)
-{
-	struct kvm_vm *vm;
+/*
+ * A single memslot #0 for code, data, and page tables.
+ *
+ * .region[0].npages should be set by the user.
+ */
+struct kvm_vm_mem_params kvm_vm_mem_default = {
+#ifndef __aarch64__
+	/* arm64 kvm_vm_mem_default.mode set in init_guest_modes() */
+	.mode = VM_MODE_DEFAULT,
+#endif
+	.region[0] = {
+		.src_type = VM_MEM_SRC_ANONYMOUS,
+		.guest_paddr = 0,
+		.slot = 0,
+		.npages = 0,
+		.flags = 0,
+		.enabled = true,
+	},
+	.region_idx[MEM_REGION_CODE] = 0,
+	.region_idx[MEM_REGION_PT] = 0,
+	.region_idx[MEM_REGION_DATA] = 0,
+};
 
-	pr_debug("%s: mode='%s' pages='%ld'\n", __func__,
-		 vm_guest_mode_string(mode), nr_pages);
+struct kvm_vm *____vm_create(struct kvm_vm_mem_params *mem_params)
+{
+	enum vm_guest_mode mode = mem_params->mode;
+	struct kvm_vm *vm;
+	enum kvm_mem_region_type mrt;
+	int idx;
+
+	pr_debug("%s: mode='%s'\n", __func__, vm_guest_mode_string(mode));
 
 	vm = calloc(1, sizeof(*vm));
 	TEST_ASSERT(vm != NULL, "Insufficient Memory");
@@ -245,9 +270,25 @@ struct kvm_vm *____vm_create(enum vm_guest_mode mode, uint64_t nr_pages)
 
 	/* Allocate and setup memory for guest. */
 	vm->vpages_mapped = sparsebit_alloc();
-	if (nr_pages != 0)
-		vm_userspace_mem_region_add(vm, VM_MEM_SRC_ANONYMOUS,
-					    0, 0, nr_pages, 0);
+
+	/* Create all mem regions according to mem_params specifications. */
+	for (idx = 0; idx < NR_MEM_REGIONS; idx++) {
+		if (!mem_params->region[idx].enabled)
+			continue;
+
+		vm_userspace_mem_region_add(vm,
+			mem_params->region[idx].src_type,
+			mem_params->region[idx].guest_paddr,
+			mem_params->region[idx].slot,
+			mem_params->region[idx].npages,
+			mem_params->region[idx].flags);
+	}
+
+	/* Set all memslot types for the VM, also according to the spec. */
+	for (mrt = 0; mrt < NR_MEM_REGIONS; mrt++) {
+		idx = mem_params->region_idx[mrt];
+		vm->memslots[mrt] = mem_params->region[idx].slot;
+	}
 
 	return vm;
 }
@@ -292,9 +333,12 @@ struct kvm_vm *__vm_create(enum vm_guest_mode mode, uint32_t nr_runnable_vcpus,
 {
 	uint64_t nr_pages = vm_nr_pages_required(mode, nr_runnable_vcpus,
 						 nr_extra_pages);
+	struct kvm_vm_mem_params mem_params = kvm_vm_mem_default;
 	struct kvm_vm *vm;
 
-	vm = ____vm_create(mode, nr_pages);
+	mem_params.region[0].npages = nr_pages;
+	mem_params.mode = mode;
+	vm = ____vm_create(&mem_params);
 
 	kvm_vm_elf_load(vm, program_invocation_name);
 

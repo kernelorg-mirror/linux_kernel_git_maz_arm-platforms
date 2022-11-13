@@ -42,7 +42,7 @@ sed -e '/^DEL/d' -e 's/^\t*//' <<EOF
 	Name: kernel
 	Summary: The Linux Kernel
 	Version: $__KERNELRELEASE
-	Release: $(cat .version 2>/dev/null || echo 1)
+	Release: $(init/build-version)
 	License: GPL
 	Group: System Environment/Kernel
 	Vendor: The Linux Community

@@ -69,6 +69,12 @@ static void ipi_mux_send_mask(struct irq_data *d, const struct cpumask *mask)
 		 */
 		smp_mb__after_atomic();
 
+		/*
+		 * The flag writes must complete before the physical IPI is
+		 * issued to another CPU. This is implied by the control
+		 * dependency on the result of atomic_read() below, which is
+		 * itself already ordered after the vIPI flag write.
+		 */
 		if (!(pending & ibit) && (atomic_read(&icpu->enable) & ibit))
 			ipi_mux_send(cpu);
 	}
@@ -160,7 +166,7 @@ int ipi_mux_create(unsigned int nr_ipi, void (*mux_send)(unsigned int cpu))
 		goto fail_free_cpu;
 	}
 
-	domain = irq_domain_create_simple(fwnode, nr_ipi, 0,
+	domain = irq_domain_create_linear(fwnode, nr_ipi,
 					  &ipi_mux_domain_ops, NULL);
 	if (!domain) {
 		pr_err("unable to add IPI Mux domain\n");

@@ -89,6 +89,7 @@ enum cgt_group_id {
 	CGT_HCRX_EnFPM,
 	CGT_HCRX_TCR2En,
 	CGT_HCRX_SCTLR2En,
+	CGT_HCRX_TALLINT,
 
 	CGT_CNTHCTL_EL1TVT,
 	CGT_CNTHCTL_EL1TVCT,
@@ -405,6 +406,12 @@ static const struct trap_bits coarse_trap_bits[] = {
 		.value		= 0,
 		.mask		= HCRX_EL2_SCTLR2En,
 		.behaviour	= BEHAVE_FORWARD_RW,
+	},
+	[CGT_HCRX_TALLINT] = {
+		.index		= HCRX_EL2,
+		.value		= 1,
+		.mask		= HCRX_EL2_TALLINT,
+		.behaviour	= BEHAVE_FORWARD_WRITE,
 	},
 	[CGT_CNTHCTL_EL1TVT] = {
 		.index		= CNTHCTL_EL2,
@@ -1256,6 +1263,8 @@ static const struct encoding_to_trap_config encoding_to_cgt[] __initconst = {
 	SR_TRAP(SYS_CNTVCT_EL0,		CGT_CNTHCTL_EL1TVCT),
 	SR_TRAP(SYS_CNTVCTSS_EL0,	CGT_CNTHCTL_EL1TVCT),
 	SR_TRAP(SYS_FPMR,		CGT_HCRX_EnFPM),
+	SR_TRAP(SYS_ALLINT,		CGT_HCRX_TALLINT),
+	SR_TRAP(SYS_ALLINT_SET,		CGT_HCRX_TALLINT),
 	/*
 	 * IMPDEF choice:
 	 * We treat ICC_SRE_EL2.{SRE,Enable) and ICV_SRE_EL1.SRE as

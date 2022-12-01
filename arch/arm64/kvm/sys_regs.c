@@ -1416,6 +1416,9 @@ static unsigned int mte_visibility(const struct kvm_vcpu *vcpu,
  * guest...
  */
 static const struct sys_reg_desc sys_reg_descs[] = {
+	{ SYS_DESC(SYS_ALLINT_CLR), undef_access },
+	{ SYS_DESC(SYS_ALLINT_SET), undef_access },
+
 	{ SYS_DESC(SYS_DC_ISW), access_dcsw },
 	{ SYS_DESC(SYS_DC_CSW), access_dcsw },
 	{ SYS_DESC(SYS_DC_CISW), access_dcsw },
@@ -1557,6 +1560,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	PTRAUTH_KEY(APDA),
 	PTRAUTH_KEY(APDB),
 	PTRAUTH_KEY(APGA),
+
+	{ SYS_DESC(SYS_ALLINT), undef_access },
 
 	{ SYS_DESC(SYS_AFSR0_EL1), access_vm_reg, reset_unknown, AFSR0_EL1 },
 	{ SYS_DESC(SYS_AFSR1_EL1), access_vm_reg, reset_unknown, AFSR1_EL1 },

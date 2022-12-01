@@ -285,6 +285,8 @@ struct vgic_sort_info {
  * Pending, non-active interrupts must be placed at the head of the list.
  * Otherwise things should be sorted by the priority field and the GIC
  * hardware support will take care of preemption of priority groups etc.
+ * NMI acts as an extra priority.
+ *
  * Interrupts that are not deliverable should be at the end of the list.
  *
  * Return negative if "a" sorts before "b", 0 to preserve order, and positive
@@ -328,7 +330,14 @@ static int vgic_irq_cmp(void *priv, const struct list_head *a,
 	if (ret)
 		goto out;
 
-	/* Both pending and enabled, sort by priority (lower number first) */
+	/*
+	 * Both pending and enabled, sort by priority (lower number first),
+	 * including NMI.
+	 */
+	ret = (int)irqb->nmi - (int)irqa->nmi;
+	if (ret)
+		goto out;
+
 	ret = (int)irqa->priority - (int)irqb->priority;
 	if (ret)
 		goto out;

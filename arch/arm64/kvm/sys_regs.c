@@ -1093,6 +1093,7 @@ static u64 read_id_reg(const struct kvm_vcpu *vcpu, struct sys_reg_desc const *r
 
 		val &= ~ARM64_FEATURE_MASK(ID_AA64PFR1_EL1_SME);
 		val &= ~ARM64_FEATURE_MASK(ID_AA64PFR1_EL1_NMI);
+		val |= FIELD_PREP(ARM64_FEATURE_MASK(ID_AA64PFR1_EL1_NMI), vcpu->kvm->arch.pfr1_nmi);
 		break;
 	case SYS_ID_AA64ISAR1_EL1:
 		if (!vcpu_has_ptrauth(vcpu))
@@ -1219,6 +1220,27 @@ static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 
 	vcpu->kvm->arch.pfr0_csv2 = csv2;
 	vcpu->kvm->arch.pfr0_csv3 = csv3;
+
+	return 0;
+}
+
+static int set_id_aa64pfr1_el1(struct kvm_vcpu *vcpu,
+			       const struct sys_reg_desc *rd,
+			       u64 val)
+{
+	u8 nmi;
+
+	nmi = cpuid_feature_extract_unsigned_field(val, ID_AA64PFR1_EL1_NMI_SHIFT);
+	if (nmi > ID_AA64PFR1_EL1_NMI_IMP || (nmi && !system_uses_nmi()))
+		return -EINVAL;
+
+	/* We can only differ with NMI, and anything else is an error */
+	val ^= read_id_reg(vcpu, rd);
+	val &= ~ARM64_FEATURE_MASK(ID_AA64PFR1_EL1_NMI);
+	if (val)
+		return -EINVAL;
+
+	vcpu->kvm->arch.pfr1_nmi = nmi;
 
 	return 0;
 }
@@ -1475,7 +1497,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	/* CRm=4 */
 	{ SYS_DESC(SYS_ID_AA64PFR0_EL1), .access = access_id_reg,
 	  .get_user = get_id_reg, .set_user = set_id_aa64pfr0_el1, },
-	ID_SANITISED(ID_AA64PFR1_EL1),
+	{ SYS_DESC(SYS_ID_AA64PFR1_EL1), .access = access_id_reg,
+	  .get_user = get_id_reg, .set_user = set_id_aa64pfr1_el1, },
 	ID_UNALLOCATED(4,2),
 	ID_UNALLOCATED(4,3),
 	ID_SANITISED(ID_AA64ZFR0_EL1),

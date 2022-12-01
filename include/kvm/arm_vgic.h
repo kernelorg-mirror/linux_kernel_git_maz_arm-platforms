@@ -78,6 +78,9 @@ struct vgic_global {
 	bool			has_gicv4;
 	bool			has_gicv4_1;
 
+	/* NMI */
+	bool			has_nmi;
+
 	/* Pseudo GICv3 from outer space */
 	bool			no_hw_deactivation;
 

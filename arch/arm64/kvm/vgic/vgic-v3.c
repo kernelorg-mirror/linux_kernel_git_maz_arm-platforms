@@ -968,6 +968,16 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 		static_branch_enable(&vgic_v3_cpuif_trap);
 	}
 
+	/*
+	 * If we have to trap GIC system registers by default, don't
+	 * bother with NMIs at all, our emulation doesn't support it.
+	 */
+	if (info->has_nmi && cpus_have_cap(ARM64_NMI)) {
+		kvm_vgic_global_state.has_nmi = !traps;
+		kvm_info("GICv3 NMI support %s\n",
+			 kvm_vgic_global_state.has_nmi ? "enabled" : "disabled due to trapping");
+	}
+
 	kvm_vgic_global_state.vctrl_base = NULL;
 	kvm_vgic_global_state.type = VGIC_V3;
 	kvm_vgic_global_state.max_gic_vcpus = VGIC_V3_MAX_CPUS;

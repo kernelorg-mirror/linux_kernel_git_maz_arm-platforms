@@ -148,6 +148,7 @@ struct vgic_irq {
 	bool line_level:1;		/* Level only */
 	bool enabled:1;
 	bool active:1;
+	bool nmi:1;
 	bool hw:1;			/* Tied to HW IRQ */
 	bool on_lr:1;			/* Present in a CPU LR */
 	refcount_t refcount;		/* Used for LPIs */

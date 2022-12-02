@@ -268,7 +268,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 			irq->hwintid,
 			irq->mpidr,
 			irq->source,
-			irq->priority,
+			(kvm_has_nmi(vcpu->kvm) && irq->nmi) ? -1 : irq->priority,
 			(irq->vcpu) ? irq->vcpu->vcpu_idx : -1);
 }
 

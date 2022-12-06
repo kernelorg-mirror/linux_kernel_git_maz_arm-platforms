@@ -718,7 +718,7 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 	}
 
 	if (info->has_nmi) {
-		kvm_vgic_global_state.has_nmi = static_branch_unlikely(&vgic_v3_cpuif_trap);
+		kvm_vgic_global_state.has_nmi = !static_branch_unlikely(&vgic_v3_cpuif_trap);
 		kvm_info("GICv3 NMI support %s\n",
 			 kvm_vgic_global_state.has_nmi ? "enabled" : "disabled due to trapping");
 	}

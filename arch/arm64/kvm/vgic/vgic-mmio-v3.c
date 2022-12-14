@@ -802,11 +802,11 @@ static const struct vgic_register_region vgic_v3_rd_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_IGRPMODR0,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4,
 		VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_INMIR0,
-		vgic_mmio_read_nmi, vgic_mmio_write_nmi, 4,
-		VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_NSACR,
 		vgic_mmio_read_raz, vgic_mmio_write_wi, 4,
+		VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH(SZ_64K + GICR_INMIR0,
+		vgic_mmio_read_nmi, vgic_mmio_write_nmi, 4,
 		VGIC_ACCESS_32bit),
 };
 

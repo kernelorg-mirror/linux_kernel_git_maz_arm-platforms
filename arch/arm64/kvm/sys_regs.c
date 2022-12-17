@@ -1290,10 +1290,55 @@ static bool access_arch_timer(struct kvm_vcpu *vcpu,
 		tmr = TIMER_PTIMER;
 		treg = TIMER_REG_CVAL;
 		break;
+	case SYS_CNTVOFF_EL2:
+		tmr = TIMER_VTIMER;
+		treg = TIMER_REG_VOFF;
+		break;
+
+	case SYS_CNTPCT_EL0:
+	case SYS_CNTPCTSS_EL0:
+		if (is_hyp_ctxt(vcpu))
+			tmr = TIMER_HPTIMER;
+		else
+			tmr = TIMER_PTIMER;
+		treg = TIMER_REG_CNT;
+		break;
+
 	default:
 		print_sys_reg_msg(p, "%s", "Unhandled trapped timer register");
 		kvm_inject_undefined(vcpu);
 		return false;
+	}
+
+	if (vcpu_has_nv(vcpu) && !is_hyp_ctxt(vcpu) && tmr == TIMER_PTIMER) {
+		u64 val = __vcpu_sys_reg(vcpu, CNTHCTL_EL2);
+		bool trap;
+
+		if (vcpu_el2_e2h_is_set(vcpu))
+			val &= (CNTHCTL_EL1PCEN | CNTHCTL_EL1PCTEN) << 10;
+		else
+			val = (val & (CNTHCTL_EL1PCEN | CNTHCTL_EL1PCTEN)) << 10;
+
+		switch (treg) {
+		case TIMER_REG_CVAL:
+		case TIMER_REG_CTL:
+		case TIMER_REG_TVAL:
+			trap = val & (CNTHCTL_EL1PCEN << 10);
+			break;
+
+		case TIMER_REG_CNT:
+			trap = val & (CNTHCTL_EL1PCTEN << 10);
+			break;
+
+		default:
+			trap = false;
+			break;
+		}
+
+		if (trap) {
+			kvm_inject_nested_sync(vcpu, kvm_vcpu_get_esr(vcpu));
+			return false;
+		}
 	}
 
 	if (p->is_write)
@@ -2188,6 +2233,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	AMU_AMEVTYPER1_EL0(14),
 	AMU_AMEVTYPER1_EL0(15),
 
+	{ SYS_DESC(SYS_CNTPCT_EL0), access_arch_timer },
+	{ SYS_DESC(SYS_CNTPCTSS_EL0), access_arch_timer },
 	{ SYS_DESC(SYS_CNTP_TVAL_EL0), access_arch_timer },
 	{ SYS_DESC(SYS_CNTP_CTL_EL0), access_arch_timer },
 	{ SYS_DESC(SYS_CNTP_CVAL_EL0), access_arch_timer },
@@ -2304,7 +2351,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	EL2_REG(CONTEXTIDR_EL2, access_rw, reset_val, 0),
 	EL2_REG(TPIDR_EL2, access_rw, reset_val, 0),
 
-	EL2_REG(CNTVOFF_EL2, access_rw, reset_val, 0),
+	{ SYS_DESC(SYS_CNTVOFF_EL2), access_arch_timer },
 	EL2_REG(CNTHCTL_EL2, access_rw, reset_val, 0),
 
 	EL12_REG(SCTLR, access_vm_reg, reset_val, 0x00C50078),

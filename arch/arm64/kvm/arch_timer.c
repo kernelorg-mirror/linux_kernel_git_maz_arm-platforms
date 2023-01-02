@@ -741,6 +741,44 @@ static void kvm_timer_vcpu_load_nested_switch(struct kvm_vcpu *vcpu,
 	}
 
 	/*
+	 * NV2 badly breaks the timer semantics by redirecting accesses to
+	 * the EL0 timer state to memory, so let's call ECV to the rescue if
+	 * available: we trap all CNT{P,V}_{CTL,CVAL,TVAL}_EL0 accesses.
+	 *
+	 * The treatment slightly varies depending whether we run a nVHE or
+	 * VHE guest: nVHE will use the _EL0 registers directly, while VHE
+	 * will use the _EL02 accessors. This translates in different trap
+	 * bits.
+	 *
+	 * None of the trapping is engaged when running in non-HYP context,
+	 * unless required by the L1 hypervisor settings once we advertise
+	 * ECV+NV in the guest.
+	 */
+	if (vcpu_has_nv2(vcpu) && cpus_have_const_cap(ARM64_HAS_ECV)) {
+		u64 clr = 0, set = 0;
+
+		if (vcpu_el2_e2h_is_set(vcpu)) {
+			set |= CNTHCTL_EL1NVVCT | CNTHCTL_EL1NVPCT;
+		} else {
+			/*
+			 * Only trap the timers, not the counters, as they
+			 * are in the "direct" state for nVHE.
+			 */
+			clr |= CNTHCTL_EL1PCEN << 10;
+			set |= CNTHCTL_EL1TVT;
+		}
+
+		/*
+		 * Apply these values for HYP context, and reverse them
+		 * otherwise
+		 */
+		if (is_hyp_ctxt(vcpu))
+			sysreg_clear_set(cntkctl_el1, clr, set);
+		else
+			sysreg_clear_set(cntkctl_el1, set, clr);
+	}
+
+	/*
 	 * Apply the trapping bits that the guest hypervisor has
 	 * requested for its own guest.
 	 */
@@ -838,6 +876,16 @@ void kvm_timer_vcpu_put(struct kvm_vcpu *vcpu)
 
 	if (kvm_vcpu_is_blocking(vcpu))
 		kvm_timer_blocking(vcpu);
+
+	/*
+	 * Restore the standard, non-nested configuration so that we're
+	 * ready to run a non-NV vcpu.
+	 */
+	if (vcpu_has_nv2(vcpu))
+		sysreg_clear_set(cntkctl_el1,
+				 (CNTHCTL_EL1NVPCT | CNTHCTL_EL1NVVCT |
+				  CNTHCTL_EL1TVT | CNTHCTL_EL1TVCT),
+				 (CNTHCTL_EL1PCEN | CNTHCTL_EL1PCTEN) << 10);
 }
 
 void kvm_timer_sync_nested(struct kvm_vcpu *vcpu)
@@ -847,8 +895,12 @@ void kvm_timer_sync_nested(struct kvm_vcpu *vcpu)
 	 * accesses redirected to the VNCR page. Any guest action taken on
 	 * the timer is postponed until the next exit, leading to a very
 	 * poor quality of emulation.
+	 *
+	 * This is an unmitigated disaster, only papered over by FEAT_ECV,
+	 * which allows trapping of the timer registers even with NV2.
+	 * Still, this is still worse than FEAT_NV on its own. Meh.
 	 */
-	if (!is_hyp_ctxt(vcpu))
+	if (cpus_have_const_cap(ARM64_HAS_ECV) || !is_hyp_ctxt(vcpu))
 		return;
 
 	if (!vcpu_el2_e2h_is_set(vcpu)) {

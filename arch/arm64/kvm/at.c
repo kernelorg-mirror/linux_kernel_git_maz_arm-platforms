@@ -46,6 +46,7 @@ void __kvm_at_s1e01(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
 	struct mmu_config config;
 	struct kvm_s2_mmu *mmu;
+	bool fail;
 
 	write_lock(&vcpu->kvm->mmu_lock);
 
@@ -91,26 +92,27 @@ skip_mmu_switch:
 	switch (op) {
 	case OP_AT_S1E1R:
 	case OP_AT_S1E1RP:
-		asm volatile("at s1e1r, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e1r", vaddr);
 		break;
 	case OP_AT_S1E1W:
 	case OP_AT_S1E1WP:
-		asm volatile("at s1e1w, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e1w", vaddr);
 		break;
 	case OP_AT_S1E0R:
-		asm volatile("at s1e0r, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e0r", vaddr);
 		break;
 	case OP_AT_S1E0W:
-		asm volatile("at s1e0w, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e0w", vaddr);
 		break;
 	default:
 		WARN_ON_ONCE(1);
 		break;
 	}
 
-	isb();
-
-	ctxt_sys_reg(ctxt, PAR_EL1) = read_sysreg(par_el1);
+	if (!fail)
+		ctxt_sys_reg(ctxt, PAR_EL1) = read_sysreg(par_el1);
+	else
+		ctxt_sys_reg(ctxt, PAR_EL1) = SYS_PAR_EL1_F;
 
 	/*
 	 * Failed? let's leave the building now.
@@ -119,7 +121,7 @@ skip_mmu_switch:
 	 * wasn't populated? We may need to perform a SW PTW,
 	 * populating our shadow S2 and retry the instruction.
 	 */
-	if (ctxt_sys_reg(ctxt, PAR_EL1) & 1)
+	if (ctxt_sys_reg(ctxt, PAR_EL1) & SYS_PAR_EL1_F)
 		goto nopan;
 
 	/* No PAN? No problem. */
@@ -132,10 +134,10 @@ skip_mmu_switch:
 	 */
 	switch (op) {
 	case OP_AT_S1E1RP:
-		asm volatile("at s1e0r, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e0r", vaddr);
 		break;
 	case OP_AT_S1E1WP:
-		asm volatile("at s1e0w, %0" : : "r" (vaddr));
+		fail = __kvm_at("s1e0w", vaddr);
 		break;
 	default:
 		goto nopan;
@@ -149,8 +151,8 @@ skip_mmu_switch:
 	 * FIXME: we hardcode a Level-3 permission fault. We really
 	 * should return the real fault level.
 	 */
-	if (!(read_sysreg(par_el1) & 1))
-		ctxt_sys_reg(ctxt, PAR_EL1) = 0x1f;
+	if (fail || !(read_sysreg(par_el1) & SYS_PAR_EL1_F))
+		ctxt_sys_reg(ctxt, PAR_EL1) = (0xf << 1) | SYS_PAR_EL1_F;
 
 nopan:
 	if (!(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))

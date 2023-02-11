@@ -851,9 +851,11 @@ void kvm_timer_vcpu_init(struct kvm_vcpu *vcpu)
 	ptimer->vcpu = vcpu;
 	ptimer->offset.vm_offset = &vcpu->kvm->arch.offsets.poffset;
 
-	/* Synchronize cntvoff across all vtimers of a VM. */
-	timer_set_offset(vtimer, kvm_phys_timer_read());
-	timer_set_offset(ptimer, 0);
+	/* Synchronize offsets across timers of a VM if not already provided */
+	if (!test_bit(KVM_ARCH_FLAG_COUNTER_OFFSETS, &vcpu->kvm->arch.flags)) {
+		timer_set_offset(vtimer, kvm_phys_timer_read());
+		timer_set_offset(ptimer, 0);
+	}
 
 	hrtimer_init(&timer->bg_timer, CLOCK_MONOTONIC, HRTIMER_MODE_ABS_HARD);
 	timer->bg_timer.function = kvm_bg_timer_expire;
@@ -897,8 +899,11 @@ int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 		kvm_arm_timer_write(vcpu, timer, TIMER_REG_CTL, value);
 		break;
 	case KVM_REG_ARM_TIMER_CNT:
-		timer = vcpu_vtimer(vcpu);
-		timer_set_offset(timer, kvm_phys_timer_read() - value);
+		if (!test_bit(KVM_ARCH_FLAG_COUNTER_OFFSETS,
+			      &vcpu->kvm->arch.flags)) {
+			timer = vcpu_vtimer(vcpu);
+			timer_set_offset(timer, kvm_phys_timer_read() - value);
+		}
 		break;
 	case KVM_REG_ARM_TIMER_CVAL:
 		timer = vcpu_vtimer(vcpu);
@@ -907,6 +912,13 @@ int kvm_arm_timer_set_reg(struct kvm_vcpu *vcpu, u64 regid, u64 value)
 	case KVM_REG_ARM_PTIMER_CTL:
 		timer = vcpu_ptimer(vcpu);
 		kvm_arm_timer_write(vcpu, timer, TIMER_REG_CTL, value);
+		break;
+	case KVM_REG_ARM_PTIMER_CNT:
+		if (!test_bit(KVM_ARCH_FLAG_COUNTER_OFFSETS,
+			      &vcpu->kvm->arch.flags)) {
+			timer = vcpu_ptimer(vcpu);
+			timer_set_offset(timer, kvm_phys_timer_read() - value);
+		}
 		break;
 	case KVM_REG_ARM_PTIMER_CVAL:
 		timer = vcpu_ptimer(vcpu);
@@ -1444,4 +1456,28 @@ int kvm_arm_timer_has_attr(struct kvm_vcpu *vcpu, struct kvm_device_attr *attr)
 	}
 
 	return -ENXIO;
+}
+
+int kvm_vm_ioctl_set_counter_offsets(struct kvm *kvm,
+				     struct kvm_arm_counter_offsets *offsets)
+{
+	if (offsets->reserved ||
+	    (offsets->flags & ~(KVM_COUNTER_SET_VOFFSET_FLAG |
+				KVM_COUNTER_SET_POFFSET_FLAG)))
+		return -EINVAL;
+
+	if (!lock_all_vcpus(kvm))
+		return -EBUSY;
+
+	set_bit(KVM_ARCH_FLAG_COUNTER_OFFSETS, &kvm->arch.flags);
+
+	if (offsets->flags & KVM_COUNTER_SET_VOFFSET_FLAG)
+		kvm->arch.offsets.voffset = offsets->virtual_offset;
+
+	if (offsets->flags & KVM_COUNTER_SET_POFFSET_FLAG)
+		kvm->arch.offsets.poffset = offsets->physical_offset;
+
+	unlock_all_vcpus(kvm);
+
+	return 0;
 }

@@ -158,6 +158,9 @@ static void guest_irq_handler(struct ex_regs *regs)
 	uint32_t cpu = guest_get_vcpuid();
 	struct test_vcpu_shared_data *shared_data = &vcpu_shared_data[cpu];
 
+	if (intid == IAR_SPURIOUS)
+		return;
+
 	guest_validate_irq(intid, shared_data);
 
 	WRITE_ONCE(shared_data->nr_iter, shared_data->nr_iter + 1);

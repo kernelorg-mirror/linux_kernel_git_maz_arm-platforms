@@ -31,6 +31,7 @@ struct arch_timer_context {
 
 	/* Emulated Timer (may be unused) */
 	struct hrtimer			hrtimer;
+	u64				ns_frac;
 
 	/*
 	 * We have multiple paths which can save/restore the timer state onto

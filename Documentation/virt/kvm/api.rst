@@ -5937,6 +5937,59 @@ delivery must be provided via the "reg_aen" struct.
 The "pad" and "reserved" fields may be used for future extensions and should be
 set to 0s by userspace.
 
+4.138 KVM_ARM_SET_CNT_OFFSETS
+-----------------------------
+
+:Capability: KVM_CAP_COUNTER_OFFSETS
+:Architectures: arm64
+:Type: vm ioctl
+:Parameters: struct kvm_arm_counter_offsets (in)
+:Returns: 0 on success, < 0 on error
+
+This capability indicates that userspace is able to apply a set of
+VM-wide offsets to the virtual and physical counters as viewed by the
+guest using the KVM_ARM_SET_CNT_OFFSETS ioctl and the following data
+structure:
+
+::
+
+	struct kvm_arm_counter_offsets {
+		__u64 virtual_offset;
+		__u64 physical_offset;
+
+	#define KVM_COUNTER_SET_VOFFSET_FLAG   (1UL << 0)
+	#define KVM_COUNTER_SET_POFFSET_FLAG   (1UL << 1)
+
+		__u64 flags;
+		__u64 reserved;
+	};
+
+Each of the two offsets describe a number of counter cycles that are
+subtracted from the corresponding counter (similar to the effects of
+the CNTVOFF_EL2 and CNTPOFF_EL2 system registers). For each offset
+that userspace wishes to change, it must set the corresponding flag in
+the "flag" field. These values always apply to all vcpus (already
+created or created after this ioctl) in this VM.
+
+It is userspace's responsibility to compute the offsets based, for
+example, on previous values of the guest counters.
+
+With nested virtualisation, the virtual offset as no effect on the
+execution of the guest, and the nested hypervisor is responsible for
+the offset that is presented to its own guests.
+
+Any flag value that isn't described here, or any value other than 0
+for the "reserved" field may result in an error (-EINVAL) being
+returned.
+
+This ioctl can also return -EBUSY if any vcpu ioctl is issued
+concurrently.
+
+Note that using this ioctl results in KVM ignoring subsequent
+userspace writes to the CNTVCT_EL0 and CNTPCT_EL0 registers using the
+SET_ONE_REG interface. No error will be returned, but the resulting
+offset will not be applied.
+
 5. The kvm_run structure
 ========================
 

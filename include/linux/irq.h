@@ -223,6 +223,8 @@ struct irq_data {
  *				  irq_chip::irq_set_affinity() when deactivated.
  * IRQD_IRQ_ENABLED_ON_SUSPEND	- Interrupt is enabled on suspend by irq pm if
  *				  irqchip have flag IRQCHIP_ENABLE_WAKEUP_ON_SUSPEND set.
+ * IRQD_RESEND_WHEN_IN_PROGRESS - Interrupt may fire when already in progress,
+ *				  needs resending.
  */
 enum {
 	IRQD_TRIGGER_MASK		= 0xf,
@@ -249,6 +251,7 @@ enum {
 	IRQD_HANDLE_ENFORCE_IRQCTX	= (1 << 28),
 	IRQD_AFFINITY_ON_ACTIVATE	= (1 << 29),
 	IRQD_IRQ_ENABLED_ON_SUSPEND	= (1 << 30),
+	IRQD_RESEND_WHEN_IN_PROGRESS	= (1 << 31),
 };
 
 #define __irqd_to_state(d) ACCESS_PRIVATE((d)->common, state_use_accessors)
@@ -446,6 +449,16 @@ static inline void irqd_set_affinity_on_activate(struct irq_data *d)
 static inline bool irqd_affinity_on_activate(struct irq_data *d)
 {
 	return __irqd_to_state(d) & IRQD_AFFINITY_ON_ACTIVATE;
+}
+
+static inline bool irqd_needs_resend_when_in_progress(struct irq_data *d)
+{
+	return __irqd_to_state(d) & IRQD_RESEND_WHEN_IN_PROGRESS;
+}
+
+static inline void irqd_set_resend_when_in_progress(struct irq_data *d)
+{
+	__irqd_to_state(d) |= IRQD_RESEND_WHEN_IN_PROGRESS;
 }
 
 #undef __irqd_to_state

@@ -117,7 +117,8 @@ int check_irq_resend(struct irq_desc *desc, bool inject)
 		return -EINVAL;
 	}
 
-	if (desc->istate & IRQS_REPLAY)
+	if ((desc->istate & IRQS_REPLAY) &&
+	    !irqd_needs_resend_when_in_progress(&desc->irq_data))
 		return -EBUSY;
 
 	if (!(desc->istate & IRQS_PENDING) && !inject)

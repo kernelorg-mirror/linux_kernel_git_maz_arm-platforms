@@ -692,8 +692,11 @@ void handle_fasteoi_irq(struct irq_desc *desc)
 
 	raw_spin_lock(&desc->lock);
 
-	if (!irq_may_run(desc))
+	if (!irq_may_run(desc)) {
+		if (irqd_needs_resend_when_in_progress(&desc->irq_data))
+			check_irq_resend(desc, true);
 		goto out;
+	}
 
 	desc->istate &= ~(IRQS_REPLAY | IRQS_WAITING);
 

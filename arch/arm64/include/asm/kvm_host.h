@@ -1090,9 +1090,12 @@ bool kvm_arm_vcpu_is_finalized(struct kvm_vcpu *vcpu);
 
 #define kvm_arm_vcpu_sve_finalized(vcpu) vcpu_get_flag(vcpu, VCPU_SVE_FINALIZED)
 
-#define kvm_has_mte(kvm)					\
+#define kvm_arch_has_mte(arch)					\
 	(system_supports_mte() &&				\
-	 test_bit(KVM_ARCH_FLAG_MTE_ENABLED, &(kvm)->arch.flags))
+	 test_bit(KVM_ARCH_FLAG_MTE_ENABLED, &(arch)->flags))
+
+#define kvm_has_mte(kvm)					\
+	(system_supports_mte() && kvm_arch_has_mte(&(kvm)->arch))
 
 #define kvm_supports_32bit_el0()				\
 	(system_supports_32bit_el0() &&				\

@@ -217,9 +217,9 @@ static void guest_s2_put_page(void *addr)
 	hyp_put_page(&current_vm->pool, addr);
 }
 
-static void clean_dcache_guest_page(void *va, size_t size)
+static void clean_dcache_guest_page(void *va, size_t size, bool tagged)
 {
-	__clean_dcache_guest_page(hyp_fixmap_map(__hyp_pa(va)), size);
+	__clean_dcache_guest_page(hyp_fixmap_map(__hyp_pa(va)), size, tagged);
 	hyp_fixmap_unmap();
 }
 

@@ -195,6 +195,9 @@ struct kvm;
 #define kvm_flush_dcache_to_poc(a,l)	\
 	dcache_clean_inval_poc((unsigned long)(a), (unsigned long)(a)+(l))
 
+#define kvm_flush_dcache_tag_to_poc(a,l)	\
+	dcache_tag_clean_inval_poc((unsigned long)(a), (unsigned long)(a)+(l))
+
 static inline bool vcpu_has_cache_enabled(struct kvm_vcpu *vcpu)
 {
 	u64 cache_bits = SCTLR_ELx_M | SCTLR_ELx_C;
@@ -208,7 +211,7 @@ static inline bool vcpu_has_cache_enabled(struct kvm_vcpu *vcpu)
 	return (vcpu_read_sys_reg(vcpu, reg) & cache_bits) == cache_bits;
 }
 
-static inline void __clean_dcache_guest_page(void *va, size_t size)
+static inline void __clean_dcache_guest_page(void *va, size_t size, bool tagged)
 {
 	/*
 	 * With FWB, we ensure that the guest always accesses memory using
@@ -219,7 +222,10 @@ static inline void __clean_dcache_guest_page(void *va, size_t size)
 	if (cpus_have_const_cap(ARM64_HAS_STAGE2_FWB))
 		return;
 
-	kvm_flush_dcache_to_poc(va, size);
+	if (tagged)
+		kvm_flush_dcache_tag_to_poc(va, size);
+	else
+		kvm_flush_dcache_to_poc(va, size);
 }
 
 static inline void __invalidate_icache_guest_page(void *va, size_t size)

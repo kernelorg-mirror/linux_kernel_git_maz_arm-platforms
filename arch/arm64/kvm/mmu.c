@@ -182,9 +182,9 @@ static void *kvm_host_va(phys_addr_t phys)
 	return __va(phys);
 }
 
-static void clean_dcache_guest_page(void *va, size_t size)
+static void clean_dcache_guest_page(void *va, size_t size, bool tagged)
 {
-	__clean_dcache_guest_page(va, size);
+	__clean_dcache_guest_page(va, size, tagged);
 }
 
 static void invalidate_icache_guest_page(void *va, size_t size)

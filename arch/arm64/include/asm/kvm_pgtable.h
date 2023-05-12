@@ -116,7 +116,8 @@ static inline bool kvm_level_supports_block_mapping(u32 level)
  * @virt_to_phys:		Convert a virtual address mapped in the current
  *				context into a physical address.
  * @dcache_clean_inval_poc:	Clean and invalidate the data cache to the PoC
- *				for the	specified memory address range.
+ *				for the	specified memory address range,
+ *				specifying whether the memory is tagged or not.
  * @icache_inval_pou:		Invalidate the instruction cache to the PoU
  *				for the specified memory address range.
  */
@@ -130,7 +131,8 @@ struct kvm_pgtable_mm_ops {
 	int		(*page_count)(void *addr);
 	void*		(*phys_to_virt)(phys_addr_t phys);
 	phys_addr_t	(*virt_to_phys)(void *addr);
-	void		(*dcache_clean_inval_poc)(void *addr, size_t size);
+	void		(*dcache_clean_inval_poc)(void *addr, size_t size,
+						  bool tagged);
 	void		(*icache_inval_pou)(void *addr, size_t size);
 };
 

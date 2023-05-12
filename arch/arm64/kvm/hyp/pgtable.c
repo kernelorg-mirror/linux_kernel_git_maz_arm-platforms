@@ -859,7 +859,8 @@ static int stage2_map_walker_try_leaf(const struct kvm_pgtable_visit_ctx *ctx,
 	/* Perform CMOs before installation of the guest stage-2 PTE */
 	if (mm_ops->dcache_clean_inval_poc && stage2_pte_cacheable(pgt, new))
 		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(new, mm_ops),
-						granule);
+					       granule,
+					       kvm_arch_has_mte(pgt->mmu->arch));
 
 	if (mm_ops->icache_inval_pou && stage2_pte_executable(new))
 		mm_ops->icache_inval_pou(kvm_pte_follow(new, mm_ops), granule);
@@ -1039,7 +1040,8 @@ static int stage2_unmap_walker(const struct kvm_pgtable_visit_ctx *ctx,
 
 	if (need_flush && mm_ops->dcache_clean_inval_poc)
 		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(ctx->old, mm_ops),
-					       kvm_granule_size(ctx->level));
+					       kvm_granule_size(ctx->level),
+					       kvm_arch_has_mte(mmu->arch));
 
 	if (childp)
 		mm_ops->put_page(childp);
@@ -1212,7 +1214,8 @@ static int stage2_flush_walker(const struct kvm_pgtable_visit_ctx *ctx,
 
 	if (mm_ops->dcache_clean_inval_poc)
 		mm_ops->dcache_clean_inval_poc(kvm_pte_follow(ctx->old, mm_ops),
-					       kvm_granule_size(ctx->level));
+					       kvm_granule_size(ctx->level),
+					       kvm_arch_has_mte(pgt->mmu->arch));
 	return 0;
 }
 

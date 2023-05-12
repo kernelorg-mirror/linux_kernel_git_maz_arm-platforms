@@ -13,6 +13,17 @@ SYM_FUNC_START(__pi_dcache_clean_inval_poc)
 SYM_FUNC_END(__pi_dcache_clean_inval_poc)
 SYM_FUNC_ALIAS(dcache_clean_inval_poc, __pi_dcache_clean_inval_poc)
 
+SYM_FUNC_START(__pi_dcache_tag_clean_inval_poc)
+#ifdef CONFIG_ARM64_MTE
+	.arch_extension memtag
+	dcache_by_line_op cigdvac, sy, x0, x1, x2, x3
+#else
+	ASM_BUG()
+#endif
+	ret
+SYM_FUNC_END(__pi_dcache_tag_clean_inval_poc)
+SYM_FUNC_ALIAS(dcache_tag_clean_inval_poc, __pi_dcache_tag_clean_inval_poc)
+
 SYM_FUNC_START(__pi_icache_inval_pou)
 alternative_if ARM64_HAS_CACHE_DIC
 	isb

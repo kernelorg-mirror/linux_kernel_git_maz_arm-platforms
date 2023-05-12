@@ -115,6 +115,26 @@ SYM_FUNC_END(__pi_dcache_clean_inval_poc)
 SYM_FUNC_ALIAS(dcache_clean_inval_poc, __pi_dcache_clean_inval_poc)
 
 /*
+ *	dcache_tag_clean_inval_poc(start, end)
+ *
+ *	Ensure that any D-cache lines and MTE tags for the interval
+ *	[start, end) are cleaned and invalidated to the PoC.
+ *
+ *	- start   - virtual start address of region
+ *	- end     - virtual end address of region
+ */
+SYM_FUNC_START(__pi_dcache_tag_clean_inval_poc)
+#ifdef CONFIG_ARM64_MTE
+	.arch_extension memtag
+	dcache_by_line_op cigdvac, sy, x0, x1, x2, x3
+#else
+	ASM_BUG()
+#endif
+	ret
+SYM_FUNC_END(__pi_dcache_tag_clean_inval_poc)
+SYM_FUNC_ALIAS(dcache_tag_clean_inval_poc, __pi_dcache_tag_clean_inval_poc)
+
+/*
  *	dcache_clean_pou(start, end)
  *
  * 	Ensure that any D-cache lines for the interval [start, end)

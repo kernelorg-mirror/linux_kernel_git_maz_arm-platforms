@@ -1756,8 +1756,14 @@ static bool access_spsr(struct kvm_vcpu *vcpu,
  */
 static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_DC_ISW), access_dcsw },
+	{ SYS_DESC(SYS_DC_IGSW), access_dcsw },
+	{ SYS_DESC(SYS_DC_IGDSW), access_dcsw },
 	{ SYS_DESC(SYS_DC_CSW), access_dcsw },
+	{ SYS_DESC(SYS_DC_CGSW), access_dcsw },
+	{ SYS_DESC(SYS_DC_CGDSW), access_dcsw },
 	{ SYS_DESC(SYS_DC_CISW), access_dcsw },
+	{ SYS_DESC(SYS_DC_CIGSW), access_dcsw },
+	{ SYS_DESC(SYS_DC_CIGDSW), access_dcsw },
 
 	DBG_BCR_BVR_WCR_WVR_EL1(0),
 	DBG_BCR_BVR_WCR_WVR_EL1(1),

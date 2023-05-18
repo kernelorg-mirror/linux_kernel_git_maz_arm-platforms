@@ -1861,7 +1861,7 @@ static int dwc3_probe(struct platform_device *pdev)
 				    "Apple DWC3 requires role switch support.\n"
 				    );
 				ret = -EINVAL;
-				goto put_usb_psy;
+				goto err_put_psy;
 			}
 
 			dwc->dr_mode = USB_DR_MODE_OTG;

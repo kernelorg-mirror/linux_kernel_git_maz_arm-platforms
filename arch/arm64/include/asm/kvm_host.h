@@ -592,6 +592,9 @@ struct kvm_vcpu_arch {
 	/* State flags for kernel bookkeeping, unused by the hypervisor code */
 	u8 sflags;
 
+	/* Output flags from the hypervisor to the kernel */
+	u8 oflags;
+
 	/*
 	 * Don't run the guest (internal implementation need).
 	 *
@@ -817,6 +820,8 @@ struct kvm_vcpu_arch {
 /* WFI instruction trapped */
 #define IN_WFI			__vcpu_single_flag(sflags, BIT(7))
 
+/* vcpu entered with HCR_EL2.E2H set */
+#define VCPU_HCR_E2H		__vcpu_single_flag(oflags, BIT(0))
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
 #define vcpu_sve_pffr(vcpu) (kern_hyp_va((vcpu)->arch.sve_state) +	\

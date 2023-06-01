@@ -103,9 +103,6 @@ SYM_CODE_START_LOCAL(___kvm_hyp_init)
 
 	ldr	x1, [x0, #NVHE_INIT_PGD_PA]
 	phys_to_ttbr x2, x1
-alternative_if ARM64_HAS_CNP
-	orr	x2, x2, #TTBR_CNP_BIT
-alternative_else_nop_endif
 	msr	ttbr0_el2, x2
 
 	/*
@@ -255,9 +252,6 @@ SYM_FUNC_START(__pkvm_init_switch_pgd)
 	/* Install the new pgtables */
 	ldr	x3, [x0, #NVHE_INIT_PGD_PA]
 	phys_to_ttbr x4, x3
-alternative_if ARM64_HAS_CNP
-	orr	x4, x4, #TTBR_CNP_BIT
-alternative_else_nop_endif
 	msr	ttbr0_el2, x4
 
 	/* Set the new stack pointer */

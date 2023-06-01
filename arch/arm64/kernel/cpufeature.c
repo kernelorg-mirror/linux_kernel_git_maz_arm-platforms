@@ -1594,23 +1594,6 @@ static bool has_cache_dic(const struct arm64_cpu_capabilities *entry,
 	return ctr & BIT(CTR_EL0_DIC_SHIFT);
 }
 
-static bool __maybe_unused
-has_useable_cnp(const struct arm64_cpu_capabilities *entry, int scope)
-{
-	/*
-	 * Kdump isn't guaranteed to power-off all secondary CPUs, CNP
-	 * may share TLB entries with a CPU stuck in the crashed
-	 * kernel.
-	 */
-	if (is_kdump_kernel())
-		return false;
-
-	if (cpus_have_const_cap(ARM64_WORKAROUND_NVIDIA_CARMEL_CNP))
-		return false;
-
-	return has_cpuid_feature(entry, scope);
-}
-
 /*
  * This check is triggered during the early boot before the cpufeature
  * is initialised. Checking the status on the local CPU allows the boot
@@ -2446,16 +2429,6 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64PFR1_EL1, SSBS, IMP)
 	},
-#ifdef CONFIG_ARM64_CNP
-	{
-		.desc = "Common not Private translations",
-		.capability = ARM64_HAS_CNP,
-		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
-		.matches = has_useable_cnp,
-		.cpu_enable = cpu_enable_cnp,
-		ARM64_CPUID_FIELDS(ID_AA64MMFR2_EL1, CnP, IMP)
-	},
-#endif
 	{
 		.desc = "Speculation barrier (SB)",
 		.capability = ARM64_HAS_SB,

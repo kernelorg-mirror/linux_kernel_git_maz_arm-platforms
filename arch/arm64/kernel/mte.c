@@ -290,18 +290,6 @@ void mte_cpu_setup(void)
 {
 	u64 rgsr;
 
-	/*
-	 * CnP must be enabled only after the MAIR_EL1 register has been set
-	 * up. Inconsistent MAIR_EL1 between CPUs sharing the same TLB may
-	 * lead to the wrong memory type being used for a brief window during
-	 * CPU power-up.
-	 *
-	 * CnP is not a boot feature so MTE gets enabled before CnP, but let's
-	 * make sure that is the case.
-	 */
-	BUG_ON(read_sysreg(ttbr0_el1) & TTBR_CNP_BIT);
-	BUG_ON(read_sysreg(ttbr1_el1) & TTBR_CNP_BIT);
-
 	/* Normal Tagged memory type at the corresponding MAIR index */
 	sysreg_clear_set(mair_el1,
 			 MAIR_ATTRIDX(MAIR_ATTR_MASK, MT_NORMAL_TAGGED),

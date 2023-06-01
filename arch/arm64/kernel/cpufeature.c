@@ -171,8 +171,6 @@ void dump_cpu_features(void)
 		.width = 0,				\
 	}
 
-static void cpu_enable_cnp(struct arm64_cpu_capabilities const *cap);
-
 static bool __system_matches_cap(unsigned int n);
 
 /*
@@ -3311,11 +3309,6 @@ static int __init init_32bit_el0_mask(void)
 				 enable_mismatched_32bit_el0, NULL);
 }
 subsys_initcall_sync(init_32bit_el0_mask);
-
-static void __maybe_unused cpu_enable_cnp(struct arm64_cpu_capabilities const *cap)
-{
-	cpu_replace_ttbr1(lm_alias(swapper_pg_dir), idmap_pg_dir);
-}
 
 /*
  * We emulate only the following system register space.

@@ -786,12 +786,6 @@ static __always_inline bool system_supports_tpidr2(void)
 	return system_supports_sme();
 }
 
-static __always_inline bool system_supports_cnp(void)
-{
-	return IS_ENABLED(CONFIG_ARM64_CNP) &&
-		cpus_have_const_cap(ARM64_HAS_CNP);
-}
-
 static inline bool system_supports_address_auth(void)
 {
 	return IS_ENABLED(CONFIG_ARM64_PTR_AUTH) &&

@@ -218,9 +218,6 @@ void check_and_switch_context(struct mm_struct *mm)
 	unsigned int cpu;
 	u64 asid, old_active_asid;
 
-	if (system_supports_cnp())
-		cpu_set_reserved_ttbr0();
-
 	asid = atomic64_read(&mm->context.id);
 
 	/*
@@ -351,10 +348,6 @@ void cpu_do_switch_mm(phys_addr_t pgd_phys, struct mm_struct *mm)
 	unsigned long ttbr1 = read_sysreg(ttbr1_el1);
 	unsigned long asid = ASID(mm);
 	unsigned long ttbr0 = phys_to_ttbr(pgd_phys);
-
-	/* Skip CNP for the reserved ASID */
-	if (system_supports_cnp() && asid)
-		ttbr0 |= TTBR_CNP_BIT;
 
 	/* SW PAN needs a copy of the ASID in TTBR0 for entry */
 	if (IS_ENABLED(CONFIG_ARM64_SW_TTBR0_PAN))

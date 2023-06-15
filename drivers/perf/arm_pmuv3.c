@@ -1022,8 +1022,12 @@ static int __armv8_pmuv3_map_event(struct perf_event *event,
 
 	hw_event_id = __armv8_pmuv3_map_event_id(armpmu, event);
 
-	if (has_branch_stack(event) && !armv8pmu_branch_attr_valid(event))
-		return -EOPNOTSUPP;
+	if (has_branch_stack(event)) {
+		if (!armv8pmu_branch_attr_valid(event))
+			return -EOPNOTSUPP;
+
+		event->attach_state |= PERF_ATTACH_TASK_DATA;
+	}
 
 	/*
 	 * CHAIN events only work when paired with an adjacent counter, and it
@@ -1188,9 +1192,15 @@ static int armv8pmu_probe_pmu(struct arm_pmu *cpu_pmu)
 		return -ENODEV;
 
 	if (cpu_pmu->has_branch_stack) {
-		ret = branch_records_alloc(cpu_pmu);
+		ret = armv8pmu_task_ctx_cache_alloc(cpu_pmu);
 		if (ret)
 			return ret;
+
+		ret = branch_records_alloc(cpu_pmu);
+		if (ret) {
+			armv8pmu_task_ctx_cache_free(cpu_pmu);
+			return ret;
+		}
 	}
 	return 0;
 }

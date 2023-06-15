@@ -80,11 +80,24 @@
  *	---------------------------------	------
  */
 #define BRBE_BANK_MAX_ENTRIES 32
+#define BRBE_MAX_BANK 2
+#define BRBE_MAX_ENTRIES (BRBE_BANK_MAX_ENTRIES * BRBE_MAX_BANK)
 
 #define BRBE_BANK0_IDX_MIN 0
 #define BRBE_BANK0_IDX_MAX 31
 #define BRBE_BANK1_IDX_MIN 32
 #define BRBE_BANK1_IDX_MAX 63
+
+struct brbe_regset {
+	unsigned long brbsrc;
+	unsigned long brbtgt;
+	unsigned long brbinf;
+};
+
+struct arm64_perf_task_context {
+	struct brbe_regset store[BRBE_MAX_ENTRIES];
+	int nr_brbe_records;
+};
 
 struct brbe_hw_attr {
 	int	brbe_version;

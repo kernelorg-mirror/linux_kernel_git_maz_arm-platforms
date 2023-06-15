@@ -109,6 +109,27 @@ bool armv8pmu_branch_attr_valid(struct perf_event *event)
 	return true;
 }
 
+static inline struct kmem_cache *
+arm64_create_brbe_task_ctx_kmem_cache(size_t size)
+{
+	return kmem_cache_create("arm64_brbe_task_ctx", size, 0, 0, NULL);
+}
+
+int armv8pmu_task_ctx_cache_alloc(struct arm_pmu *arm_pmu)
+{
+	size_t size = sizeof(struct arm64_perf_task_context);
+
+	arm_pmu->pmu.task_ctx_cache = arm64_create_brbe_task_ctx_kmem_cache(size);
+	if (!arm_pmu->pmu.task_ctx_cache)
+		return -ENOMEM;
+	return 0;
+}
+
+void armv8pmu_task_ctx_cache_free(struct arm_pmu *arm_pmu)
+{
+	kmem_cache_destroy(arm_pmu->pmu.task_ctx_cache);
+}
+
 static int brbe_attributes_probe(struct arm_pmu *armpmu, u32 brbe)
 {
 	u64 brbidr = read_sysreg_s(SYS_BRBIDR0_EL1);

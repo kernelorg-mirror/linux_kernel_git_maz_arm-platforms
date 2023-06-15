@@ -38,6 +38,8 @@ void armv8pmu_branch_enable(struct perf_event *event);
 void armv8pmu_branch_disable(struct perf_event *event);
 void armv8pmu_branch_probe(struct arm_pmu *arm_pmu);
 void armv8pmu_branch_reset(void);
+int armv8pmu_task_ctx_cache_alloc(struct arm_pmu *arm_pmu);
+void armv8pmu_task_ctx_cache_free(struct arm_pmu *arm_pmu);
 #else
 static inline void armv8pmu_branch_read(struct pmu_hw_events *cpuc, struct perf_event *event)
 {
@@ -62,6 +64,8 @@ static inline void armv8pmu_branch_disable(struct perf_event *event)
 
 static inline void armv8pmu_branch_probe(struct arm_pmu *arm_pmu) { }
 static inline void armv8pmu_branch_reset(void) { }
+static inline int armv8pmu_task_ctx_cache_alloc(struct arm_pmu *arm_pmu) { return 0; }
+static inline void armv8pmu_task_ctx_cache_free(struct arm_pmu *arm_pmu) { }
 #endif
 #endif
 #endif

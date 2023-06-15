@@ -653,41 +653,44 @@ void armv8pmu_branch_reset(void)
 	isb();
 }
 
-static bool capture_branch_entry(struct pmu_hw_events *cpuc,
-				 struct perf_event *event, int idx)
+static void brbe_regset_branch_entries(struct pmu_hw_events *cpuc, struct perf_event *event,
+				       struct brbe_regset *regset, int idx)
 {
 	struct perf_branch_entry *entry = &cpuc->branches->branch_entries[idx];
-	u64 brbinf = get_brbinf_reg(idx);
-
-	/*
-	 * There are no valid entries anymore on the buffer.
-	 * Abort the branch record processing to save some
-	 * cycles and also reduce the capture/process load
-	 * for the user space as well.
-	 */
-	if (brbe_invalid(brbinf))
-		return false;
+	u64 brbinf = regset[idx].brbinf;
 
 	perf_clear_branch_entry_bitfields(entry);
 	if (brbe_record_is_complete(brbinf)) {
-		entry->from = get_brbsrc_reg(idx);
-		entry->to = get_brbtgt_reg(idx);
+		entry->from = regset[idx].brbsrc;
+		entry->to = regset[idx].brbtgt;
 	} else if (brbe_record_is_source_only(brbinf)) {
-		entry->from = get_brbsrc_reg(idx);
+		entry->from = regset[idx].brbsrc;
 		entry->to = 0;
 	} else if (brbe_record_is_target_only(brbinf)) {
 		entry->from = 0;
-		entry->to = get_brbtgt_reg(idx);
+		entry->to = regset[idx].brbtgt;
 	}
 	capture_brbe_flags(entry, event, brbinf);
-	return true;
+}
+
+static void process_branch_entries(struct pmu_hw_events *cpuc, struct perf_event *event,
+				   struct brbe_regset *regset, int nr_regset)
+{
+	int idx;
+
+	for (idx = 0; idx < nr_regset; idx++)
+		brbe_regset_branch_entries(cpuc, event, regset, idx);
+
+	cpuc->branches->branch_stack.nr = nr_regset;
+	cpuc->branches->branch_stack.hw_idx = -1ULL;
 }
 
 void armv8pmu_branch_read(struct pmu_hw_events *cpuc, struct perf_event *event)
 {
-	int nr_hw_entries = brbe_get_numrec(cpuc->percpu_pmu->reg_brbidr);
+	struct arm64_perf_task_context *task_ctx = event->pmu_ctx->task_ctx_data;
+	struct brbe_regset live[BRBE_MAX_ENTRIES];
+	int nr_live, nr_store, nr_hw_entries;
 	u64 brbfcr, brbcr;
-	int idx = 0;
 
 	brbcr = read_sysreg_s(SYS_BRBCR_EL1);
 	brbfcr = read_sysreg_s(SYS_BRBFCR_EL1);
@@ -699,25 +702,17 @@ void armv8pmu_branch_read(struct pmu_hw_events *cpuc, struct perf_event *event)
 	write_sysreg_s(brbfcr | BRBFCR_EL1_PAUSED, SYS_BRBFCR_EL1);
 	isb();
 
-	/* Loop through bank 0 */
-	select_brbe_bank(BRBE_BANK_IDX_0);
-	while (idx < nr_hw_entries && idx < BRBE_BANK0_IDX_MAX) {
-		if (!capture_branch_entry(cpuc, event, idx))
-			goto skip_bank_1;
-		idx++;
+	nr_hw_entries = brbe_get_numrec(cpuc->percpu_pmu->reg_brbidr);
+	nr_live = capture_brbe_regset(nr_hw_entries, live);
+	if (event->ctx->task) {
+		nr_store = task_ctx->nr_brbe_records;
+		nr_store = stitch_stored_live_entries(task_ctx->store, live, nr_store,
+						      nr_live, nr_hw_entries);
+		process_branch_entries(cpuc, event, task_ctx->store, nr_store);
+		task_ctx->nr_brbe_records = 0;
+	} else {
+		process_branch_entries(cpuc, event, live, nr_live);
 	}
-
-	/* Loop through bank 1 */
-	select_brbe_bank(BRBE_BANK_IDX_1);
-	while (idx < nr_hw_entries && idx < BRBE_BANK1_IDX_MAX) {
-		if (!capture_branch_entry(cpuc, event, idx))
-			break;
-		idx++;
-	}
-
-skip_bank_1:
-	cpuc->branches->branch_stack.nr = idx;
-	cpuc->branches->branch_stack.hw_idx = -1ULL;
 	process_branch_aborts(cpuc);
 
 	/* Unpause the buffer */

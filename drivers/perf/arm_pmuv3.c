@@ -705,38 +705,21 @@ static void armv8pmu_enable_event(struct perf_event *event)
 	 * Enable counter and interrupt, and set the counter to count
 	 * the event that we're interested in.
 	 */
-
-	/*
-	 * Disable counter
-	 */
 	armv8pmu_disable_event_counter(event);
-
-	/*
-	 * Set event.
-	 */
 	armv8pmu_write_event_type(event);
-
-	/*
-	 * Enable interrupt for this counter
-	 */
 	armv8pmu_enable_event_irq(event);
-
-	/*
-	 * Enable counter
-	 */
 	armv8pmu_enable_event_counter(event);
+
+	if (has_branch_stack(event))
+		armv8pmu_branch_enable(event);
 }
 
 static void armv8pmu_disable_event(struct perf_event *event)
 {
-	/*
-	 * Disable counter
-	 */
-	armv8pmu_disable_event_counter(event);
+	if (has_branch_stack(event))
+		armv8pmu_branch_disable(event);
 
-	/*
-	 * Disable interrupt for this counter
-	 */
+	armv8pmu_disable_event_counter(event);
 	armv8pmu_disable_event_irq(event);
 }
 
@@ -813,6 +796,11 @@ static irqreturn_t armv8pmu_handle_irq(struct arm_pmu *cpu_pmu)
 		perf_sample_data_init(&data, 0, hwc->last_period);
 		if (!armpmu_event_set_period(event))
 			continue;
+
+		if (has_branch_stack(event) && !WARN_ON(!cpuc->branches)) {
+			armv8pmu_branch_read(cpuc, event);
+			perf_sample_save_brstack(&data, event, &cpuc->branches->branch_stack);
+		}
 
 		/*
 		 * Perf event overflow will queue the processing of the event as
@@ -912,6 +900,14 @@ static int armv8pmu_user_event_idx(struct perf_event *event)
 	return event->hw.idx;
 }
 
+static void armv8pmu_sched_task(struct perf_event_pmu_context *pmu_ctx, bool sched_in)
+{
+	struct arm_pmu *armpmu = to_arm_pmu(pmu_ctx->pmu);
+
+	if (sched_in && armpmu->has_branch_stack)
+		armv8pmu_branch_reset();
+}
+
 /*
  * Add an event filter to a given event.
  */
@@ -982,6 +978,9 @@ static void armv8pmu_reset(void *info)
 		pmcr |= ARMV8_PMU_PMCR_LP;
 
 	armv8pmu_pmcr_write(pmcr);
+
+	if (cpu_pmu->has_branch_stack)
+		armv8pmu_branch_reset();
 }
 
 static int __armv8_pmuv3_map_event_id(struct arm_pmu *armpmu,
@@ -1018,6 +1017,9 @@ static int __armv8_pmuv3_map_event(struct perf_event *event,
 	struct arm_pmu *armpmu = to_arm_pmu(event->pmu);
 
 	hw_event_id = __armv8_pmuv3_map_event_id(armpmu, event);
+
+	if (has_branch_stack(event) && !armv8pmu_branch_attr_valid(event))
+		return -EOPNOTSUPP;
 
 	/*
 	 * CHAIN events only work when paired with an adjacent counter, and it
@@ -1135,6 +1137,33 @@ static void __armv8pmu_probe_pmu(void *info)
 		cpu_pmu->reg_pmmir = read_pmmir();
 	else
 		cpu_pmu->reg_pmmir = 0;
+	armv8pmu_branch_probe(cpu_pmu);
+}
+
+static int branch_records_alloc(struct arm_pmu *armpmu)
+{
+	struct branch_records __percpu *records;
+	int cpu;
+
+	records = alloc_percpu_gfp(struct branch_records, GFP_KERNEL);
+	if (!records)
+		return -ENOMEM;
+
+	/*
+	 * FIXME: Memory allocated via records gets completely
+	 * consumed here, never required to be freed up later. Hence
+	 * losing access to on stack 'records' is acceptable.
+	 * Otherwise this alloc handle has to be saved some where.
+	 */
+	for_each_possible_cpu(cpu) {
+		struct pmu_hw_events *events_cpu;
+		struct branch_records *records_cpu;
+
+		events_cpu = per_cpu_ptr(armpmu->hw_events, cpu);
+		records_cpu = per_cpu_ptr(records, cpu);
+		events_cpu->branches = records_cpu;
+	}
+	return 0;
 }
 
 static int armv8pmu_probe_pmu(struct arm_pmu *cpu_pmu)
@@ -1151,7 +1180,15 @@ static int armv8pmu_probe_pmu(struct arm_pmu *cpu_pmu)
 	if (ret)
 		return ret;
 
-	return probe.present ? 0 : -ENODEV;
+	if (!probe.present)
+		return -ENODEV;
+
+	if (cpu_pmu->has_branch_stack) {
+		ret = branch_records_alloc(cpu_pmu);
+		if (ret)
+			return ret;
+	}
+	return 0;
 }
 
 static void armv8pmu_disable_user_access_ipi(void *unused)
@@ -1214,6 +1251,7 @@ static int armv8_pmu_init(struct arm_pmu *cpu_pmu, char *name,
 	cpu_pmu->set_event_filter	= armv8pmu_set_event_filter;
 
 	cpu_pmu->pmu.event_idx		= armv8pmu_user_event_idx;
+	cpu_pmu->sched_task		= armv8pmu_sched_task;
 
 	cpu_pmu->name			= name;
 	cpu_pmu->map_event		= map_event;

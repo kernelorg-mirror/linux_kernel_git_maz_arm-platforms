@@ -171,6 +171,36 @@ static int stitch_stored_live_entries(struct brbe_regset *stored,
 	return min(nr_live + nr_stored, nr_max);
 }
 
+static int brbe_branch_save(int nr_hw_entries, struct brbe_regset *live)
+{
+	u64 brbfcr = read_sysreg_s(SYS_BRBFCR_EL1);
+	int nr_live;
+
+	write_sysreg_s(brbfcr | BRBFCR_EL1_PAUSED, SYS_BRBFCR_EL1);
+	isb();
+
+	nr_live = capture_brbe_regset(nr_hw_entries, live);
+
+	write_sysreg_s(brbfcr & ~BRBFCR_EL1_PAUSED, SYS_BRBFCR_EL1);
+	isb();
+
+	return nr_live;
+}
+
+void armv8pmu_branch_save(struct arm_pmu *arm_pmu, void *ctx)
+{
+	struct arm64_perf_task_context *task_ctx = ctx;
+	struct brbe_regset live[BRBE_MAX_ENTRIES];
+	int nr_live, nr_store, nr_hw_entries;
+
+	nr_hw_entries = brbe_get_numrec(arm_pmu->reg_brbidr);
+	nr_live = brbe_branch_save(nr_hw_entries, live);
+	nr_store = task_ctx->nr_brbe_records;
+	nr_store = stitch_stored_live_entries(task_ctx->store, live, nr_store,
+					      nr_live, nr_hw_entries);
+	task_ctx->nr_brbe_records = nr_store;
+}
+
 /*
  * Generic perf branch filters supported on BRBE
  *

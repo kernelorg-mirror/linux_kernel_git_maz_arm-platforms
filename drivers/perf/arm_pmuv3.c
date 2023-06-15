@@ -797,6 +797,10 @@ static irqreturn_t armv8pmu_handle_irq(struct arm_pmu *cpu_pmu)
 		if (!armpmu_event_set_period(event))
 			continue;
 
+		/*
+		 * PMU IRQ should remain asserted until all branch records
+		 * are captured and processed into struct perf_sample_data.
+		 */
 		if (has_branch_stack(event) && !WARN_ON(!cpuc->branches)) {
 			armv8pmu_branch_read(cpuc, event);
 			perf_sample_save_brstack(&data, event, &cpuc->branches->branch_stack);

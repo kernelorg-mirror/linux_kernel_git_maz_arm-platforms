@@ -244,4 +244,22 @@ static inline bool is_pmuv3p5(int pmuver)
 	return pmuver >= ARMV8_PMU_DFR_VER_V3P5;
 }
 
+/* BRBE stubs */
+static inline void armv8pmu_branch_enable(struct perf_event *event) { }
+static inline void armv8pmu_branch_disable(struct perf_event *event) { }
+static inline void armv8pmu_branch_read(struct pmu_hw_events * cpuc,
+					struct perf_event *event) { }
+static inline void armv8pmu_branch_save(struct arm_pmu *armpmu, void *ctx) {}
+static inline void armv8pmu_branch_reset(void) {}
+static inline bool armv8pmu_branch_attr_valid(struct perf_event *event)
+{
+	return false;
+}
+static inline void armv8pmu_branch_probe(struct arm_pmu *armpmu) {}
+static inline int armv8pmu_task_ctx_cache_alloc(struct arm_pmu *armpmu)
+{
+	return 0;
+}
+static inline void armv8pmu_task_ctx_cache_free(struct arm_pmu *armpmu) {}
+
 #endif

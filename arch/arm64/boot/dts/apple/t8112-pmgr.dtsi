@@ -663,7 +663,6 @@
 		#reset-cells = <0>;
 		label = "disp0_sys";
 		power-domains = <&ps_rmx1>;
-		apple,always-on; /* TODO: figure out if we can enable PM here */
 	};
 
 	ps_disp0_fe: power-controller@378 {
@@ -673,7 +672,6 @@
 		#reset-cells = <0>;
 		label = "disp0_fe";
 		power-domains = <&ps_disp0_sys>;
-		apple,always-on; /* TODO: figure out if we can enable PM here */
 	};
 
 	ps_dispext_sys: power-controller@380 {
@@ -773,7 +771,6 @@
 		#power-domain-cells = <0>;
 		#reset-cells = <0>;
 		label = "pmp";
-		apple,always-on;
 	};
 
 	ps_pms_sram: power-controller@418 {
@@ -1064,6 +1061,7 @@
 		#power-domain-cells = <0>;
 		#reset-cells = <0>;
 		label = "msg";
+		apple,always-on; /* Core AON device? */
 	};
 
 	ps_nub_gpio: power-controller@80 {

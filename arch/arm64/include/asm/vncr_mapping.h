@@ -34,6 +34,11 @@
 #define VNCR_CNTP_CTL_EL0       0x180
 #define VNCR_SCXTNUM_EL1        0x188
 #define VNCR_TFSR_EL1		0x190
+#define VNCR_HFGRTR_EL2		0x1B8
+#define VNCR_HFGWTR_EL2		0x1C0
+#define VNCR_HFGITR_EL2		0x1C8
+#define VNCR_HDFGRTR_EL2	0x1D0
+#define VNCR_HDFGWTR_EL2	0x1D8
 #define VNCR_ZCR_EL1            0x1E0
 #define VNCR_TTBR0_EL1          0x200
 #define VNCR_TTBR1_EL1          0x210

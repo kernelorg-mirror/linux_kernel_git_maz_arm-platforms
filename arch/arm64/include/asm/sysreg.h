@@ -202,11 +202,11 @@
 #define SYS_DBGDTRTX_EL0		sys_reg(2, 3, 0, 5, 0)
 #define SYS_DBGVCR32_EL2		sys_reg(2, 4, 0, 7, 0)
 
-#define SYS_BRBINF_EL1(n)		sys_reg(2, 1, 8, (n & 7), (((n & 8) >> 1) | 0))
+#define SYS_BRBINF_EL1(n)		sys_reg(2, 1, 8, (n & 15), (((n & 16) >> 2) | 0))
 #define SYS_BRBINFINJ_EL1		sys_reg(2, 1, 9, 1, 0)
-#define SYS_BRBSRC_EL1(n)		sys_reg(2, 1, 8, (n & 7), (((n & 8) >> 1) | 1))
+#define SYS_BRBSRC_EL1(n)		sys_reg(2, 1, 8, (n & 15), (((n & 16) >> 2) | 1))
 #define SYS_BRBSRCINJ_EL1		sys_reg(2, 1, 9, 1, 1)
-#define SYS_BRBTGT_EL1(n)		sys_reg(2, 1, 8, (n & 7), (((n & 8) >> 1) | 2))
+#define SYS_BRBTGT_EL1(n)		sys_reg(2, 1, 8, (n & 15), (((n & 16) >> 2) | 2))
 #define SYS_BRBTGTINJ_EL1		sys_reg(2, 1, 9, 1, 2)
 #define SYS_BRBTS_EL1			sys_reg(2, 1, 9, 0, 2)
 
@@ -256,7 +256,7 @@
 #define SYS_TRCOSLSR			sys_reg(2, 1, 1, 1, 4)
 #define SYS_TRCPRGCTLR			sys_reg(2, 1, 0, 1, 0)
 #define SYS_TRCQCTLR			sys_reg(2, 1, 0, 1, 1)
-#define SYS_TRCRSCTLR(m)		sys_reg(2, 1, 1, (m & 7), (0 | (m >> 4)))
+#define SYS_TRCRSCTLR(m)		sys_reg(2, 1, 1, (m & 15), (0 | (m >> 4)))
 #define SYS_TRCRSR			sys_reg(2, 1, 0, 10, 0)
 #define SYS_TRCSEQEVR(m)		sys_reg(2, 1, 0, (m & 3), 4)
 #define SYS_TRCSEQRSTEVR		sys_reg(2, 1, 0, 6, 4)

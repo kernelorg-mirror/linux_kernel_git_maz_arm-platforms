@@ -1499,6 +1499,15 @@ void __init populate_nv_trap_config(void)
 		union trap_config tc;
 
 		tc = get_trap_config(fgt->encoding);
+
+		WARN(tc.fgt,
+		     "Duplicate FGT for sys_reg(%d, %d, %d, %d, %d)\n",
+		     sys_reg_Op0(fgt->encoding),
+		     sys_reg_Op1(fgt->encoding),
+		     sys_reg_CRn(fgt->encoding),
+		     sys_reg_CRm(fgt->encoding),
+		     sys_reg_Op2(fgt->encoding));
+
 		tc.val |= fgt->tc.val;
 		xa_store(&sr_forward_xa, fgt->encoding,
 			 xa_mk_value(tc.val), GFP_KERNEL);

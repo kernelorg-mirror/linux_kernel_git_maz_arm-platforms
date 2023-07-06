@@ -462,6 +462,12 @@ enum vcpu_sysreg {
 	VNCR(VTCR_EL2),	/* Virtualization Translation Control Register */
 	VNCR(TPIDR_EL2),/* EL2 Software Thread ID Register */
 
+	VNCR(HFGRTR_EL2),
+	VNCR(HFGWTR_EL2),
+	VNCR(HFGITR_EL2),
+	VNCR(HDFGRTR_EL2),
+	VNCR(HDFGWTR_EL2),
+
 	VNCR(CNTVOFF_EL2),
 	VNCR(CNTV_CVAL_EL0),
 	VNCR(CNTV_CTL_EL0),

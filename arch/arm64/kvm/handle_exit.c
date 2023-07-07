@@ -245,6 +245,25 @@ static int kvm_handle_eret(struct kvm_vcpu *vcpu)
 	return 1;
 }
 
+static int handle_svc(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * So far, SVC traps only for NV thing via HFGITR_EL2. Since
+	 * we don't want to hear about 32bit with NV, turn SVC32 into
+	 * an UNDEF.
+	 */
+	switch (ESR_ELx_EC(kvm_vcpu_get_esr(vcpu))) {
+	case ESR_ELx_EC_SVC32:
+		kvm_inject_undefined(vcpu);
+		break;
+	case ESR_ELx_EC_SVC64:
+		kvm_inject_nested_sync(vcpu, kvm_vcpu_get_esr(vcpu));
+		break;
+	}
+
+	return 1;
+}
+
 static exit_handle_fn arm_exit_handlers[] = {
 	[0 ... ESR_ELx_EC_MAX]	= kvm_handle_unknown_ec,
 	[ESR_ELx_EC_WFx]	= kvm_handle_wfx,
@@ -258,6 +277,8 @@ static exit_handle_fn arm_exit_handlers[] = {
 	[ESR_ELx_EC_SMC32]	= handle_smc,
 	[ESR_ELx_EC_HVC64]	= handle_hvc,
 	[ESR_ELx_EC_SMC64]	= handle_smc,
+	[ESR_ELx_EC_SVC32]	= handle_svc,
+	[ESR_ELx_EC_SVC64]	= handle_svc,
 	[ESR_ELx_EC_SYS64]	= kvm_handle_sys_reg,
 	[ESR_ELx_EC_SVE]	= handle_sve,
 	[ESR_ELx_EC_ERET]	= kvm_handle_eret,

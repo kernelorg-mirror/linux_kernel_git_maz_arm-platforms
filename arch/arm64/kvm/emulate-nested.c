@@ -922,6 +922,88 @@ static const struct encoding_to_trap_config encoding_to_cgt[] __initconst = {
 
 static DEFINE_XARRAY(sr_forward_xa);
 
+enum fgt_group_id {
+	__NO_FGT_GROUP__,
+	HFGxTR_GROUP,
+};
+
+#define SR_FGT(sr, g, b, p)					\
+	{							\
+		.encoding	= sr,				\
+		.end		= sr,				\
+		.tc		= {				\
+			.fgt = g ## _GROUP,			\
+			.bit = g ## _EL2_ ## b ## _SHIFT,	\
+			.pol = p,				\
+		},						\
+	}
+
+static const struct encoding_to_trap_config encoding_to_fgt[] __initconst = {
+	/* HFGTR_EL2, HFGWTR_EL2 */
+	SR_FGT(SYS_TPIDR2_EL0,		HFGxTR, nTPIDR2_EL0, 0),
+	SR_FGT(SYS_SMPRI_EL1,		HFGxTR, nSMPRI_EL1, 0),
+	SR_FGT(SYS_ACCDATA_EL1,		HFGxTR, nACCDATA_EL1, 0),
+	SR_FGT(SYS_ERXADDR_EL1,		HFGxTR, ERXADDR_EL1, 1),
+	SR_FGT(SYS_ERXPFGCDN_EL1,	HFGxTR, ERXPFGCDN_EL1, 1),
+	SR_FGT(SYS_ERXPFGCTL_EL1,	HFGxTR, ERXPFGCTL_EL1, 1),
+	SR_FGT(SYS_ERXPFGF_EL1,		HFGxTR, ERXPFGF_EL1, 1),
+	SR_FGT(SYS_ERXMISC0_EL1,	HFGxTR, ERXMISCn_EL1, 1),
+	SR_FGT(SYS_ERXMISC1_EL1,	HFGxTR, ERXMISCn_EL1, 1),
+	SR_FGT(SYS_ERXMISC2_EL1,	HFGxTR, ERXMISCn_EL1, 1),
+	SR_FGT(SYS_ERXMISC3_EL1,	HFGxTR, ERXMISCn_EL1, 1),
+	SR_FGT(SYS_ERXSTATUS_EL1,	HFGxTR, ERXSTATUS_EL1, 1),
+	SR_FGT(SYS_ERXCTLR_EL1,		HFGxTR, ERXCTLR_EL1, 1),
+	SR_FGT(SYS_ERXFR_EL1,		HFGxTR, ERXFR_EL1, 1),
+	SR_FGT(SYS_ERRSELR_EL1,		HFGxTR, ERRSELR_EL1, 1),
+	SR_FGT(SYS_ERRIDR_EL1,		HFGxTR, ERRIDR_EL1, 1),
+	SR_FGT(SYS_ICC_IGRPEN0_EL1,	HFGxTR, ICC_IGRPENn_EL1, 1),
+	SR_FGT(SYS_ICC_IGRPEN1_EL1,	HFGxTR, ICC_IGRPENn_EL1, 1),
+	SR_FGT(SYS_VBAR_EL1,		HFGxTR, VBAR_EL1, 1),
+	SR_FGT(SYS_TTBR1_EL1,		HFGxTR, TTBR1_EL1, 1),
+	SR_FGT(SYS_TTBR0_EL1,		HFGxTR, TTBR0_EL1, 1),
+	SR_FGT(SYS_TPIDR_EL0,		HFGxTR, TPIDR_EL0, 1),
+	SR_FGT(SYS_TPIDRRO_EL0,		HFGxTR, TPIDRRO_EL0, 1),
+	SR_FGT(SYS_TPIDR_EL1,		HFGxTR, TPIDR_EL1, 1),
+	SR_FGT(SYS_TCR_EL1,		HFGxTR, TCR_EL1, 1),
+	SR_FGT(SYS_SCXTNUM_EL0,		HFGxTR, SCXTNUM_EL0, 1),
+	SR_FGT(SYS_SCXTNUM_EL1, 	HFGxTR, SCXTNUM_EL1, 1),
+	SR_FGT(SYS_SCTLR_EL1, 		HFGxTR, SCTLR_EL1, 1),
+	SR_FGT(SYS_REVIDR_EL1, 		HFGxTR, REVIDR_EL1, 1),
+	SR_FGT(SYS_PAR_EL1, 		HFGxTR, PAR_EL1, 1),
+	SR_FGT(SYS_MPIDR_EL1, 		HFGxTR, MPIDR_EL1, 1),
+	SR_FGT(SYS_MIDR_EL1, 		HFGxTR, MIDR_EL1, 1),
+	SR_FGT(SYS_MAIR_EL1, 		HFGxTR, MAIR_EL1, 1),
+	SR_FGT(SYS_LORSA_EL1, 		HFGxTR, LORSA_EL1, 1),
+	SR_FGT(SYS_LORN_EL1, 		HFGxTR, LORN_EL1, 1),
+	SR_FGT(SYS_LORID_EL1, 		HFGxTR, LORID_EL1, 1),
+	SR_FGT(SYS_LOREA_EL1, 		HFGxTR, LOREA_EL1, 1),
+	SR_FGT(SYS_LORC_EL1, 		HFGxTR, LORC_EL1, 1),
+	SR_FGT(SYS_ISR_EL1, 		HFGxTR, ISR_EL1, 1),
+	SR_FGT(SYS_FAR_EL1, 		HFGxTR, FAR_EL1, 1),
+	SR_FGT(SYS_ESR_EL1, 		HFGxTR, ESR_EL1, 1),
+	SR_FGT(SYS_DCZID_EL0, 		HFGxTR, DCZID_EL0, 1),
+	SR_FGT(SYS_CTR_EL0, 		HFGxTR, CTR_EL0, 1),
+	SR_FGT(SYS_CSSELR_EL1, 		HFGxTR, CSSELR_EL1, 1),
+	SR_FGT(SYS_CPACR_EL1, 		HFGxTR, CPACR_EL1, 1),
+	SR_FGT(SYS_CONTEXTIDR_EL1, 	HFGxTR, CONTEXTIDR_EL1, 1),
+	SR_FGT(SYS_CLIDR_EL1, 		HFGxTR, CLIDR_EL1, 1),
+	SR_FGT(SYS_CCSIDR_EL1, 		HFGxTR, CCSIDR_EL1, 1),
+	SR_FGT(SYS_APIBKEYLO_EL1, 	HFGxTR, APIBKey, 1),
+	SR_FGT(SYS_APIBKEYHI_EL1, 	HFGxTR, APIBKey, 1),
+	SR_FGT(SYS_APIAKEYLO_EL1, 	HFGxTR, APIAKey, 1),
+	SR_FGT(SYS_APIAKEYHI_EL1, 	HFGxTR, APIAKey, 1),
+	SR_FGT(SYS_APGAKEYLO_EL1, 	HFGxTR, APGAKey, 1),
+	SR_FGT(SYS_APGAKEYHI_EL1, 	HFGxTR, APGAKey, 1),
+	SR_FGT(SYS_APDBKEYLO_EL1, 	HFGxTR, APDBKey, 1),
+	SR_FGT(SYS_APDBKEYHI_EL1, 	HFGxTR, APDBKey, 1),
+	SR_FGT(SYS_APDAKEYLO_EL1, 	HFGxTR, APDAKey, 1),
+	SR_FGT(SYS_APDAKEYHI_EL1, 	HFGxTR, APDAKey, 1),
+	SR_FGT(SYS_AMAIR_EL1, 		HFGxTR, AMAIR_EL1, 1),
+	SR_FGT(SYS_AIDR_EL1, 		HFGxTR, AIDR_EL1, 1),
+	SR_FGT(SYS_AFSR1_EL1, 		HFGxTR, AFSR1_EL1, 1),
+	SR_FGT(SYS_AFSR0_EL1, 		HFGxTR, AFSR0_EL1, 1),
+};
+
 static union trap_config get_trap_config(u32 sysreg)
 {
 	return (union trap_config) {
@@ -943,6 +1025,27 @@ void __init populate_nv_trap_config(void)
 	kvm_info("nv: %ld coarse grained trap handlers\n",
 		 ARRAY_SIZE(encoding_to_cgt));
 
+	for (int i = 0; i < ARRAY_SIZE(encoding_to_fgt); i++) {
+		const struct encoding_to_trap_config *fgt = &encoding_to_fgt[i];
+		union trap_config tc;
+
+		tc = get_trap_config(fgt->encoding);
+
+		WARN(tc.fgt,
+		     "Duplicate FGT for sys_reg(%d, %d, %d, %d, %d)\n",
+		     sys_reg_Op0(fgt->encoding),
+		     sys_reg_Op1(fgt->encoding),
+		     sys_reg_CRn(fgt->encoding),
+		     sys_reg_CRm(fgt->encoding),
+		     sys_reg_Op2(fgt->encoding));
+
+		tc.val |= fgt->tc.val;
+		xa_store(&sr_forward_xa, fgt->encoding,
+			 xa_mk_value(tc.val), GFP_KERNEL);
+	}
+
+	kvm_info("nv: %ld fine grained trap handlers\n",
+		 ARRAY_SIZE(encoding_to_fgt));
 }
 
 static enum trap_behaviour get_behaviour(struct kvm_vcpu *vcpu,
@@ -992,13 +1095,26 @@ static enum trap_behaviour compute_trap_behaviour(struct kvm_vcpu *vcpu,
 	return __do_compute_trap_behaviour(vcpu, tc.cgt, b);
 }
 
+static bool check_fgt_bit(u64 val, const union trap_config tc)
+{
+	return ((val >> tc.bit) & 1) == tc.pol;
+}
+
+#define sanitised_sys_reg(vcpu, reg)			\
+	({						\
+		u64 __val;				\
+		__val = __vcpu_sys_reg(vcpu, reg);	\
+		__val &= ~__ ## reg ## _RES0;		\
+		(__val);				\
+	})
+
 bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 {
 	union trap_config tc;
 	enum trap_behaviour b;
 	bool is_read;
 	u32 sysreg;
-	u64 esr;
+	u64 esr, val;
 
 	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
 		return false;
@@ -1008,6 +1124,21 @@ bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 	is_read = (esr & ESR_ELx_SYS64_ISS_DIR_MASK) == ESR_ELx_SYS64_ISS_DIR_READ;
 
 	tc = get_trap_config(sysreg);
+
+	switch ((enum fgt_group_id)tc.fgt) {
+	case __NO_FGT_GROUP__:
+		break;
+
+	case HFGxTR_GROUP:
+		if (is_read)
+			val = sanitised_sys_reg(vcpu, HFGRTR_EL2);
+		else
+			val = sanitised_sys_reg(vcpu, HFGWTR_EL2);
+		break;
+	}
+
+	if (tc.fgt != __NO_FGT_GROUP__ && check_fgt_bit(val, tc))
+		goto inject;
 
 	b = compute_trap_behaviour(vcpu, tc);
 

@@ -232,7 +232,7 @@ int kvm_vgic_vcpu_init(struct kvm_vcpu *vcpu)
 	if (!irqchip_in_kernel(vcpu->kvm))
 		return 0;
 
-	if (vcpu_has_nv(vcpu)) {
+	if (vcpu_has_nv2(vcpu)) {
 		/* Cope with vintage userspace. Maybe we should fail instead */
 		if (vcpu->kvm->arch.vgic.maint_irq == 0)
 			vcpu->kvm->arch.vgic.maint_irq = kvm_vgic_global_state.maint_irq;

@@ -1683,7 +1683,7 @@ bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 	u32 sysreg;
 	u64 esr, val;
 
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
+	if (is_hyp_ctxt(vcpu))
 		return false;
 
 	esr = kvm_vcpu_get_esr(vcpu);
@@ -1749,7 +1749,7 @@ static bool forward_traps(struct kvm_vcpu *vcpu, u64 control_bit)
 {
 	bool control_bit_set;
 
-	if (!vcpu_has_nv(vcpu))
+	if (!vcpu_has_nv2(vcpu))
 		return false;
 
 	control_bit_set = __vcpu_sys_reg(vcpu, HCR_EL2) & control_bit;
@@ -1857,7 +1857,7 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 	u64 pstate, mode;
 	bool direct_inject;
 
-	if (!vcpu_has_nv(vcpu)) {
+	if (!vcpu_has_nv2(vcpu)) {
 		kvm_err("Unexpected call to %s for the non-nesting configuration\n",
 				__func__);
 		return -EINVAL;

@@ -256,7 +256,7 @@ static int set_core_reg(struct kvm_vcpu *vcpu, const struct kvm_one_reg *reg)
 			break;
 		case PSR_MODE_EL2h:
 		case PSR_MODE_EL2t:
-			if (!vcpu_has_nv(vcpu))
+			if (!vcpu_has_nv2(vcpu))
 				return -EINVAL;
 			fallthrough;
 		case PSR_MODE_EL0t:

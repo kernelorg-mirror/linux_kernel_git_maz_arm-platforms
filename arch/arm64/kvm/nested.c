@@ -35,16 +35,14 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	if (!test_bit(KVM_ARM_VCPU_HAS_EL2, vcpu->arch.features))
 		return 0;
 
-	if (!cpus_have_final_cap(ARM64_HAS_NESTED_VIRT))
+	if (!cpus_have_final_cap(ARM64_HAS_NV2))
 		return -EINVAL;
 
-	if (cpus_have_final_cap(ARM64_HAS_ENHANCED_NESTED_VIRT)) {
-		if (!vcpu->arch.ctxt.vncr_array)
-			vcpu->arch.ctxt.vncr_array = (u64 *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
+	if (!vcpu->arch.ctxt.vncr_array)
+		vcpu->arch.ctxt.vncr_array = (u64 *)__get_free_page(GFP_KERNEL | __GFP_ZERO);
 
-		if (!vcpu->arch.ctxt.vncr_array)
-			return -ENOMEM;
-	}
+	if (!vcpu->arch.ctxt.vncr_array)
+		return -ENOMEM;
 
 	/*
 	 * Let's treat memory allocation failures as benign: If we fail to
@@ -344,7 +342,7 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 	result->esr = 0;
 
-	if (!vcpu_has_nv(vcpu))
+	if (!vcpu_has_nv2(vcpu))
 		return 0;
 
 	wi.read_desc = read_guest_s2_desc;
@@ -800,7 +798,7 @@ bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
 
 	WARN_ONCE(imo != fmo, "Separate virtual IRQ/FIQ settings not supported\n");
 
-	return vcpu_has_nv(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
+	return vcpu_has_nv2(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
 }
 
 void check_nested_vcpu_requests(struct kvm_vcpu *vcpu)

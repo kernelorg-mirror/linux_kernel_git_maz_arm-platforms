@@ -39,21 +39,15 @@ static void __activate_traps(struct kvm_vcpu *vcpu)
 	u64 val;
 
 	if (is_hyp_ctxt(vcpu)) {
-		hcr |= HCR_NV;
-
 		if (!vcpu_el2_e2h_is_set(vcpu)) {
 			/*
-			 * For a guest hypervisor on v8.0, trap and emulate
-			 * the EL1 virtual memory control register accesses
-			 * as well as the AT S1 operations.
+			 * For a nVHE hypervisor, no need to trap the
+			 * relevant VM regs/ops (they already do by
+			 * virtue of being EL2 only). Add the NV1 for
+			 * a good measure.
 			 */
-			if (vcpu_has_nv2(vcpu)) {
-				hcr &= ~HCR_TVM;
-			} else {
-				hcr |= HCR_TVM | HCR_TRVM | HCR_TTLB;
-			}
-
-			hcr |= HCR_AT | HCR_NV1;
+			hcr &= ~HCR_TVM;
+			hcr |= HCR_NV1;
 		} else {
 			/*
 			 * For a guest hypervisor on v8.1 (VHE), allow to
@@ -78,22 +72,16 @@ static void __activate_traps(struct kvm_vcpu *vcpu)
 			hcr &= ~HCR_TVM;
 
 			hcr |= vhcr_el2 & (HCR_TVM | HCR_TRVM);
-
-			/*
-			 * If we're using the EL1 translation regime
-			 * (TGE clear), then ensure that AT S1 and
-			 * TLBI E1 ops are trapped too.
-			 */
-			if (!vcpu_el2_tge_is_set(vcpu))
-				hcr |= HCR_AT | HCR_TTLB;
 		}
 
-		if (vcpu_has_nv2(vcpu)) {
-			hcr |= HCR_AT | HCR_TTLB | HCR_NV2;
-			write_sysreg_s(vcpu->arch.ctxt.vncr_array,
-				       SYS_VNCR_EL2);
-		}
-	} else if (vcpu_has_nv(vcpu)) {
+		/*
+		 * Always trap AT and TLB instructions, as they are
+		 * always in the wrong context...
+		 */
+		hcr |= HCR_AT | HCR_TTLB | HCR_NV | HCR_NV2;
+		write_sysreg_s(vcpu->arch.ctxt.vncr_array, SYS_VNCR_EL2);
+	} else if (vcpu_has_nv2(vcpu)) {
+		/* We're running a L2 guest, inherit the L1 HCR configuration */
 		u64 vhcr_el2 = __vcpu_sys_reg(vcpu, HCR_EL2);
 
 		vhcr_el2 &= ~HCR_GUEST_NV_FILTER_FLAGS;
@@ -274,7 +262,6 @@ static bool kvm_hyp_handle_sysreg_vhe(struct kvm_vcpu *vcpu, u64 *exit_code)
 
 static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
-	struct kvm_cpu_context *ctxt = &vcpu->arch.ctxt;
 	u64 spsr, mode;
 
 	/*
@@ -291,7 +278,6 @@ static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 		return false;
 
 	spsr = read_sysreg_el1(SYS_SPSR);
-	spsr = __fixup_spsr_el2_read(ctxt, spsr);
 	mode = spsr & (PSR_MODE_MASK | PSR_MODE32_BIT);
 
 	switch (mode) {
@@ -391,12 +377,10 @@ static int __kvm_vcpu_run_vhe(struct kvm_vcpu *vcpu)
 	__debug_switch_to_guest(vcpu);
 
 	if (is_hyp_ctxt(vcpu)) {
-		if (vcpu_has_nv2(vcpu)) {
-			if (vcpu_el2_e2h_is_set(vcpu))
-				vcpu_set_flag(vcpu, VCPU_HCR_E2H);
-			else
-				vcpu_clear_flag(vcpu, VCPU_HCR_E2H);
-		}
+		if (vcpu_el2_e2h_is_set(vcpu))
+			vcpu_set_flag(vcpu, VCPU_HCR_E2H);
+		else
+			vcpu_clear_flag(vcpu, VCPU_HCR_E2H);
 
 		vcpu_set_flag(vcpu, VCPU_HYP_CONTEXT);
 	} else {

@@ -284,7 +284,7 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu)
 		 * guests as well by setting the shadow state to the
 		 * same value.
 		 */
-		if (vcpu_has_nv(vcpu))
+		if (vcpu_has_nv2(vcpu))
 			vcpu->arch.vgic_cpu.shadow_vgic_v3.vgic_sre = vgic_v3->vgic_sre;
 		vcpu->arch.vgic_cpu.pendbaser = INITIAL_PENDBASER_VALUE;
 	} else {

@@ -226,7 +226,7 @@ int kvm_reset_vcpu(struct kvm_vcpu *vcpu)
 		kvm_arch_vcpu_put(vcpu);
 
 	/* Disallow NV+SVE for the time being */
-	if (vcpu_has_nv(vcpu) && vcpu_has_feature(vcpu, KVM_ARM_VCPU_SVE)) {
+	if (vcpu_has_nv2(vcpu) && vcpu_has_feature(vcpu, KVM_ARM_VCPU_SVE)) {
 		ret = -EINVAL;
 		goto out;
 	}
@@ -253,7 +253,7 @@ int kvm_reset_vcpu(struct kvm_vcpu *vcpu)
 	default:
 		if (vcpu_el1_is_32bit(vcpu)) {
 			pstate = VCPU_RESET_PSTATE_SVC;
-		} else if (vcpu_has_nv(vcpu)) {
+		} else if (vcpu_has_nv2(vcpu)) {
 			pstate = VCPU_RESET_PSTATE_EL2;
 		} else {
 			pstate = VCPU_RESET_PSTATE_EL1;

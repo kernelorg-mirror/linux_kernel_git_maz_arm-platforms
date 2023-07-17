@@ -62,7 +62,7 @@ static bool has_cntpoff(void)
 
 static int nr_timers(struct kvm_vcpu *vcpu)
 {
-	if (!vcpu_has_nv(vcpu))
+	if (!vcpu_has_nv2(vcpu))
 		return NR_KVM_EL0_TIMERS;
 
 	return NR_KVM_TIMERS;
@@ -182,7 +182,7 @@ u64 kvm_phys_timer_read(void)
 
 static void get_timer_map(struct kvm_vcpu *vcpu, struct timer_map *map)
 {
-	if (vcpu_has_nv(vcpu)) {
+	if (vcpu_has_nv2(vcpu)) {
 		if (is_hyp_ctxt(vcpu)) {
 			map->direct_vtimer = vcpu_hvtimer(vcpu);
 			map->direct_ptimer = vcpu_hptimer(vcpu);
@@ -300,8 +300,8 @@ static u64 wfit_delay_ns(struct kvm_vcpu *vcpu)
 	u64 val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
 	struct arch_timer_context *ctx;
 
-	ctx = (vcpu_has_nv(vcpu) && is_hyp_ctxt(vcpu)) ? vcpu_hvtimer(vcpu)
-						       : vcpu_vtimer(vcpu);
+	ctx = (vcpu_has_nv2(vcpu) && is_hyp_ctxt(vcpu)) ? vcpu_hvtimer(vcpu)
+							: vcpu_vtimer(vcpu);
 
 	return kvm_counter_compute_delta(ctx, val);
 }
@@ -848,7 +848,7 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 	 * its own guest. We can only add traps that wouldn't have been set
 	 * above.
 	 */
-	if (vcpu_has_nv(vcpu) && !is_hyp_ctxt(vcpu)) {
+	if (vcpu_has_nv2(vcpu) && !is_hyp_ctxt(vcpu)) {
 		u64 val = __vcpu_sys_reg(vcpu, CNTHCTL_EL2);
 
 		/* Use the VHE format for mental sanity */
@@ -888,7 +888,7 @@ void kvm_timer_vcpu_load(struct kvm_vcpu *vcpu)
 	get_timer_map(vcpu, &map);
 
 	if (static_branch_likely(&has_gic_active_state)) {
-		if (vcpu_has_nv(vcpu))
+		if (vcpu_has_nv2(vcpu))
 			kvm_timer_vcpu_load_nested_switch(vcpu, &map);
 
 		kvm_timer_vcpu_load_gic(map.direct_vtimer);
@@ -1058,7 +1058,7 @@ int kvm_timer_vcpu_reset(struct kvm_vcpu *vcpu)
 	 * the virtual timer, so use the physical VM offset, and point
 	 * the vcpu offset to CNTVOFF_EL2.
 	 */
-	if (vcpu_has_nv(vcpu)) {
+	if (vcpu_has_nv2(vcpu)) {
 		struct arch_timer_offset *offs = &vcpu_vtimer(vcpu)->offset;
 
 		offs->vcpu_offset = &__vcpu_sys_reg(vcpu, CNTVOFF_EL2);

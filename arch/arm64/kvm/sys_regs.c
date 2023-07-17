@@ -142,8 +142,7 @@ u64 vcpu_read_sys_reg(const struct kvm_vcpu *vcpu, int reg)
 		case ELR_EL2:
 			return read_sysreg_el1(SYS_ELR);
 		case SPSR_EL2:
-			val = read_sysreg_el1(SYS_SPSR);
-			return __fixup_spsr_el2_read(&vcpu->arch.ctxt, val);
+			return read_sysreg_el1(SYS_SPSR);
 		case CNTHCTL_EL2:
 			if (vcpu_el2_e2h_is_set(vcpu)) {
 				val = read_sysreg_el1(SYS_CNTKCTL);
@@ -229,7 +228,6 @@ void vcpu_write_sys_reg(struct kvm_vcpu *vcpu, u64 val, int reg)
 			write_sysreg_el1(val, SYS_ELR);
 			return;
 		case SPSR_EL2:
-			val = __fixup_spsr_el2_write(&vcpu->arch.ctxt, val);
 			write_sysreg_el1(val, SYS_SPSR);
 			return;
 		case CNTHCTL_EL2:
@@ -1728,7 +1726,7 @@ static bool access_id_reg(struct kvm_vcpu *vcpu,
 		return write_to_read_only(vcpu, p, r);
 
 	p->regval = read_id_reg(vcpu, r);
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		access_nested_id_reg(vcpu, p, r);
 
 	return true;
@@ -2081,7 +2079,7 @@ static unsigned int mte_visibility(const struct kvm_vcpu *vcpu,
 static unsigned int el2_visibility(const struct kvm_vcpu *vcpu,
 				   const struct sys_reg_desc *rd)
 {
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		return 0;
 
 	return REG_HIDDEN;

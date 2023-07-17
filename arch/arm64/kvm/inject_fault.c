@@ -18,7 +18,7 @@
 static void pend_sync_exception(struct kvm_vcpu *vcpu)
 {
 	/* If not nesting, EL1 is the only possible exception target */
-	if (likely(!vcpu_has_nv(vcpu))) {
+	if (likely(!vcpu_has_nv2(vcpu))) {
 		kvm_pend_exception(vcpu, EXCEPT_AA64_EL1_SYNC);
 		return;
 	}

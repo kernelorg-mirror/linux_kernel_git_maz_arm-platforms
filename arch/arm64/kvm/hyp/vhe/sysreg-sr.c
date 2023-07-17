@@ -60,7 +60,7 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 
 	ctxt_sys_reg(ctxt, SP_EL2)	= read_sysreg(sp_el1);
 	ctxt_sys_reg(ctxt, ELR_EL2)	= read_sysreg_el1(SYS_ELR);
-	ctxt_sys_reg(ctxt, SPSR_EL2)	= __fixup_spsr_el2_read(ctxt, read_sysreg_el1(SYS_SPSR));
+	ctxt_sys_reg(ctxt, SPSR_EL2)	= read_sysreg_el1(SYS_SPSR);
 }
 
 static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
@@ -110,9 +110,7 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 	write_sysreg_el1(ctxt_sys_reg(ctxt, FAR_EL2),	SYS_FAR);
 	write_sysreg(ctxt_sys_reg(ctxt, SP_EL2),	sp_el1);
 	write_sysreg_el1(ctxt_sys_reg(ctxt, ELR_EL2),	SYS_ELR);
-
-	val = __fixup_spsr_el2_write(ctxt, ctxt_sys_reg(ctxt, SPSR_EL2));
-	write_sysreg_el1(val,	SYS_SPSR);
+	write_sysreg_el1(ctxt_sys_reg(ctxt, SPSR_EL2),	SYS_SPSR);
 }
 
 /*
@@ -179,7 +177,7 @@ void kvm_vcpu_load_sysregs_vhe(struct kvm_vcpu *vcpu)
 	 * vEL2 without a context switch, so make sure we complete
 	 * those walks before loading a new context.
 	 */
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		dsb(nsh);
 
 	/*
@@ -194,7 +192,7 @@ void kvm_vcpu_load_sysregs_vhe(struct kvm_vcpu *vcpu)
 	if (unlikely(__is_hyp_ctxt(guest_ctxt))) {
 		__sysreg_restore_vel2_state(guest_ctxt);
 	} else {
-		if (vcpu_has_nv(vcpu)) {
+		if (vcpu_has_nv2(vcpu)) {
 			/*
 			 * Only set VPIDR_EL2 for nested VMs, as this is the
 			 * only time it changes. We'll restore the MIDR_EL1
@@ -250,7 +248,7 @@ void kvm_vcpu_put_sysregs_vhe(struct kvm_vcpu *vcpu)
 	__sysreg_restore_user_state(host_ctxt);
 
 	/* If leaving a nesting guest, restore MPIDR_EL1 default view */
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		write_sysreg(read_cpuid_id(),	vpidr_el2);
 
 	vcpu_clear_flag(vcpu, SYSREGS_ON_CPU);

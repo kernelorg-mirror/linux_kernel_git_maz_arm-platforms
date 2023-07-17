@@ -104,7 +104,7 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 	if (cpus_have_final_cap(ARM64_WORKAROUND_AMPERE_AC03_CPU_38))
 		w_set |= HFGxTR_EL2_TCR_EL1_MASK;
 
-	if (vcpu_has_nv(vcpu) && !is_hyp_ctxt(vcpu)) {
+	if (vcpu_has_nv2(vcpu) && !is_hyp_ctxt(vcpu)) {
 		compute_clr_set(vcpu, HFGRTR_EL2, r_clr, r_set);
 		compute_clr_set(vcpu, HFGWTR_EL2, w_clr, w_set);
 	}
@@ -121,7 +121,7 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 	write_sysreg_s(r_val, SYS_HFGRTR_EL2);
 	write_sysreg_s(w_val, SYS_HFGWTR_EL2);
 
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
+	if (!vcpu_has_nv2(vcpu) || is_hyp_ctxt(vcpu))
 		return;
 
 	ctxt_sys_reg(hctxt, HFGITR_EL2) = read_sysreg_s(SYS_HFGITR_EL2);
@@ -164,7 +164,7 @@ static inline void __deactivate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGRTR_EL2), SYS_HFGRTR_EL2);
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGWTR_EL2), SYS_HFGWTR_EL2);
 
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
+	if (!vcpu_has_nv2(vcpu) || is_hyp_ctxt(vcpu))
 		return;
 
 	write_sysreg_s(ctxt_sys_reg(hctxt, HFGITR_EL2), SYS_HFGITR_EL2);
@@ -199,7 +199,7 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 
 	if (cpus_have_final_cap(ARM64_HAS_HCX)) {
 		u64 hcrx = HCRX_GUEST_FLAGS;
-		if (vcpu_has_nv(vcpu) && !is_hyp_ctxt(vcpu)) {
+		if (vcpu_has_nv2(vcpu) && !is_hyp_ctxt(vcpu)) {
 			u64 clr = 0, set = 0;
 
 			compute_clr_set(vcpu, HCRX_EL2, clr, set);
@@ -467,7 +467,7 @@ static bool kvm_hyp_handle_cntpct(struct kvm_vcpu *vcpu)
 	switch (sysreg) {
 	case SYS_CNTPCT_EL0:
 	case SYS_CNTPCTSS_EL0:
-		if (vcpu_has_nv(vcpu)) {
+		if (vcpu_has_nv2(vcpu)) {
 			if (is_hyp_ctxt(vcpu)) {
 				ctxt = vcpu_hptimer(vcpu);
 				break;

@@ -289,7 +289,7 @@ int kvm_vm_ioctl_check_extension(struct kvm *kvm, long ext)
 		r = cpus_have_const_cap(ARM64_HAS_32BIT_EL1);
 		break;
 	case KVM_CAP_ARM_EL2:
-		r = cpus_have_const_cap(ARM64_HAS_NESTED_VIRT);
+		r = cpus_have_const_cap(ARM64_HAS_NV2);
 		break;
 	case KVM_CAP_GUEST_DEBUG_HW_BPS:
 		r = get_num_brps();
@@ -431,7 +431,7 @@ void kvm_arch_vcpu_load(struct kvm_vcpu *vcpu, int cpu)
 	struct kvm_s2_mmu *mmu;
 	int *last_ran;
 
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		kvm_vcpu_load_hw_mmu(vcpu);
 
 	mmu = vcpu->arch.hw_mmu;
@@ -484,7 +484,7 @@ void kvm_arch_vcpu_put(struct kvm_vcpu *vcpu)
 	kvm_timer_vcpu_put(vcpu);
 	kvm_vgic_put(vcpu);
 	kvm_vcpu_pmu_restore_host(vcpu);
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		kvm_vcpu_put_hw_mmu(vcpu);
 	kvm_arm_vmid_clear_active();
 
@@ -832,7 +832,7 @@ static bool vcpu_mode_is_bad_32bit(struct kvm_vcpu *vcpu)
 	if (likely(!vcpu_mode_is_32bit(vcpu)))
 		return false;
 
-	if (vcpu_has_nv(vcpu))
+	if (vcpu_has_nv2(vcpu))
 		return true;
 
 	return !kvm_supports_32bit_el0();

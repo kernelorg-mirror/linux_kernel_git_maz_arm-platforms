@@ -245,7 +245,7 @@ static inline bool __is_hyp_ctxt(const struct kvm_cpu_context *ctxt)
 
 static inline bool is_hyp_ctxt(const struct kvm_vcpu *vcpu)
 {
-	return __is_hyp_ctxt(&vcpu->arch.ctxt);
+	return vcpu_has_nv2(vcpu) && __is_hyp_ctxt(&vcpu->arch.ctxt);
 }
 
 /*

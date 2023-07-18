@@ -215,7 +215,7 @@ static bool kvm_hyp_handle_ecv(struct kvm_vcpu *vcpu, u64 *exit_code)
 	if (!cpus_have_final_cap(ARM64_HAS_ECV))
 		return false;
 
-	if (!vcpu_has_nv2(vcpu) || !is_hyp_ctxt(vcpu))
+	if (!is_hyp_ctxt(vcpu))
 		return false;
 
 	esr = kvm_vcpu_get_esr(vcpu);

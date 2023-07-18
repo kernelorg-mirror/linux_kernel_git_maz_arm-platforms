@@ -370,7 +370,7 @@ int handle_exit(struct kvm_vcpu *vcpu, int exception_index)
 void handle_exit_early(struct kvm_vcpu *vcpu, int exception_index)
 {
 	/* Check whether HCR_EL2.E2H was flipped behind our back */
-	if (vcpu_has_nv2(vcpu) && is_hyp_ctxt(vcpu) &&
+	if (is_hyp_ctxt(vcpu) &&
 	    (!!vcpu_get_flag(vcpu, VCPU_HCR_E2H) != vcpu_el2_e2h_is_set(vcpu))) {
 		kvm_arch_vcpu_put(vcpu);
 		kvm_arch_vcpu_load(vcpu, smp_processor_id());

@@ -342,9 +342,6 @@ int kvm_walk_nested_s2(struct kvm_vcpu *vcpu, phys_addr_t gipa,
 
 	result->esr = 0;
 
-	if (!vcpu_has_nv2(vcpu))
-		return 0;
-
 	wi.read_desc = read_guest_s2_desc;
 	wi.data = vcpu;
 	wi.baddr = vcpu_read_sys_reg(vcpu, VTTBR_EL2);

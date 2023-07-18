@@ -300,8 +300,7 @@ static u64 wfit_delay_ns(struct kvm_vcpu *vcpu)
 	u64 val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
 	struct arch_timer_context *ctx;
 
-	ctx = (vcpu_has_nv2(vcpu) && is_hyp_ctxt(vcpu)) ? vcpu_hvtimer(vcpu)
-							: vcpu_vtimer(vcpu);
+	ctx = is_hyp_ctxt(vcpu) ? vcpu_hvtimer(vcpu) : vcpu_vtimer(vcpu);
 
 	return kvm_counter_compute_delta(ctx, val);
 }
@@ -460,7 +459,7 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,
 	 *
 	 * But hey, it's fast, right?
 	 */
-	if (vcpu_has_nv2(vcpu) && is_hyp_ctxt(vcpu) &&
+	if (is_hyp_ctxt(vcpu) &&
 	    (timer_ctx == vcpu_vtimer(vcpu) || timer_ctx == vcpu_ptimer(vcpu))) {
 		u32 ctl = timer_get_ctl(timer_ctx);
 
@@ -822,8 +821,7 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 	 * unless required by the L1 hypervisor settings once we advertise
 	 * ECV+NV in the guest, or that we need trapping for other reasons.
 	 */
-	if (cpus_have_final_cap(ARM64_HAS_ECV) &&
-	    vcpu_has_nv2(vcpu) && is_hyp_ctxt(vcpu)) {
+	if (cpus_have_final_cap(ARM64_HAS_ECV) && is_hyp_ctxt(vcpu)) {
 		if (vcpu_el2_e2h_is_set(vcpu))
 			tvt02 = tpt02 = true;
 		else

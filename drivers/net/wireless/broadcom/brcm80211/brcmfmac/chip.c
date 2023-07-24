@@ -677,7 +677,8 @@ static u32 brcmf_chip_sysmem_ramsize(struct brcmf_core_priv *sysmem)
 }
 
 /** Return the TCM-RAM size of the ARMCR4 core. */
-static u32 brcmf_chip_tcm_ramsize(struct brcmf_core_priv *cr4)
+static u32 brcmf_chip_tcm_ramsize(struct brcmf_chip_priv *ci,
+				  struct brcmf_core_priv *cr4)
 {
 	u32 corecap;
 	u32 memsize = 0;
@@ -762,7 +763,7 @@ int brcmf_chip_get_raminfo(struct brcmf_chip *pub)
 	mem = brcmf_chip_get_core(&ci->pub, BCMA_CORE_ARM_CR4);
 	if (mem) {
 		mem_core = container_of(mem, struct brcmf_core_priv, pub);
-		ci->pub.ramsize = brcmf_chip_tcm_ramsize(mem_core);
+		ci->pub.ramsize = brcmf_chip_tcm_ramsize(ci, mem_core);
 		ci->pub.rambase = brcmf_chip_tcm_rambase(ci);
 		if (ci->pub.rambase == INVALID_RAMBASE) {
 			brcmf_err("RAM base not provided with ARM CR4 core\n");

@@ -467,13 +467,8 @@ static bool kvm_hyp_handle_cntpct(struct kvm_vcpu *vcpu)
 	switch (sysreg) {
 	case SYS_CNTPCT_EL0:
 	case SYS_CNTPCTSS_EL0:
-		if (vcpu_has_nv2(vcpu)) {
-			if (is_hyp_ctxt(vcpu)) {
-				ctxt = vcpu_hptimer(vcpu);
-				break;
-			}
-
-			/* Check for guest hypervisor trapping */
+		/* Check for guest hypervisor trapping */
+		if (vcpu_has_nv2(vcpu) && !is_hyp_ctxt(vcpu)) {
 			val = __vcpu_sys_reg(vcpu, CNTHCTL_EL2);
 			if (!vcpu_el2_e2h_is_set(vcpu))
 				val = (val & CNTHCTL_EL1PCTEN) << 10;
@@ -482,7 +477,11 @@ static bool kvm_hyp_handle_cntpct(struct kvm_vcpu *vcpu)
 				return false;
 		}
 
-		ctxt = vcpu_ptimer(vcpu);
+		if (is_hyp_ctxt(vcpu))
+			ctxt = vcpu_hptimer(vcpu);
+		else
+			ctxt = vcpu_ptimer(vcpu);
+
 		break;
 	default:
 		return false;

@@ -380,7 +380,12 @@ TRACE_EVENT(kvm_forward_sysreg_trap,
 		__entry->is_read = is_read;
 	    ),
 
-	    TP_printk("%c %x", __entry->is_read ? 'R' : 'W', __entry->sysreg)
+	    TP_printk("%c (%d,%d,%d,%d,%d)", __entry->is_read ? 'R' : 'W',
+		      sys_reg_Op0(__entry->sysreg),
+		      sys_reg_Op1(__entry->sysreg),
+		      sys_reg_CRn(__entry->sysreg),
+		      sys_reg_CRm(__entry->sysreg),
+		      sys_reg_Op2(__entry->sysreg))
 );
 
 #endif /* _TRACE_ARM_ARM64_KVM_H */

@@ -378,6 +378,9 @@ static enum hrtimer_restart kvm_hrtimer_expire(struct hrtimer *hrt)
 		return HRTIMER_RESTART;
 	}
 
+	trace_printk("%ld %llx %llx\n",
+		     arch_timer_ctx_index(ctx),
+		     timer_get_cval(ctx), kvm_phys_timer_read() - timer_get_offset(ctx));
 	kvm_timer_update_irq(vcpu, true, ctx);
 	return HRTIMER_NORESTART;
 }

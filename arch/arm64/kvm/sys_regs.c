@@ -3589,3 +3589,91 @@ int __init kvm_sys_reg_table_init(void)
 
 	return 0;
 }
+
+/*
+ * From DDI0487J.a, D19.2.66 ("ID_AA64MMFR2_EL1, AArch64 Memory Model
+ * Feature Register 2"):
+ *
+ * "The Feature ID space is defined as the System register space in
+ * AArch64 with op0==3, op1=={0, 1, 3}, CRn==0, CRm=={0-7},
+ * op2=={0-7}."
+ *
+ * This covers all R/O registers that indicate anything useful feature
+ * wise, including the ID registers.
+ */
+
+/* Userspace-visible definitions */
+#define ARM64_FEATURE_ID_SPACE_SIZE	(3 * 8 * 8)
+#define __ARM64_FEATURE_ID_SPACE_IDX(op0, op1, crn, crm, op2)		\
+	({								\
+		__u64 __op1 = op1 & 3;					\
+		__op1 -= (__op1 == 3);					\
+		((ARM64_SYS_REG_SHIFT_MASK(3, OP0) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(__op1, OP1) |		\
+		  ARM64_SYS_REG_SHIFT_MASK(0, CRN) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(crm & 7, CRM) |		\
+		  ARM64_SYS_REG_SHIFT_MASK(op2, OP2)) -			\
+		 (ARM64_SYS_REG_SHIFT_MASK(3, OP0) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(0, OP1) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(0, CRN) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(0, CRM) |			\
+		  ARM64_SYS_REG_SHIFT_MASK(0, OP2)));			\
+	})
+
+#define ARM64_FEATURE_ID_SPACE_INDEX(r)					\
+	__ARM64_FEATURE_ID_SPACE_IDX(sys_reg_Op0(r),			\
+				     sys_reg_Op1(r),			\
+				     sys_reg_CRn(r),			\
+				     sys_reg_CRm(r),			\
+				     sys_reg_Op2(r))
+
+struct feature_id_writeable_masks {
+	u64	mask[ARM64_FEATURE_ID_SPACE_SIZE];
+};
+
+static bool is_feature_id_reg(u32 encoding)
+{
+	return (sys_reg_Op0(encoding) == 3 &&
+		(sys_reg_Op1(encoding) < 2 || sys_reg_Op1(encoding) == 3) &&
+		sys_reg_CRn(encoding) == 0 &&
+		sys_reg_CRm(encoding) <= 7);
+}
+
+int kvm_get_writeable_feature_regs(struct kvm *kvm, u64 __user *masks)
+{
+	/* Wipe the whole thing first */
+	for (int i = 0; i < ARM64_FEATURE_ID_SPACE_SIZE; i++)
+		if (put_user(0, masks + i))
+			return -EFAULT;
+
+	for (int i = 0; i < ARRAY_SIZE(sys_reg_descs); i++) {
+		const struct sys_reg_desc *reg = &sys_reg_descs[i];
+		u32 encoding = reg_to_encoding(reg);
+		u64 val;
+
+		if (!is_feature_id_reg(encoding) || !reg->set_user)
+			continue;
+
+		/*
+		 * For ID registers, we return the writable mask.
+		 * Other feature registers return a full 64bit mask.
+		 * That's not necessarily compliant with a given
+		 * revision of the architecture, but the RES0/RES1
+		 * definitions allow us to do that
+		 */
+		if (is_id_reg(encoding)) {
+			if (!reg->val)
+				continue;
+
+			val = reg->val;
+		} else {
+			val = ~0UL;
+		}
+
+		if (put_user(val,
+			     (masks + ARM64_FEATURE_ID_SPACE_INDEX(encoding))))
+			return -EFAULT;
+	}
+
+	return 0;
+}

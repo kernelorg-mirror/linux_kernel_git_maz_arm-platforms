@@ -987,42 +987,46 @@ static bool access_pmu_evtyper(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	return true;
 }
 
-static void set_pmreg_for_valid_counters(struct kvm_vcpu *vcpu,
-					  u64 reg, u64 val, bool set)
+static int set_pmreg(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r, u64 val)
 {
 	struct kvm *kvm = vcpu->kvm;
+	bool set;
 
 	mutex_lock(&kvm->arch.config_lock);
 
 	/* Make the register immutable once the VM has started running */
 	if (kvm_vm_has_ran_once(kvm)) {
 		mutex_unlock(&kvm->arch.config_lock);
-		return;
+		return 0;
 	}
 
 	val &= kvm_pmu_valid_counter_mask(vcpu);
 	mutex_unlock(&kvm->arch.config_lock);
 
+	switch(r->reg) {
+	case PMOVSSET_EL0:
+		/* CRm[1] being set indicates a SET register, and CLR otherwise */
+	        set = r->CRm & 2;
+		break;
+	default:
+		/* Op2[0] being set indicates a SET register, and CLR otherwise */
+	        set = r->Op2 & 1;
+		break;
+	}
+
 	if (set)
-		__vcpu_sys_reg(vcpu, reg) |= val;
+		__vcpu_sys_reg(vcpu, r->reg) |= val;
 	else
-		__vcpu_sys_reg(vcpu, reg) &= ~val;
-}
+		__vcpu_sys_reg(vcpu, r->reg) &= ~val;
 
-static int get_pmcnten(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-			u64 *val)
-{
-	u64 mask = kvm_pmu_valid_counter_mask(vcpu);
-
-	*val = __vcpu_sys_reg(vcpu, PMCNTENSET_EL0) & mask;
 	return 0;
 }
 
-static int set_pmcnten(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-			u64 val)
+static int get_pmreg(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r, u64 *val)
 {
-	/* r->Op2 & 0x1: true for PMCNTENSET_EL0, else PMCNTENCLR_EL0 */
-	set_pmreg_for_valid_counters(vcpu, PMCNTENSET_EL0, val, r->Op2 & 0x1);
+	u64 mask = kvm_pmu_valid_counter_mask(vcpu);
+
+	*val = __vcpu_sys_reg(vcpu, r->reg) & mask;
 	return 0;
 }
 
@@ -1054,23 +1058,6 @@ static bool access_pmcnten(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	return true;
 }
 
-static int get_pminten(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-			u64 *val)
-{
-	u64 mask = kvm_pmu_valid_counter_mask(vcpu);
-
-	*val = __vcpu_sys_reg(vcpu, PMINTENSET_EL1) & mask;
-	return 0;
-}
-
-static int set_pminten(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-			u64 val)
-{
-	/* r->Op2 & 0x1: true for PMINTENSET_EL1, else PMINTENCLR_EL1 */
-	set_pmreg_for_valid_counters(vcpu, PMINTENSET_EL1, val, r->Op2 & 0x1);
-	return 0;
-}
-
 static bool access_pminten(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			   const struct sys_reg_desc *r)
 {
@@ -1093,23 +1080,6 @@ static bool access_pminten(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	}
 
 	return true;
-}
-
-static int set_pmovs(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-		      u64 val)
-{
-	/* r->CRm & 0x2: true for PMOVSSET_EL0, else PMOVSCLR_EL0 */
-	set_pmreg_for_valid_counters(vcpu, PMOVSSET_EL0, val, r->CRm & 0x2);
-	return 0;
-}
-
-static int get_pmovs(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
-		      u64 *val)
-{
-	u64 mask = kvm_pmu_valid_counter_mask(vcpu);
-
-	*val = __vcpu_sys_reg(vcpu, PMOVSSET_EL0) & mask;
-	return 0;
 }
 
 static bool access_pmovs(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
@@ -2243,10 +2213,10 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	{ PMU_SYS_REG(PMINTENSET_EL1),
 	  .access = access_pminten, .reg = PMINTENSET_EL1,
-	  .get_user = get_pminten, .set_user = set_pminten },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 	{ PMU_SYS_REG(PMINTENCLR_EL1),
 	  .access = access_pminten, .reg = PMINTENSET_EL1,
-	  .get_user = get_pminten, .set_user = set_pminten },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 	{ SYS_DESC(SYS_PMMIR_EL1), trap_raz_wi },
 
 	{ SYS_DESC(SYS_MAIR_EL1), access_vm_reg, reset_unknown, MAIR_EL1 },
@@ -2298,13 +2268,13 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	  .reg = PMCR_EL0, .get_user = get_pmcr, .set_user = set_pmcr },
 	{ PMU_SYS_REG(PMCNTENSET_EL0),
 	  .access = access_pmcnten, .reg = PMCNTENSET_EL0,
-	  .get_user = get_pmcnten, .set_user = set_pmcnten },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 	{ PMU_SYS_REG(PMCNTENCLR_EL0),
 	  .access = access_pmcnten, .reg = PMCNTENSET_EL0,
-	  .get_user = get_pmcnten, .set_user = set_pmcnten },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 	{ PMU_SYS_REG(PMOVSCLR_EL0),
 	  .access = access_pmovs, .reg = PMOVSSET_EL0,
-	  .get_user = get_pmovs, .set_user = set_pmovs },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 	/*
 	 * PM_SWINC_EL0 is exposed to userspace as RAZ/WI, as it was
 	 * previously (and pointlessly) advertised in the past...
@@ -2333,7 +2303,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	  .reset = reset_val, .reg = PMUSERENR_EL0, .val = 0 },
 	{ PMU_SYS_REG(PMOVSSET_EL0),
 	  .access = access_pmovs, .reg = PMOVSSET_EL0,
-	  .get_user = get_pmovs, .set_user = set_pmovs },
+	  .get_user = get_pmreg, .set_user = set_pmreg },
 
 	{ SYS_DESC(SYS_TPIDR_EL0), NULL, reset_unknown, TPIDR_EL0 },
 	{ SYS_DESC(SYS_TPIDRRO_EL0), NULL, reset_unknown, TPIDRRO_EL0 },

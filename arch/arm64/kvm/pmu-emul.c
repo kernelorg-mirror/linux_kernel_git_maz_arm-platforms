@@ -888,7 +888,7 @@ static bool pmu_irq_is_valid(struct kvm *kvm, int irq)
  * kvm_arm_pmu_get_max_counters - Return the max number of PMU counters.
  * @kvm: The kvm pointer
  */
-int kvm_arm_pmu_get_max_counters(struct kvm *kvm)
+u8 kvm_arm_pmu_get_max_counters(struct kvm *kvm)
 {
 	struct arm_pmu *arm_pmu = kvm->arch.arm_pmu;
 

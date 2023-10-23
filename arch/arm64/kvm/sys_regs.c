@@ -1150,7 +1150,8 @@ static int set_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
 		    u64 val)
 {
 	struct kvm *kvm = vcpu->kvm;
-	u64 new_n, mutable_mask;
+	u64 mutable_mask;
+	u8 new_n;
 
 	mutex_lock(&kvm->arch.config_lock);
 

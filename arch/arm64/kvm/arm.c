@@ -1231,16 +1231,16 @@ static bool kvm_vcpu_init_changed(struct kvm_vcpu *vcpu,
 static int kvm_setup_vcpu(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
+	int ret = 0;
 
 	/*
 	 * When the vCPU has a PMU, but no PMU is set for the guest
 	 * yet, set the default one.
 	 */
-	if (kvm_vcpu_has_pmu(vcpu) && !kvm->arch.arm_pmu &&
-	    kvm_arm_set_default_pmu(kvm))
-		return -EINVAL;
+	if (kvm_vcpu_has_pmu(vcpu) && !kvm->arch.arm_pmu)
+		ret = kvm_arm_set_default_pmu(kvm);
 
-	return 0;
+	return ret;
 }
 
 static int __kvm_vcpu_set_target(struct kvm_vcpu *vcpu,

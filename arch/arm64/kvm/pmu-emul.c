@@ -690,9 +690,6 @@ void kvm_host_pmu_init(struct arm_pmu *pmu)
 	if (!entry)
 		goto out_unlock;
 
-	WARN_ON((pmu->num_events <= 0) ||
-		(pmu->num_events > ARMV8_PMU_MAX_COUNTERS));
-
 	entry->arm_pmu = pmu;
 	list_add_tail(&entry->entry, &arm_pmus);
 

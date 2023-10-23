@@ -1150,7 +1150,6 @@ static int set_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
 		    u64 val)
 {
 	struct kvm *kvm = vcpu->kvm;
-	u64 mutable_mask;
 	u8 new_n;
 
 	mutex_lock(&kvm->arch.config_lock);
@@ -1165,17 +1164,15 @@ static int set_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
 	}
 
 	new_n = (val >> ARMV8_PMU_PMCR_N_SHIFT) & ARMV8_PMU_PMCR_N_MASK;
-	if (new_n != kvm->arch.pmcr_n) {
-		u8 pmcr_n_limit = kvm_arm_pmu_get_max_counters(kvm);
 
-		/*
-		 * The vCPU can't have more counters than the PMU hardware
-		 * implements. Ignore this error to maintain compatibility
-		 * with the existing KVM behavior.
-		 */
-		if (new_n <= pmcr_n_limit)
-			kvm->arch.pmcr_n = new_n;
-	}
+	/*
+	 * The vCPU can't have more counters than the PMU hardware
+	 * implements. Ignore this error to maintain compatibility
+	 * with the existing KVM behavior.
+	 */
+	if (new_n <= kvm_arm_pmu_get_max_counters(kvm))
+		kvm->arch.pmcr_n = new_n;
+
 	mutex_unlock(&kvm->arch.config_lock);
 
 	/*
@@ -1187,10 +1184,7 @@ static int set_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
 	 * be changed later (NOTE: the bit will be cleared on first vCPU run
 	 * if necessary).
 	 */
-	mutable_mask = (ARMV8_PMU_PMCR_MASK |
-			(ARMV8_PMU_PMCR_N_MASK << ARMV8_PMU_PMCR_N_SHIFT));
-	val &= mutable_mask;
-	val |= (__vcpu_sys_reg(vcpu, r->reg) & ~mutable_mask);
+	val &= ARMV8_PMU_PMCR_MASK;
 
 	/* The LC bit is RES1 when AArch32 is not supported */
 	if (!kvm_supports_32bit_el0())

@@ -720,7 +720,7 @@ static struct arm_pmu *kvm_pmu_probe_armpmu(void)
 	 * It is still necessary to get a valid cpu, though, to probe for the
 	 * default PMU instance as userspace is not required to specify a PMU
 	 * type. In order to uphold the preexisting behavior KVM selects the
-	 * PMU instance for the core just before the vcpu reset. A dependent use
+	 * PMU instance for the core just before the vcpu init. A dependent use
 	 * case would be a user with disdain of all things big.LITTLE that
 	 * affines the VMM to a particular cluster of cores.
 	 *

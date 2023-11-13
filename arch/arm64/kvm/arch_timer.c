@@ -799,8 +799,7 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 	 * unless required by the L1 hypervisor settings once we advertise
 	 * ECV+NV in the guest, or that we need trapping for other reasons.
 	 */
-	if (cpus_have_final_cap(ARM64_HAS_ECV) &&
-	    vcpu_has_nv(vcpu) && is_hyp_ctxt(vcpu)) {
+	if (cpus_have_final_cap(ARM64_HAS_ECV) && is_hyp_ctxt(vcpu)) {
 		if (vcpu_el2_e2h_is_set(vcpu))
 			tvt02 = tpt02 = true;
 		else

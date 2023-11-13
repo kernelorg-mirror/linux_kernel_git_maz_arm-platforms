@@ -439,7 +439,7 @@ static void kvm_timer_update_irq(struct kvm_vcpu *vcpu, bool new_level,
 	 *
 	 * But hey, it's fast, right?
 	 */
-	if (vcpu_has_nv(vcpu) && is_hyp_ctxt(vcpu) &&
+	if (is_hyp_ctxt(vcpu) &&
 	    (timer_ctx == vcpu_vtimer(vcpu) || timer_ctx == vcpu_ptimer(vcpu))) {
 		u32 ctl = timer_get_ctl(timer_ctx);
 

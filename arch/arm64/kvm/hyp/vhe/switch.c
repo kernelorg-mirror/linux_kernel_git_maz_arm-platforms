@@ -267,7 +267,7 @@ static bool kvm_hyp_handle_timer(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * However, this comes at a huge cost in terms of traps. Try and
 	 * satisfy the reads without returning to the kernel if we can.
 	 */
-	if (!vcpu_has_nv(vcpu) || !is_hyp_ctxt(vcpu))
+	if (!is_hyp_ctxt(vcpu))
 		return false;
 
 	esr = kvm_vcpu_get_esr(vcpu);

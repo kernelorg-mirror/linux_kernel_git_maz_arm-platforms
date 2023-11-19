@@ -897,6 +897,9 @@ void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 	if (used_lrs)
 		vgic_fold_lr_state(vcpu);
 	vgic_prune_ap_list(vcpu);
+
+//	if (vcpu_has_nv(vcpu))
+//		vgic_v3_sync_nested_maint_irq(vcpu);
 }
 
 static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
@@ -910,22 +913,6 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 /* Flush our emulation state into the GIC hardware before entering the guest. */
 void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 {
-	/*
-	 * If there are no virtual interrupts active or pending for this
-	 * VCPU, then there is no work to do and we can bail out without
-	 * taking any lock.  There is a potential race with someone injecting
-	 * interrupts to the VCPU, but it is a benign race as the VCPU will
-	 * either observe the new interrupt before or after doing this check,
-	 * and introducing additional synchronization mechanism doesn't change
-	 * this.
-	 *
-	 * Note that we still need to go through the whole thing if anything
-	 * can be directly injected (GICv4).
-	 */
-	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head) &&
-	    !vgic_supports_direct_msis(vcpu->kvm))
-		return;
-
 	/*
 	 * If in a nested state, we must return early. Two possibilities:
 	 *
@@ -943,11 +930,29 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 	 *   already loaded, and we can carry on with running it.
 	 */
 	if (vgic_state_is_nested(vcpu)) {
+		vgic_v3_sync_nested_maint_irq(vcpu);
+
 		if (kvm_vgic_vcpu_pending_irq(vcpu))
 			kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
 
 		return;
 	}
+
+	/*
+	 * If there are no virtual interrupts active or pending for this
+	 * VCPU, then there is no work to do and we can bail out without
+	 * taking any lock.  There is a potential race with someone injecting
+	 * interrupts to the VCPU, but it is a benign race as the VCPU will
+	 * either observe the new interrupt before or after doing this check,
+	 * and introducing additional synchronization mechanism doesn't change
+	 * this.
+	 *
+	 * Note that we still need to go through the whole thing if anything
+	 * can be directly injected (GICv4).
+	 */
+	if (list_empty(&vcpu->arch.vgic_cpu.ap_list_head) &&
+	    !vgic_supports_direct_msis(vcpu->kvm))
+		goto out;
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 
@@ -962,6 +967,20 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 	if (vgic_supports_direct_msis(vcpu->kvm))
 		vgic_v4_commit(vcpu);
+
+out:
+	if (vcpu_has_nv(vcpu) && unlikely(kvm_vgic_global_state.no_hw_deactivation)) {
+		struct vgic_irq *mi;
+
+		mi = vgic_get_irq(vcpu->kvm, vcpu, vcpu->kvm->arch.vgic.maint_irq);
+
+		if (irq_is_pending(mi) || mi->active) {
+			sysreg_clear_set_s(SYS_ICH_HCR_EL2, ICH_HCR_EN, 0);
+			isb();
+		}
+
+		vgic_put_irq(vcpu->kvm, mi);
+	}
 }
 
 void kvm_vgic_load(struct kvm_vcpu *vcpu)

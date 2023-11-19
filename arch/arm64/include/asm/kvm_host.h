@@ -883,6 +883,7 @@ struct kvm_vcpu_arch {
 
 /* vcpu entered with HCR_EL2.E2H set */
 #define VCPU_HCR_E2H		__vcpu_single_flag(oflags, BIT(0))
+#define VGIC_MI_PENDING		__vcpu_single_flag(oflags, BIT(1))
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
 #define vcpu_sve_pffr(vcpu) (kern_hyp_va((vcpu)->arch.sve_state) +	\

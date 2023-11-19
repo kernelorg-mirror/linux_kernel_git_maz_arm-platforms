@@ -18,9 +18,15 @@
 #define CREATE_TRACE_POINTS
 #include "vgic-nested-trace.h"
 
+/*
+ * The shadow registers loaded to the hardware when running a L2 guest
+ * with the virtual IMO/FMO bits set.
+ */
+static DEFINE_PER_CPU(struct vgic_v3_cpu_if, shadow_cpuif);
+
 static inline struct vgic_v3_cpu_if *vcpu_shadow_if(struct kvm_vcpu *vcpu)
 {
-	return &vcpu->arch.vgic_cpu.shadow_vgic_v3;
+	return this_cpu_ptr(&shadow_cpuif);
 }
 
 static inline bool lr_triggers_eoi(u64 lr)
@@ -32,6 +38,9 @@ u16 vgic_v3_get_eisr(struct kvm_vcpu *vcpu)
 {
 	u16 reg = 0;
 	int i;
+
+	if (vgic_state_is_nested(vcpu))
+		return read_sysreg_s(SYS_ICH_EISR_EL2);
 
 	for (i = 0; i < kvm_vgic_global_state.nr_lr; i++) {
 		if (lr_triggers_eoi(__vcpu_sys_reg(vcpu, ICH_LRN(i))))
@@ -46,6 +55,9 @@ u16 vgic_v3_get_elrsr(struct kvm_vcpu *vcpu)
 	u16 reg = 0;
 	int i;
 
+	if (vgic_state_is_nested(vcpu))
+		return read_sysreg_s(SYS_ICH_ELRSR_EL2);
+
 	for (i = 0; i < kvm_vgic_global_state.nr_lr; i++) {
 		if (!(__vcpu_sys_reg(vcpu, ICH_LRN(i)) & ICH_LR_STATE))
 			reg |= BIT(i);
@@ -58,6 +70,9 @@ u64 vgic_v3_get_misr(struct kvm_vcpu *vcpu)
 {
 	int nr_lr = kvm_vgic_global_state.nr_lr;
 	u64 reg = 0;
+
+	if (vgic_state_is_nested(vcpu))
+		return read_sysreg_s(SYS_ICH_MISR_EL2);
 
 	if (vgic_v3_get_eisr(vcpu))
 		reg |= ICH_MISR_EOI;
@@ -89,6 +104,9 @@ static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu)
 		u64 lr = __vcpu_sys_reg(vcpu, ICH_LRN(i));
 		int l1_irq;
 
+		if (!(lr & ICH_LR_STATE))
+			lr = 0;
+
 		if (!(lr & ICH_LR_HW))
 			goto next;
 
@@ -111,6 +129,7 @@ static void vgic_v3_create_shadow_lr(struct kvm_vcpu *vcpu)
 		vgic_put_irq(vcpu->kvm, irq);
 
 next:
+		lr &= ~ICH_LR_EOI; /* Why? */
 		s_cpu_if->vgic_lr[i] = lr;
 		used_lrs = i + 1;
 	}
@@ -157,7 +176,7 @@ void vgic_v3_sync_nested(struct kvm_vcpu *vcpu)
 
 void vgic_v3_create_shadow_state(struct kvm_vcpu *vcpu)
 {
-	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.shadow_vgic_v3;
+	struct vgic_v3_cpu_if *s_cpu_if = vcpu_shadow_if(vcpu);
 	struct vgic_v3_cpu_if *host_if = &vcpu->arch.vgic_cpu.vgic_v3;
 	u64 val = 0;
 	int i;
@@ -171,15 +190,18 @@ void vgic_v3_create_shadow_state(struct kvm_vcpu *vcpu)
 	if (static_branch_unlikely(&vgic_v3_cpuif_trap))
 		val = host_if->vgic_hcr & (ICH_HCR_TALL0 | ICH_HCR_TALL1 |
 					   ICH_HCR_TC | ICH_HCR_TDIR);
-	cpu_if->vgic_hcr = __vcpu_sys_reg(vcpu, ICH_HCR_EL2) | val;
-	cpu_if->vgic_vmcr = __vcpu_sys_reg(vcpu, ICH_VMCR_EL2);
+	s_cpu_if->vgic_hcr = __vcpu_sys_reg(vcpu, ICH_HCR_EL2) | val;
+	s_cpu_if->vgic_vmcr = __vcpu_sys_reg(vcpu, ICH_VMCR_EL2);
+	s_cpu_if->vgic_sre = host_if->vgic_sre;
 
 	for (i = 0; i < 4; i++) {
-		cpu_if->vgic_ap0r[i] = __vcpu_sys_reg(vcpu, ICH_AP0RN(i));
-		cpu_if->vgic_ap1r[i] = __vcpu_sys_reg(vcpu, ICH_AP1RN(i));
+		s_cpu_if->vgic_ap0r[i] = __vcpu_sys_reg(vcpu, ICH_AP0RN(i));
+		s_cpu_if->vgic_ap1r[i] = __vcpu_sys_reg(vcpu, ICH_AP1RN(i));
 	}
 
 	vgic_v3_create_shadow_lr(vcpu);
+
+	vcpu->arch.vgic_cpu.current_cpu_if = s_cpu_if;
 }
 
 void vgic_v3_load_nested(struct kvm_vcpu *vcpu)
@@ -223,20 +245,21 @@ void vgic_v3_put_nested(struct kvm_vcpu *vcpu)
 		__vcpu_sys_reg(vcpu, ICH_AP1RN(i)) = s_cpu_if->vgic_ap1r[i];
 	}
 
-	for (i = 0; i < kvm_vgic_global_state.nr_lr; i++) {
+	for (i = 0; i < s_cpu_if->used_lrs; i++) {
 		val = __vcpu_sys_reg(vcpu, ICH_LRN(i));
 
 		val &= ~ICH_LR_STATE;
 		val |= s_cpu_if->vgic_lr[i] & ICH_LR_STATE;
 
 		__vcpu_sys_reg(vcpu, ICH_LRN(i)) = val;
+		s_cpu_if->vgic_lr[i] = 0;
 	}
 
 	irq_set_irqchip_state(kvm_vgic_global_state.maint_irq,
 			      IRQCHIP_STATE_ACTIVE, false);
 }
 
-void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
+void vgic_v3_check_nested_maint_irq(struct kvm_vcpu *vcpu)
 {
 	/*
 	 * If we exit a nested VM with a pending maintenance interrupt from the
@@ -250,10 +273,32 @@ void vgic_v3_handle_nested_maint_irq(struct kvm_vcpu *vcpu)
 		state  = __vcpu_sys_reg(vcpu, ICH_HCR_EL2) & ICH_HCR_EN;
 		state &= vgic_v3_get_misr(vcpu);
 
+#if 0
+		if (state) {
+			vcpu_set_flag(vcpu, VGIC_MI_PENDING);
+		} else {
+			vcpu_clear_flag(vcpu, VGIC_MI_PENDING);
+		}
+#else
 		kvm_vgic_inject_irq(vcpu->kvm, vcpu,
 				    vcpu->kvm->arch.vgic.maint_irq, state, vcpu);
+#endif
 	}
 
-	if (unlikely(kvm_vgic_global_state.no_hw_deactivation))
+	if (unlikely(kvm_vgic_global_state.no_hw_deactivation)) {
 		sysreg_clear_set_s(SYS_ICH_HCR_EL2, ICH_HCR_EN, 0);
+		isb();
+	}
+}
+
+void vgic_v3_sync_nested_maint_irq(struct kvm_vcpu *vcpu)
+{
+#if 0
+	if (vgic_state_is_nested(vcpu)) {
+		kvm_vgic_inject_irq(vcpu->kvm, vcpu,
+				    vcpu->kvm->arch.vgic.maint_irq,
+				    vcpu_get_flag(vcpu, VGIC_MI_PENDING), vcpu);
+		vcpu_clear_flag(vcpu, VGIC_MI_PENDING);
+	}
+#endif
 }

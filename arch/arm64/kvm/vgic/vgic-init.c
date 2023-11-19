@@ -536,7 +536,7 @@ static irqreturn_t vgic_maintenance_handler(int irq, void *data)
 	}
 
 	/* Assume nested from now */
-	vgic_v3_handle_nested_maint_irq(vcpu);
+	vgic_v3_check_nested_maint_irq(vcpu);
 	return IRQ_HANDLED;
 }
 

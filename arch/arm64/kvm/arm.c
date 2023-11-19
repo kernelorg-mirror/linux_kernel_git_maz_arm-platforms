@@ -786,6 +786,15 @@ static void kvm_vcpu_sleep(struct kvm_vcpu *vcpu)
 void kvm_vcpu_wfi(struct kvm_vcpu *vcpu)
 {
 	/*
+	 * If we're in nested state and the guest hypervisor does not trap
+	 * WFI, we're in a bit of trouble, as we don't have a good handle
+	 * on the interrupts that are pending for the guest yet. Revisit
+	 * this at some point.
+	 */
+	if (vgic_state_is_nested(vcpu))
+		return;
+
+	/*
 	 * Sync back the state of the GIC CPU interface so that we have
 	 * the latest PMR and group enables. This ensures that
 	 * kvm_arch_vcpu_runnable has up-to-date data to decide whether
@@ -864,8 +873,13 @@ static int check_vcpu_requests(struct kvm_vcpu *vcpu)
 		/*
 		 * Clear IRQ_PENDING requests that were made to guarantee
 		 * that a VCPU sees new virtual interrupts.
+		 *
+		 * If in a nested state, the interrupt was for the guest
+		 * hypervisor and we need to inject an exception into EL2.
 		 */
-		kvm_check_request(KVM_REQ_IRQ_PENDING, vcpu);
+		if (kvm_check_request(KVM_REQ_IRQ_PENDING, vcpu) &&
+		    vcpu_has_nv(vcpu) && vgic_state_is_nested(vcpu))
+			kvm_make_request(KVM_REQ_GUEST_HYP_IRQ_PENDING, vcpu);
 
 		if (kvm_check_request(KVM_REQ_RECORD_STEAL, vcpu))
 			kvm_update_stolen_time(vcpu);

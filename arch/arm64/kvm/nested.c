@@ -798,7 +798,12 @@ bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
 
 	WARN_ONCE(imo != fmo, "Separate virtual IRQ/FIQ settings not supported\n");
 
-	return vcpu_has_nv(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu);
+	if (vcpu_has_nv(vcpu) && imo && fmo && !is_hyp_ctxt(vcpu)) {
+		return true;
+	} else {
+		BUG_ON(vcpu->arch.vgic_cpu.current_cpu_if != &vcpu->arch.vgic_cpu.vgic_v3);
+		return false;
+	}
 }
 
 void check_nested_vcpu_requests(struct kvm_vcpu *vcpu)

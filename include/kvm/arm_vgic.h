@@ -332,15 +332,13 @@ struct vgic_cpu {
 		struct vgic_v3_cpu_if	vgic_v3;
 	};
 
-	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
-
 	/*
-	 * The shadow vif control register loaded to the hardware when
-	 * running a nested L2 guest with the virtual IMO/FMO bit set.
+	 * Pointer to the live CPU vif state. Normally set to vgic_v3,
+	 * but will be set to the per-CPU state when running a L2 guest.
 	 */
-	struct vgic_v3_cpu_if	shadow_vgic_v3;
-
 	struct vgic_v3_cpu_if	*current_cpu_if;
+
+	struct vgic_irq private_irqs[VGIC_NR_PRIVATE_IRQS];
 
 	raw_spinlock_t ap_list_lock;	/* Protects the ap_list */
 

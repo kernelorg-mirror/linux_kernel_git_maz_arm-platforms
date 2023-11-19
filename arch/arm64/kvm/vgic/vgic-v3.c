@@ -279,13 +279,6 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu)
 		vgic_v3->vgic_sre = (ICC_SRE_EL1_DIB |
 				     ICC_SRE_EL1_DFB |
 				     ICC_SRE_EL1_SRE);
-		/*
-		 * If nesting is allowed, force GICv3 onto the nested
-		 * guests as well by setting the shadow state to the
-		 * same value.
-		 */
-		if (vcpu_has_nv(vcpu))
-			vcpu->arch.vgic_cpu.shadow_vgic_v3.vgic_sre = vgic_v3->vgic_sre;
 		vcpu->arch.vgic_cpu.pendbaser = INITIAL_PENDBASER_VALUE;
 	} else {
 		vgic_v3->vgic_sre = 0;
@@ -739,8 +732,7 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 	 */
 	if (vgic_state_is_nested(vcpu)) {
 		vgic_v3_create_shadow_state(vcpu);
-		cpu_if = &vcpu->arch.vgic_cpu.shadow_vgic_v3;
-		vcpu->arch.vgic_cpu.current_cpu_if = cpu_if;
+		cpu_if = vcpu->arch.vgic_cpu.current_cpu_if;
 	}
 
 	/*

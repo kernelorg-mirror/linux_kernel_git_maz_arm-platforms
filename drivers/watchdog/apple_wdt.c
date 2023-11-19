@@ -192,7 +192,7 @@ static int apple_wdt_probe(struct platform_device *pdev)
 	return devm_watchdog_register_device(dev, &wdt->wdd);
 }
 
-static int apple_wdt_resume(struct device *dev)
+static int __maybe_unused apple_wdt_resume(struct device *dev)
 {
 	struct apple_wdt *wdt = dev_get_drvdata(dev);
 
@@ -202,7 +202,7 @@ static int apple_wdt_resume(struct device *dev)
 	return 0;
 }
 
-static int apple_wdt_suspend(struct device *dev)
+static int __maybe_unused apple_wdt_suspend(struct device *dev)
 {
 	struct apple_wdt *wdt = dev_get_drvdata(dev);
 

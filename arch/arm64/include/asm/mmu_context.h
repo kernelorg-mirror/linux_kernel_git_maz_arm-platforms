@@ -108,18 +108,13 @@ static inline void cpu_uninstall_idmap(void)
 		cpu_switch_mm(mm->pgd, mm);
 }
 
-static inline void __cpu_install_idmap(pgd_t *idmap)
+static inline void cpu_install_idmap(void)
 {
 	cpu_set_reserved_ttbr0();
 	local_flush_tlb_all();
 	cpu_set_idmap_tcr_t0sz();
 
-	cpu_switch_mm(lm_alias(idmap), &init_mm);
-}
-
-static inline void cpu_install_idmap(void)
-{
-	__cpu_install_idmap(idmap_pg_dir);
+	cpu_switch_mm(lm_alias(idmap_pg_dir), &init_mm);
 }
 
 /*
@@ -150,7 +145,7 @@ static inline void cpu_install_ttbr0(phys_addr_t ttbr0, unsigned long t0sz)
  * Atomically replaces the active TTBR1_EL1 PGD with a new VA-compatible PGD,
  * avoiding the possibility of conflicting TLB entries being allocated.
  */
-static inline void __cpu_replace_ttbr1(pgd_t *pgdp, pgd_t *idmap, bool cnp)
+static inline void __cpu_replace_ttbr1(pgd_t *pgdp, bool cnp)
 {
 	typedef void (ttbr_replace_func)(phys_addr_t);
 	extern ttbr_replace_func idmap_cpu_replace_ttbr1;
@@ -165,7 +160,7 @@ static inline void __cpu_replace_ttbr1(pgd_t *pgdp, pgd_t *idmap, bool cnp)
 
 	replace_phys = (void *)__pa_symbol(idmap_cpu_replace_ttbr1);
 
-	__cpu_install_idmap(idmap);
+	cpu_install_idmap();
 
 	/*
 	 * We really don't want to take *any* exceptions while TTBR1 is
@@ -180,17 +175,17 @@ static inline void __cpu_replace_ttbr1(pgd_t *pgdp, pgd_t *idmap, bool cnp)
 
 static inline void cpu_enable_swapper_cnp(void)
 {
-	__cpu_replace_ttbr1(lm_alias(swapper_pg_dir), idmap_pg_dir, true);
+	__cpu_replace_ttbr1(lm_alias(swapper_pg_dir), true);
 }
 
-static inline void cpu_replace_ttbr1(pgd_t *pgdp, pgd_t *idmap)
+static inline void cpu_replace_ttbr1(pgd_t *pgdp)
 {
 	/*
 	 * Only for early TTBR1 replacement before cpucaps are finalized and
 	 * before we've decided whether to use CNP.
 	 */
 	WARN_ON(system_capabilities_finalized());
-	__cpu_replace_ttbr1(pgdp, idmap, false);
+	__cpu_replace_ttbr1(pgdp, false);
 }
 
 /*

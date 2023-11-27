@@ -40,6 +40,7 @@ PROVIDE(__pi_vabits_actual		= vabits_actual);
 PROVIDE(__pi_id_aa64isar1_override	= id_aa64isar1_override);
 PROVIDE(__pi_id_aa64isar2_override	= id_aa64isar2_override);
 PROVIDE(__pi_id_aa64mmfr1_override	= id_aa64mmfr1_override);
+PROVIDE(__pi_id_aa64mmfr4_override	= id_aa64mmfr4_override);
 PROVIDE(__pi_id_aa64pfr0_override	= id_aa64pfr0_override);
 PROVIDE(__pi_id_aa64pfr1_override	= id_aa64pfr1_override);
 PROVIDE(__pi_id_aa64smfr0_override	= id_aa64smfr0_override);

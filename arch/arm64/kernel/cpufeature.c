@@ -140,12 +140,42 @@ void dump_cpu_features(void)
 	pr_emerg("0x%*pb\n", ARM64_NCAPS, &system_cpucaps);
 }
 
+#define __ARM64_MAX_POSITIVE(reg, field)				\
+		((reg##_##field##_SIGNED ?				\
+		  BIT(reg##_##field##_WIDTH - 1) :			\
+		  BIT(reg##_##field##_WIDTH)) - 1)
+
+#define __ARM64_MIN_NEGATIVE(reg, field)  BIT(reg##_##field##_WIDTH - 1)
+
+#define __ARM64_CPUID_FIELDS(reg, field, min_value, max_value)		\
+		.sys_reg = SYS_##reg,					\
+		.field_pos = reg##_##field##_SHIFT,			\
+		.field_width = reg##_##field##_WIDTH,			\
+		.sign = reg##_##field##_SIGNED,				\
+		.min_field_value = min_value,				\
+		.max_field_value = max_value,
+
+/*
+ * ARM64_CPUID_FIELDS() encodes a field with a range from min_value to
+ * an implicit maximum that depends on the sign-ess of the field.
+ *
+ * An unsigned field will be capped at all ones, while a signed field
+ * will be limited to the positive half only.
+ */
 #define ARM64_CPUID_FIELDS(reg, field, min_value)			\
-		.sys_reg = SYS_##reg,							\
-		.field_pos = reg##_##field##_SHIFT,						\
-		.field_width = reg##_##field##_WIDTH,						\
-		.sign = reg##_##field##_SIGNED,							\
-		.min_field_value = reg##_##field##_##min_value,
+	__ARM64_CPUID_FIELDS(reg, field,				\
+			     SYS_FIELD_VALUE(reg, field, min_value),	\
+			     __ARM64_MAX_POSITIVE(reg, field))
+
+/*
+ * ARM64_CPUID_FIELDS_NEG() encodes a field with a range from an
+ * implicit minimal value to max_value. This should be used when
+ * matching a non-implemented property.
+ */
+#define ARM64_CPUID_FIELDS_NEG(reg, field, max_value)			\
+	__ARM64_CPUID_FIELDS(reg, field,				\
+			     __ARM64_MIN_NEGATIVE(reg, field),		\
+			     SYS_FIELD_VALUE(reg, field, max_value))
 
 #define __ARM64_FTR_BITS(SIGNED, VISIBLE, STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL) \
 	{						\
@@ -407,6 +437,11 @@ static const struct arm64_ftr_bits ftr_id_aa64mmfr3[] = {
 	ARM64_FTR_END,
 };
 
+static const struct arm64_ftr_bits ftr_id_aa64mmfr4[] = {
+	S_ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64MMFR4_EL1_E2H0_SHIFT, 4, 0),
+	ARM64_FTR_END,
+};
+
 static const struct arm64_ftr_bits ftr_ctr[] = {
 	ARM64_FTR_BITS(FTR_VISIBLE, FTR_STRICT, FTR_EXACT, 31, 1, 1), /* RES1 */
 	ARM64_FTR_BITS(FTR_VISIBLE, FTR_STRICT, FTR_LOWER_SAFE, CTR_EL0_DIC_SHIFT, 1, 1),
@@ -656,6 +691,7 @@ static const struct arm64_ftr_bits ftr_raz[] = {
 	__ARM64_FTR_REG_OVERRIDE(#id, id, table, &no_override)
 
 struct arm64_ftr_override id_aa64mmfr1_override;
+struct arm64_ftr_override id_aa64mmfr4_override;
 struct arm64_ftr_override id_aa64pfr0_override;
 struct arm64_ftr_override id_aa64pfr1_override;
 struct arm64_ftr_override id_aa64zfr0_override;
@@ -724,6 +760,8 @@ static const struct __ftr_reg_entry {
 			       &id_aa64mmfr1_override),
 	ARM64_FTR_REG(SYS_ID_AA64MMFR2_EL1, ftr_id_aa64mmfr2),
 	ARM64_FTR_REG(SYS_ID_AA64MMFR3_EL1, ftr_id_aa64mmfr3),
+	ARM64_FTR_REG_OVERRIDE(SYS_ID_AA64MMFR4_EL1, ftr_id_aa64mmfr4,
+			       &id_aa64mmfr4_override),
 
 	/* Op1 = 1, CRn = 0, CRm = 0 */
 	ARM64_FTR_REG(SYS_GMID_EL1, ftr_gmid),
@@ -919,7 +957,8 @@ static void init_cpu_ftr_reg(u32 sys_reg, u64 new)
 				pr_warn("%s[%d:%d]: %s to %llx\n",
 					reg->name,
 					ftrp->shift + ftrp->width - 1,
-					ftrp->shift, str, tmp);
+					ftrp->shift, str,
+					tmp & (BIT(ftrp->width) - 1));
 		} else if ((ftr_mask & reg->override->val) == ftr_mask) {
 			reg->override->val &= ~ftr_mask;
 			pr_warn("%s[%d:%d]: impossible override, ignored\n",
@@ -1047,6 +1086,7 @@ void __init init_cpu_features(struct cpuinfo_arm64 *info)
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR1_EL1, info->reg_id_aa64mmfr1);
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR2_EL1, info->reg_id_aa64mmfr2);
 	init_cpu_ftr_reg(SYS_ID_AA64MMFR3_EL1, info->reg_id_aa64mmfr3);
+	init_cpu_ftr_reg(SYS_ID_AA64MMFR4_EL1, info->reg_id_aa64mmfr4);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR0_EL1, info->reg_id_aa64pfr0);
 	init_cpu_ftr_reg(SYS_ID_AA64PFR1_EL1, info->reg_id_aa64pfr1);
 	init_cpu_ftr_reg(SYS_ID_AA64ZFR0_EL1, info->reg_id_aa64zfr0);
@@ -1470,11 +1510,28 @@ has_always(const struct arm64_cpu_capabilities *entry, int scope)
 static bool
 feature_matches(u64 reg, const struct arm64_cpu_capabilities *entry)
 {
-	int val = cpuid_feature_extract_field_width(reg, entry->field_pos,
-						    entry->field_width,
-						    entry->sign);
+	int val, min, max;
+	u64 tmp;
 
-	return val >= entry->min_field_value;
+	val = cpuid_feature_extract_field_width(reg, entry->field_pos,
+						entry->field_width,
+						entry->sign);
+
+	tmp = entry->min_field_value;
+	tmp <<= entry->field_pos;
+
+	min = cpuid_feature_extract_field_width(tmp, entry->field_pos,
+						entry->field_width,
+						entry->sign);
+
+	tmp = entry->max_field_value;
+	tmp <<= entry->field_pos;
+
+	max = cpuid_feature_extract_field_width(tmp, entry->field_pos,
+						entry->field_width,
+						entry->sign);
+
+	return val >= min && val <= max;
 }
 
 static u64
@@ -2690,6 +2747,20 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64MMFR2_EL1, EVT, IMP)
+	},
+	{
+		.desc = "FEAT_E2H0 not implemented",
+		.capability = ARM64_HCR_E2H_RES1,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_cpuid_feature,
+		ARM64_CPUID_FIELDS_NEG(ID_AA64MMFR4_EL1, E2H0, NI)
+	},
+	{
+		.desc = "FEAT_E2H0 not implemented (NV1 RES0)",
+		.capability = ARM64_HCR_NV1_RES0,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_cpuid_feature,
+		ARM64_CPUID_FIELDS_NEG(ID_AA64MMFR4_EL1, E2H0, NI_NV1)
 	},
 	{},
 };

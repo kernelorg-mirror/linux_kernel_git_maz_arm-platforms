@@ -63,6 +63,15 @@ static const struct ftr_set_desc mmfr1 __prel64_initconst = {
 	},
 };
 
+static const struct ftr_set_desc mmfr4 __prel64_initconst = {
+	.name		= "id_aa64mmfr4",
+	.override	= &id_aa64mmfr4_override,
+	.fields		= {
+		FIELD("e2h0", ID_AA64MMFR4_EL1_E2H0_SHIFT, NULL ),
+		{}
+	},
+};
+
 static bool __init pfr0_sve_filter(u64 val)
 {
 	/*
@@ -173,6 +182,7 @@ static const union {
 	prel64_t			reg_prel;
 } regs[] __prel64_initconst = {
 	{ .reg = &mmfr1		},
+	{ .reg = &mmfr4		},
 	{ .reg = &pfr0 		},
 	{ .reg = &pfr1 		},
 	{ .reg = &isar1		},
@@ -341,6 +351,66 @@ static __init void parse_cmdline(const void *fdt, int chosen)
 		__parse_cmdline(prop, true);
 }
 
+struct midr_override_data {
+	const char		feature[FTR_ALIAS_OPTION_LEN];
+	const struct midr_range	ranges[];
+};
+
+static const struct midr_override_data e2h0_ni __prel64_initconst = {
+	/*
+	 * These CPUs predate FEAT_E2H0, but have HCR_EL2.E2H RES1
+	 * anyway.
+	 */
+	.feature	= "id_aa64mmfr4.e2h0=0xf",
+	.ranges	= {
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM_PRO),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM_PRO),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_ICESTORM_MAX),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M1_FIRESTORM_MAX),
+		{}
+	},
+};
+
+static const struct midr_override_data e2h0_nv1_ni __prel64_initconst = {
+	/*
+	 * These CPUs predate FEAT_E2H0, but have both HCR_EL2.E2H
+	 * RES1 and a non-functional HCR_EL2.NV1.
+	 */
+	.feature	= "id_aa64mmfr4.e2h0=0xe",
+	.ranges	= {
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_BLIZZARD),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_AVALANCHE),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_BLIZZARD_PRO),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_AVALANCHE_PRO),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_BLIZZARD_MAX),
+		MIDR_ALL_VERSIONS(MIDR_APPLE_M2_AVALANCHE_MAX),
+		{}
+	},
+};
+
+static const union {
+	const struct midr_override_data	*data;
+	prel64_t			data_prel;
+} midr_ovr_data[] __prel64_initconst = {
+	{ .data	= &e2h0_ni },
+	{ .data	= &e2h0_nv1_ni },
+};
+
+static void __init apply_midr_overrides(void)
+{
+	const u64 midr = read_cpuid_id();
+
+	for (int i = 0; i < ARRAY_SIZE(midr_ovr_data); i++) {
+		const struct midr_override_data *data;
+
+		data = prel64_to_pointer(&midr_ovr_data[i].data_prel);
+		if (is_midr_in_range_list(midr, data->ranges))
+			__parse_cmdline(data->feature, false);
+	}
+}
+
 void __init init_feature_override(u64 boot_status, const void *fdt,
 				  int chosen)
 {
@@ -357,6 +427,8 @@ void __init init_feature_override(u64 boot_status, const void *fdt,
 	}
 
 	__boot_status = boot_status;
+
+	apply_midr_overrides();
 
 	parse_cmdline(fdt, chosen);
 

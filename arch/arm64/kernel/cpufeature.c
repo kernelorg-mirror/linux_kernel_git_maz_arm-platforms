@@ -1594,17 +1594,18 @@ static bool has_no_hw_prefetch(const struct arm64_cpu_capabilities *entry, int _
 		MIDR_CPU_VAR_REV(1, MIDR_REVISION_MASK));
 }
 
+static u64 get_scoped_ctr_el0(int scope)
+{
+	if (scope == SCOPE_SYSTEM)
+		return arm64_ftr_reg_ctrel0.sys_val;
+
+	return read_cpuid_effective_cachetype();
+}
+
 static bool has_cache_idc(const struct arm64_cpu_capabilities *entry,
 			  int scope)
 {
-	u64 ctr;
-
-	if (scope == SCOPE_SYSTEM)
-		ctr = arm64_ftr_reg_ctrel0.sys_val;
-	else
-		ctr = read_cpuid_effective_cachetype();
-
-	return ctr & BIT(CTR_EL0_IDC_SHIFT);
+	return get_scoped_ctr_el0(scope) & BIT(CTR_EL0_IDC_SHIFT);
 }
 
 static void cpu_emulate_effective_ctr(const struct arm64_cpu_capabilities *__unused)
@@ -1622,14 +1623,13 @@ static void cpu_emulate_effective_ctr(const struct arm64_cpu_capabilities *__unu
 static bool has_cache_dic(const struct arm64_cpu_capabilities *entry,
 			  int scope)
 {
-	u64 ctr;
+	return get_scoped_ctr_el0(scope) & BIT(CTR_EL0_DIC_SHIFT);
+}
 
-	if (scope == SCOPE_SYSTEM)
-		ctr = arm64_ftr_reg_ctrel0.sys_val;
-	else
-		ctr = read_cpuid_cachetype();
-
-	return ctr & BIT(CTR_EL0_DIC_SHIFT);
+static bool has_pipt_icache(const struct arm64_cpu_capabilities *entry,
+			    int scope)
+{
+	return FIELD_GET(CTR_EL0_L1Ip_MASK, get_scoped_ctr_el0(scope)) == CTR_EL0_L1Ip_PIPT;
 }
 
 static bool __maybe_unused
@@ -2271,6 +2271,12 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.capability = ARM64_ALWAYS_SYSTEM,
 		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
 		.matches = has_always,
+	},
+	{
+		.desc = "PIPT I-cache policy",
+		.capability = ARM64_ICACHE_PIPT,
+		.type = ARM64_CPUCAP_SYSTEM_FEATURE,
+		.matches = has_pipt_icache,
 	},
 	{
 		.desc = "GIC system register CPU interface",

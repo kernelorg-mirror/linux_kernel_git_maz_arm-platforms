@@ -37,9 +37,9 @@
 
 #ifndef __ASSEMBLY__
 
-#include <linux/bitops.h>
 #include <linux/kasan-enabled.h>
 
+#include <asm/cpufeature.h>
 #include <asm/cputype.h>
 #include <asm/mte-def.h>
 #include <asm/sysreg.h>
@@ -55,18 +55,13 @@ static inline unsigned int arch_slab_minalign(void)
 #define arch_slab_minalign() arch_slab_minalign()
 #endif
 
-#define CTR_L1IP(ctr)		SYS_FIELD_GET(CTR_EL0, L1Ip, ctr)
-
-#define ICACHEF_ALIASING	0
-extern unsigned long __icache_flags;
-
 /*
  * Whilst the D-side always behaves as PIPT on AArch64, aliasing is
  * permitted in the I-cache.
  */
-static inline int icache_is_aliasing(void)
+static __always_inline int icache_is_aliasing(void)
 {
-	return test_bit(ICACHEF_ALIASING, &__icache_flags);
+	return !alternative_has_cap_likely(ARM64_ICACHE_PIPT);
 }
 
 static inline u32 cache_type_cwg(void)

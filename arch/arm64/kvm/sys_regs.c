@@ -4119,13 +4119,10 @@ static bool emulate_sys_reg(struct kvm_vcpu *vcpu,
 	return false;
 }
 
-static int emulate_sys_instr(struct kvm_vcpu *vcpu, struct sys_reg_params *p)
+static int emulate_sys_instr(struct kvm_vcpu *vcpu,
+			     const struct sys_reg_desc *r,
+			     struct sys_reg_params *p)
 {
-	const struct sys_reg_desc *r;
-
-	/* Search from the system instruction table. */
-	r = find_reg(p, sys_insn_descs, ARRAY_SIZE(sys_insn_descs));
-
 	if (likely(r)) {
 		perform_access(vcpu, p, r);
 	} else {
@@ -4219,7 +4216,10 @@ int kvm_handle_sys_reg(struct kvm_vcpu *vcpu)
 	}
 
 	/* Hints, PSTATE (Op0 == 0) and System instructions (Op0 == 1) */
-	return emulate_sys_instr(vcpu, &params);
+	if (sr_idx >= 0)
+		desc = &sys_insn_descs[sr_idx];
+
+	return emulate_sys_instr(vcpu, desc, &params);
 }
 
 /******************************************************************************
@@ -4693,6 +4693,9 @@ int __init kvm_sys_reg_table_init(void)
 
 	for (i = 0; !ret && i < ARRAY_SIZE(sys_reg_descs); i++)
 		ret = populate_sysreg_config(sys_reg_descs + i, i);
+
+	for (i = 0; !ret && i < ARRAY_SIZE(sys_insn_descs); i++)
+		ret = populate_sysreg_config(sys_insn_descs + i, i);
 
 	return ret;
 }

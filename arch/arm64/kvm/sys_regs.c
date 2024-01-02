@@ -3902,7 +3902,9 @@ static int kvm_handle_cp_64(struct kvm_vcpu *vcpu,
 	return 1;
 }
 
-static bool emulate_sys_reg(struct kvm_vcpu *vcpu, struct sys_reg_params *params);
+static bool emulate_sys_reg(struct kvm_vcpu *vcpu,
+			    const struct sys_reg_desc *sr,
+			    struct sys_reg_params *params);
 
 /*
  * The CP10 ID registers are architecturally mapped to AArch64 feature
@@ -3969,7 +3971,7 @@ int kvm_handle_cp10_id(struct kvm_vcpu *vcpu)
 		return 1;
 	}
 
-	if (emulate_sys_reg(vcpu, &params))
+	if (emulate_sys_reg(vcpu, NULL, &params))
 		vcpu_set_reg(vcpu, Rt, params.regval);
 
 	return 1;
@@ -4012,7 +4014,7 @@ static int kvm_emulate_cp15_id_reg(struct kvm_vcpu *vcpu,
 	 */
 	if (params->CRm > 3)
 		params->regval = 0;
-	else if (!emulate_sys_reg(vcpu, params))
+	else if (!emulate_sys_reg(vcpu, NULL, params))
 		return 1;
 
 	vcpu_set_reg(vcpu, Rt, params->regval);
@@ -4089,16 +4091,17 @@ static bool is_imp_def_sys_reg(struct sys_reg_params *params)
 /**
  * emulate_sys_reg - Emulate a guest access to an AArch64 system register
  * @vcpu: The VCPU pointer
+ * @r: Pointer to the system register descriptor, potentially NULL
  * @params: Decoded system register parameters
  *
  * Return: true if the system register access was successful, false otherwise.
  */
 static bool emulate_sys_reg(struct kvm_vcpu *vcpu,
-			   struct sys_reg_params *params)
+			    const struct sys_reg_desc *r,
+			    struct sys_reg_params *params)
 {
-	const struct sys_reg_desc *r;
-
-	r = find_reg(params, sys_reg_descs, ARRAY_SIZE(sys_reg_descs));
+	if (!r)
+		r = find_reg(params, sys_reg_descs, ARRAY_SIZE(sys_reg_descs));
 
 	if (likely(r)) {
 		perform_access(vcpu, params, r);
@@ -4201,7 +4204,7 @@ int kvm_handle_sys_reg(struct kvm_vcpu *vcpu)
 
 	/* System register? */
 	if (params.Op0 == 2 || params.Op0 == 3) {
-		if (!emulate_sys_reg(vcpu, &params))
+		if (!emulate_sys_reg(vcpu, NULL, &params))
 			return 1;
 
 		if (!params.is_write)

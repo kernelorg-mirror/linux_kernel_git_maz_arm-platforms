@@ -681,6 +681,8 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 			return ret;
 	}
 
+	kvm_init_sysreg(vcpu->kvm);
+
 	if (vcpu_has_nv(vcpu)) {
 		ret = kvm_init_nv_sysregs(vcpu->kvm);
 		if (ret)

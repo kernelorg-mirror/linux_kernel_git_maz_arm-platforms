@@ -4190,13 +4190,15 @@ void kvm_reset_sys_regs(struct kvm_vcpu *vcpu)
  */
 int kvm_handle_sys_reg(struct kvm_vcpu *vcpu)
 {
+	const struct sys_reg_desc *desc = NULL;
 	struct sys_reg_params params;
 	unsigned long esr = kvm_vcpu_get_esr(vcpu);
 	int Rt = kvm_vcpu_sys_get_rt(vcpu);
+	int sr_idx;
 
 	trace_kvm_handle_sys_reg(esr);
 
-	if (__check_nv_sr_forward(vcpu))
+	if (__check_nv_sr_forward(vcpu, &sr_idx))
 		return 1;
 
 	params = esr_sys64_to_params(esr);
@@ -4204,7 +4206,10 @@ int kvm_handle_sys_reg(struct kvm_vcpu *vcpu)
 
 	/* System register? */
 	if (params.Op0 == 2 || params.Op0 == 3) {
-		if (!emulate_sys_reg(vcpu, NULL, &params))
+		if (sr_idx >= 0)
+			desc = &sys_reg_descs[sr_idx];
+
+		if (!emulate_sys_reg(vcpu, desc, &params))
 			return 1;
 
 		if (!params.is_write)

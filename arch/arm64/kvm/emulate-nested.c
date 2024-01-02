@@ -1957,16 +1957,13 @@ static bool check_fgt_bit(u64 val, const union trap_config tc)
 		(__val);				\
 	})
 
-bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
+bool __check_nv_sr_forward(struct kvm_vcpu *vcpu, int *sr_index)
 {
 	union trap_config tc;
 	enum trap_behaviour b;
 	bool is_read;
 	u32 sysreg;
 	u64 esr, val;
-
-	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
-		return false;
 
 	esr = kvm_vcpu_get_esr(vcpu);
 	sysreg = esr_sys64_to_sysreg(esr);
@@ -1978,13 +1975,16 @@ bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 	 * A value of 0 for the whole entry means that we know nothing
 	 * for this sysreg, and that it cannot be re-injected into the
 	 * nested hypervisor. In this situation, let's cut it short.
-	 *
-	 * Note that ultimately, we could also make use of the xarray
-	 * to store the index of the sysreg in the local descriptor
-	 * array, avoiding another search... Hint, hint...
 	 */
 	if (!tc.val)
-		return false;
+		goto local;
+
+	/*
+	 * If we're not nesting, immediately return to the caller, with the
+	 * sysreg index, should we have it.
+	 */
+	if (!vcpu_has_nv(vcpu) || is_hyp_ctxt(vcpu))
+		goto local;
 
 	switch ((enum fgt_group_id)tc.fgt) {
 	case __NO_FGT_GROUP__:
@@ -2027,7 +2027,7 @@ bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 	case __NR_FGT_GROUP_IDS__:
 		/* Something is really wrong, bail out */
 		WARN_ONCE(1, "__NR_FGT_GROUP_IDS__");
-		return false;
+		goto local;
 	}
 
 	if (tc.fgt != __NO_FGT_GROUP__ && check_fgt_bit(val, tc))
@@ -2039,6 +2039,8 @@ bool __check_nv_sr_forward(struct kvm_vcpu *vcpu)
 	    ((b & BEHAVE_FORWARD_WRITE) && !is_read))
 		goto inject;
 
+local:
+	*sr_index = tc.msr ? tc.msr - 1 : -ENOENT;
 	return false;
 
 inject:

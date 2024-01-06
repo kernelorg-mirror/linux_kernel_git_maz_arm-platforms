@@ -12,6 +12,7 @@
 #include <linux/bitfield.h>
 #include <linux/bsearch.h>
 #include <linux/cacheinfo.h>
+#include <linux/debugfs.h>
 #include <linux/kvm_host.h>
 #include <linux/mm.h>
 #include <linux/printk.h>
@@ -4134,6 +4135,73 @@ static int emulate_sys_instr(struct kvm_vcpu *vcpu,
 	return 1;
 }
 
+static void *idregs_debug_start(struct seq_file *s, loff_t *pos)
+{
+	struct kvm *kvm = s->private;
+	u8 *iter;
+
+	mutex_lock(&kvm->arch.config_lock);
+
+	iter = &kvm->arch.idreg_debugfs_iter;
+	if (*iter == ~0)
+		*iter = *pos;
+	else
+		iter = ERR_PTR(-EBUSY);
+
+	mutex_unlock(&kvm->arch.config_lock);
+
+	return iter;
+}
+
+static void *idregs_debug_next(struct seq_file *s, void *v, loff_t *pos)
+{
+	struct kvm *kvm = s->private;
+
+	(*pos)++;
+	kvm->arch.idreg_debugfs_iter++;
+
+	if (kvm->arch.idreg_debugfs_iter < KVM_ARM_ID_REG_NUM)
+		return &kvm->arch.idreg_debugfs_iter;
+
+	return NULL;
+}
+
+static void idregs_debug_stop(struct seq_file *s, void *v)
+{
+	struct kvm *kvm = s->private;
+
+	if (IS_ERR(v))
+		return;
+
+	mutex_lock(&kvm->arch.config_lock);
+
+	kvm->arch.idreg_debugfs_iter = ~0;
+
+	mutex_unlock(&kvm->arch.config_lock);
+}
+
+static int idregs_debug_show(struct seq_file *s, void *v)
+{
+	struct kvm *kvm = s->private;
+	const struct sys_reg_desc *desc;
+
+	desc = first_idreg + kvm->arch.idreg_debugfs_iter;
+
+	seq_printf(s, "%s:\t%016llx\n",
+		   desc->name, IDREG(kvm, kvm->arch.idreg_debugfs_iter));
+
+	return 0;
+}
+
+static const struct seq_operations idregs_debug_sops = {
+	.start	= idregs_debug_start,
+	.next	= idregs_debug_next,
+	.stop	= idregs_debug_stop,
+	.show	= idregs_debug_show,
+};
+
+DEFINE_SEQ_ATTRIBUTE(idregs_debug);
+
 static void kvm_reset_id_regs(struct kvm_vcpu *vcpu)
 {
 	const struct sys_reg_desc *idreg = first_idreg;
@@ -4152,6 +4220,11 @@ static void kvm_reset_id_regs(struct kvm_vcpu *vcpu)
 		idreg++;
 		id = reg_to_encoding(idreg);
 	}
+
+	kvm->arch.idreg_debugfs_iter = ~0;
+
+	debugfs_create_file("idregs", 0444, kvm->debugfs_dentry, kvm,
+			    &idregs_debug_fops);
 
 	set_bit(KVM_ARCH_FLAG_ID_REGS_INITIALIZED, &kvm->arch.flags);
 }

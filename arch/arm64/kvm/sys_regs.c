@@ -4733,11 +4733,23 @@ int kvm_vm_ioctl_get_reg_writable_masks(struct kvm *kvm, struct reg_mask_range *
 	return 0;
 }
 
+#define get_idreg_field(kvm, id, fld)					\
+	({								\
+		u64 __val = (kvm)->arch.id_regs[IDREG_IDX(SYS_##id)];	\
+		__val &= id##_##fld##_MASK;				\
+		__val >>= id##_##fld##_SHIFT;				\
+									\
+		__val;							\
+	})
+
 void kvm_init_sysreg(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
 
 	mutex_lock(&kvm->arch.config_lock);
+
+	if (get_idreg_field(kvm, ID_AA64ISAR0_EL1, TLB) < ID_AA64ISAR0_EL1_TLB_OS)
+		vcpu->arch.hcr_el2 |= HCR_TTLBOS;
 
 	if (test_bit(KVM_ARCH_FLAG_FGU_INITIALIZED, &kvm->arch.flags))
 		goto out;
@@ -4750,6 +4762,33 @@ void kvm_init_sysreg(struct kvm_vcpu *vcpu)
 				       HFGxTR_EL2_nACCDATA_EL1		|
 				       HFGxTR_EL2_nSMPRI_EL1_MASK	|
 				       HFGxTR_EL2_nTPIDR2_EL0_MASK);
+
+	if (get_idreg_field(kvm, ID_AA64ISAR0_EL1, TLB) < ID_AA64ISAR0_EL1_TLB_OS)
+		kvm->arch.fgu[HFGITR_GROUP] |= (HFGITR_EL2_TLBIRVAALE1OS|
+						HFGITR_EL2_TLBIRVALE1OS	|
+						HFGITR_EL2_TLBIRVAAE1OS	|
+						HFGITR_EL2_TLBIRVAE1OS	|
+						HFGITR_EL2_TLBIVAALE1OS	|
+						HFGITR_EL2_TLBIVALE1OS	|
+						HFGITR_EL2_TLBIVAAE1OS	|
+						HFGITR_EL2_TLBIASIDE1OS	|
+						HFGITR_EL2_TLBIVAE1OS	|
+						HFGITR_EL2_TLBIVMALLE1OS);
+
+	if (get_idreg_field(kvm, ID_AA64ISAR0_EL1, TLB) < ID_AA64ISAR0_EL1_TLB_RANGE)
+		kvm->arch.fgu[HFGITR_GROUP] |= (HFGITR_EL2_TLBIRVAALE1	|
+						HFGITR_EL2_TLBIRVALE1	|
+						HFGITR_EL2_TLBIRVAAE1	|
+						HFGITR_EL2_TLBIRVAE1	|
+						HFGITR_EL2_TLBIRVAALE1IS|
+						HFGITR_EL2_TLBIRVALE1IS	|
+						HFGITR_EL2_TLBIRVAAE1IS	|
+						HFGITR_EL2_TLBIRVAE1IS	|
+						HFGITR_EL2_TLBIRVAALE1OS|
+						HFGITR_EL2_TLBIRVALE1OS	|
+						HFGITR_EL2_TLBIRVAAE1OS	|
+						HFGITR_EL2_TLBIRVAE1OS);
+
 
 	set_bit(KVM_ARCH_FLAG_FGU_INITIALIZED, &kvm->arch.flags);
 out:

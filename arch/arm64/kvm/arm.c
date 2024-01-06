@@ -681,8 +681,6 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 			return ret;
 	}
 
-	kvm_init_sysreg(vcpu->kvm);
-
 	if (vcpu_has_nv(vcpu)) {
 		ret = kvm_init_nv_sysregs(vcpu->kvm);
 		if (ret)
@@ -692,6 +690,12 @@ int kvm_arch_vcpu_run_pid_change(struct kvm_vcpu *vcpu)
 		if (ret)
 			return ret;
 	}
+
+	/*
+	 * This needs to happen after NV has imposed its own restrictions on
+	 * the feature set
+	 */
+	kvm_init_sysreg(vcpu);
 
 	ret = kvm_timer_enable(vcpu);
 	if (ret)

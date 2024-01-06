@@ -4733,8 +4733,10 @@ int kvm_vm_ioctl_get_reg_writable_masks(struct kvm *kvm, struct reg_mask_range *
 	return 0;
 }
 
-void kvm_init_sysreg(struct kvm *kvm)
+void kvm_init_sysreg(struct kvm_vcpu *vcpu)
 {
+	struct kvm *kvm = vcpu->kvm;
+
 	mutex_lock(&kvm->arch.config_lock);
 
 	if (test_bit(KVM_ARCH_FLAG_FGU_INITIALIZED, &kvm->arch.flags))

@@ -4143,10 +4143,13 @@ static void *idregs_debug_start(struct seq_file *s, loff_t *pos)
 	mutex_lock(&kvm->arch.config_lock);
 
 	iter = &kvm->arch.idreg_debugfs_iter;
-	if (*iter == ~0)
+	if (*iter == (u8)~0) {
 		*iter = *pos;
-	else
+		if (*iter >= KVM_ARM_ID_REG_NUM)
+			iter = NULL;
+	} else {
 		iter = ERR_PTR(-EBUSY);
+	}
 
 	mutex_unlock(&kvm->arch.config_lock);
 
@@ -4158,10 +4161,12 @@ static void *idregs_debug_next(struct seq_file *s, void *v, loff_t *pos)
 	struct kvm *kvm = s->private;
 
 	(*pos)++;
-	kvm->arch.idreg_debugfs_iter++;
 
-	if (kvm->arch.idreg_debugfs_iter < KVM_ARM_ID_REG_NUM)
+	if ((kvm->arch.idreg_debugfs_iter + 1) < KVM_ARM_ID_REG_NUM) {
+		kvm->arch.idreg_debugfs_iter++;
+
 		return &kvm->arch.idreg_debugfs_iter;
+	}
 
 	return NULL;
 }
@@ -4187,8 +4192,11 @@ static int idregs_debug_show(struct seq_file *s, void *v)
 
 	desc = first_idreg + kvm->arch.idreg_debugfs_iter;
 
-	seq_printf(s, "%s:\t%016llx\n",
-		   desc->name, IDREG(kvm, kvm->arch.idreg_debugfs_iter));
+	if (!desc->name)
+		return 0;
+
+	seq_printf(s, "%20s:\t%016llx\n",
+		   desc->name, IDREG(kvm, IDX_IDREG(kvm->arch.idreg_debugfs_iter)));
 
 	return 0;
 }

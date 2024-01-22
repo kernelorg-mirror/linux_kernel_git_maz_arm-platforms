@@ -18,7 +18,6 @@
 
 #include <linux/bitfield.h>
 #include <linux/bits.h>
-#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>

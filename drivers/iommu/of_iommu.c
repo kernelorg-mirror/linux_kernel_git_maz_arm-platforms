@@ -258,8 +258,13 @@ void of_iommu_get_resv_regions(struct device *dev, struct list_head *list)
 				}
 				type = iommu_resv_region_get_type(dev, &phys, iova, length);
 
-				region = iommu_alloc_resv_region(iova, length, prot, type,
+				if (type == IOMMU_RESV_TRANSLATED)
+					region = iommu_alloc_resv_region_tr(phys.start, iova, length, prot, type,
+								    GFP_KERNEL);
+				else
+					region = iommu_alloc_resv_region(iova, length, prot, type,
 								 GFP_KERNEL);
+
 				if (region)
 					list_add_tail(&region->list, list);
 			}

@@ -492,6 +492,17 @@ struct kvm_cpu_context {
 	u64 *vncr_array;
 };
 
+/*
+ * This structure is instanciated on a per-CPU basis, and contains
+ * data that is:
+ *
+ * - tied to a single physical CPU, and
+ * - either have a lifetime that does not extend past vcpu_put()
+ * - or is an invariant for the lifetime of the system
+ *
+ * Use host_data_ptr(field) as a way to access a pointer to such a
+ * field.
+ */
 struct kvm_host_data {
 	struct kvm_cpu_context host_ctxt;
 };
@@ -1113,6 +1124,8 @@ void kvm_set_sei_esr(struct kvm_vcpu *vcpu, u64 syndrome);
 struct kvm_vcpu *kvm_mpidr_to_vcpu(struct kvm *kvm, unsigned long mpidr);
 
 DECLARE_KVM_HYP_PER_CPU(struct kvm_host_data, kvm_host_data);
+
+#define host_data_ptr(f)	(&this_cpu_ptr(&kvm_host_data)->f)
 
 static inline void kvm_init_host_cpu_context(struct kvm_cpu_context *cpu_ctxt)
 {

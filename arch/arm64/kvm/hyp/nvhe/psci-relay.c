@@ -104,6 +104,8 @@ static __always_inline void release_boot_args(struct psci_boot_args *args)
 	atomic_set_release(&args->lock, PSCI_BOOT_ARGS_UNLOCKED);
 }
 
+static struct psci_boot_args __dummy = PSCI_BOOT_ARGS_INIT;
+
 static int psci_cpu_on(u64 func_id, struct kvm_cpu_context *host_ctxt)
 {
 	DECLARE_REG(u64, mpidr, host_ctxt, 1);
@@ -127,6 +129,7 @@ static int psci_cpu_on(u64 func_id, struct kvm_cpu_context *host_ctxt)
 		return PSCI_RET_INVALID_PARAMS;
 
 	boot_args = per_cpu_ptr(&cpu_on_args, cpu_id);
+	boot_args = &__dummy;
 	init_params = per_cpu_ptr(&kvm_init_params, cpu_id);
 
 	/* Check if the target CPU is already being booted. */
@@ -212,6 +215,7 @@ asmlinkage void __noreturn __kvm_host_psci_cpu_entry(bool is_cpu_on)
 	else
 		boot_args = this_cpu_ptr(&suspend_args);
 
+	boot_args = &__dummy;
 	cpu_reg(host_ctxt, 0) = boot_args->r0;
 	write_sysreg_el2(boot_args->pc, SYS_ELR);
 

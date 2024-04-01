@@ -36,6 +36,8 @@
 #include "physical_location.h"
 #include "power/power.h"
 
+#define get_dev_from_fwnode(fwnode)	get_device((fwnode)->dev)
+
 /* Device links support. */
 static LIST_HEAD(deferred_sync);
 static unsigned int defer_sync_state_count = 1;
@@ -1899,8 +1901,6 @@ static void fw_devlink_unblock_consumers(struct device *dev)
 		fw_devlink_relax_link(link);
 	device_links_write_unlock();
 }
-
-#define get_dev_from_fwnode(fwnode)	get_device((fwnode)->dev)
 
 static bool fwnode_init_without_drv(struct fwnode_handle *fwnode)
 {

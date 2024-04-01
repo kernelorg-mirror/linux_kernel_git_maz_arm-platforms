@@ -1931,7 +1931,7 @@ static const struct phy_ops apple_atc_dp_phy_ops = {
 };
 
 static struct phy *atcphy_xlate(struct device *dev,
-				struct of_phandle_args *args)
+				const struct of_phandle_args *args)
 {
 	struct apple_atcphy *atcphy = dev_get_drvdata(dev);
 

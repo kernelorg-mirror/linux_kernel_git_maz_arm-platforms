@@ -199,6 +199,13 @@ SYM_CODE_START_LOCAL(__kvm_hyp_init_cpu)
 2:	msr	SPsel, #1			// We want to use SP_EL{1,2}
 
 	/* Initialize EL2 CPU state to sane values. */
+	mrs_s	x1, SYS_ID_AA64MMFR4_EL1
+	tbz	x1, #(ID_AA64MMFR4_EL1_E2H0_SHIFT + ID_AA64MMFR4_EL1_E2H0_WIDTH - 1), 3f
+
+	mrs	x0, hcr_el2
+	orr	x0, x0, #HCR_E2H
+	msr	hcr_el2, x0
+3:
 	init_el2_state				// Clobbers x0..x2
 	finalise_el2_state
 	__init_el2_nvhe_prepare_eret
@@ -251,6 +258,11 @@ reset:
 
 alternative_if ARM64_KVM_PROTECTED_MODE
 	mov_q	x5, HCR_HOST_NVHE_FLAGS
+
+	mrs_s	x6, SYS_ID_AA64MMFR4_EL1
+	tbz	x6, #(ID_AA64MMFR4_EL1_E2H0_SHIFT + ID_AA64MMFR4_EL1_E2H0_WIDTH - 1), 2f
+	orr	x5, x5, #HCR_E2H
+2:
 	msr	hcr_el2, x5
 alternative_else_nop_endif
 

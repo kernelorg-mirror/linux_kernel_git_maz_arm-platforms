@@ -465,7 +465,7 @@ static int run_all_insn_set_hw_mode(unsigned int cpu)
 		if (insn->set_hw_mode && insn->set_hw_mode(enable)) {
 			pr_warn("CPU[%u] cannot support the emulation of %s",
 				cpu, insn->name);
-			rc = -EINVAL;
+	//		rc = -EINVAL;
 		}
 	}
 	local_irq_restore(flags);

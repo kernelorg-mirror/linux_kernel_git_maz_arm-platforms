@@ -429,13 +429,13 @@ static u8 get_guest_mapping_ttl(struct kvm_s2_mmu *mmu, u64 addr)
 
 	switch (vtcr & VTCR_EL2_TG0_MASK) {
 	case VTCR_EL2_TG0_4K:
-		ttl = (1 << 2);
+		ttl = (TLBI_TTL_TG_4K << 2);
 		break;
 	case VTCR_EL2_TG0_16K:
-		ttl = (2 << 2);
+		ttl = (TLBI_TTL_TG_16K << 2);
 		break;
 	case VTCR_EL2_TG0_64K:
-		ttl = (3 << 2);
+		ttl = (TLBI_TTL_TG_64K << 2);
 		break;
 	default:
 		BUG();

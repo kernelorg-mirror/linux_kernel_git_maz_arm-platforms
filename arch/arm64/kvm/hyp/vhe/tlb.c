@@ -235,9 +235,14 @@ int __kvm_tlb_vae2is(struct kvm_s2_mmu *mmu, u64 va, u64 sys_encoding)
 	dsb(ishst);
 
 	/* Switch to requested VMID */
-	__tlb_switch_to_guest(mmu, &cxt);
+	if (mmu)
+		__tlb_switch_to_guest(mmu, &cxt);
 
 	switch (sys_encoding) {
+	case OP_TLBI_ALLE2:
+	case OP_TLBI_ALLE2IS:
+		__tlbi(vmalle1is);
+		break;
 	case OP_TLBI_VAE2:
 	case OP_TLBI_VAE2IS:
 		__tlbi(vae1is, va);
@@ -252,7 +257,9 @@ int __kvm_tlb_vae2is(struct kvm_s2_mmu *mmu, u64 va, u64 sys_encoding)
 	dsb(ish);
 	isb();
 
-	__tlb_switch_to_host(&cxt);
+	if (mmu)
+		__tlb_switch_to_host(&cxt);
+
 	return ret;
 }
 
@@ -301,5 +308,5 @@ int __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_encoding)
 	if (mmu)
 		__tlb_switch_to_host(&cxt);
 
-	return 0;
+	return ret;
 }

@@ -3103,13 +3103,9 @@ static bool handle_s12w(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static bool handle_alle2is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 			   const struct sys_reg_desc *r)
 {
-	/*
-	 * To emulate invalidating all EL2 regime stage 1 TLB entries for all
-	 * PEs, executing TLBI VMALLE1IS is enough. But reuse the existing
-	 * interface for the simplicity; invalidating stage 2 entries doesn't
-	 * affect the correctness.
-	 */
-	__kvm_tlb_flush_vmid(&vcpu->kvm->arch.mmu);
+	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
+
+	WARN_ON(__kvm_tlb_vae2is(&vcpu->kvm->arch.mmu, 0, sys_encoding));
 	return true;
 }
 
@@ -3118,12 +3114,6 @@ static bool handle_vae2is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 {
 	int sys_encoding = sys_insn(p->Op0, p->Op1, p->CRn, p->CRm, p->Op2);
 
-	/*
-	 * Based on the same principle as TLBI ALLE2 instruction
-	 * emulation, we emulate TLBI VAE2* instructions by executing
-	 * corresponding TLBI VAE1* instructions with the virtual
-	 * EL2's VMID assigned by the host hypervisor.
-	 */
 	WARN_ON(__kvm_tlb_vae2is(&vcpu->kvm->arch.mmu, p->regval, sys_encoding));
 	return true;
 }

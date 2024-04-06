@@ -220,20 +220,23 @@ void __kvm_flush_vm_context(void)
 	dsb(ish);
 }
 
-void __kvm_tlb_vae2is(struct kvm_s2_mmu *mmu, u64 va, u64 sys_encoding)
+/*
+ * TLB invalidation emulation for NV. For any given instruction, we
+ * perform the following transformtions:
+ *
+ * - a TLBI targeting EL2 S1 is remapped to EL1 S1
+ * - a non-shareable TLBI is upgraded to being inner-shareable
+ */
+int __kvm_tlb_vae2is(struct kvm_s2_mmu *mmu, u64 va, u64 sys_encoding)
 {
 	struct tlb_inv_context cxt;
+	int ret = 0;
 
 	dsb(ishst);
 
 	/* Switch to requested VMID */
 	__tlb_switch_to_guest(mmu, &cxt);
 
-	/*
-	 * Execute the EL1 version of TLBI VAE2* instruction, forcing
-	 * an upgrade to the Inner Shareable domain in order to
-	 * perform the invalidation on all CPUs.
-	 */
 	switch (sys_encoding) {
 	case OP_TLBI_VAE2:
 	case OP_TLBI_VAE2IS:
@@ -244,17 +247,19 @@ void __kvm_tlb_vae2is(struct kvm_s2_mmu *mmu, u64 va, u64 sys_encoding)
 		__tlbi(vale1is, va);
 		break;
 	default:
-		break;
+		ret = -EINVAL;
 	}
 	dsb(ish);
 	isb();
 
 	__tlb_switch_to_host(&cxt);
+	return ret;
 }
 
-void __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_encoding)
+int __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_encoding)
 {
 	struct tlb_inv_context cxt;
+	int ret = 0;
 
 	dsb(ishst);
 
@@ -262,12 +267,6 @@ void __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_encoding)
 	if (mmu)
 		__tlb_switch_to_guest(mmu, &cxt);
 
-	/*
-	 * Execute the same instruction as the guest hypervisor did,
-	 * expanding the scope of local TLB invalidations to the Inner
-	 * Shareable domain so that it takes place on all CPUs. This
-	 * is equivalent to having HCR_EL2.FB set.
-	 */
 	switch (sys_encoding) {
 	case OP_TLBI_VMALLE1:
 	case OP_TLBI_VMALLE1IS:
@@ -294,11 +293,13 @@ void __kvm_tlb_el1_instr(struct kvm_s2_mmu *mmu, u64 val, u64 sys_encoding)
 		__tlbi(vaale1is, val);
 		break;
 	default:
-		break;
+		ret = -EINVAL;
 	}
 	dsb(ish);
 	isb();
 
 	if (mmu)
 		__tlb_switch_to_host(&cxt);
+
+	return 0;
 }

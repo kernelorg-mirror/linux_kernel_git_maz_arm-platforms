@@ -3124,7 +3124,7 @@ static bool handle_vae2is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	 * corresponding TLBI VAE1* instructions with the virtual
 	 * EL2's VMID assigned by the host hypervisor.
 	 */
-	__kvm_tlb_vae2is(&vcpu->kvm->arch.mmu, p->regval, sys_encoding);
+	WARN_ON(__kvm_tlb_vae2is(&vcpu->kvm->arch.mmu, p->regval, sys_encoding));
 	return true;
 }
 
@@ -3238,7 +3238,7 @@ static bool handle_ipas2e1is(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 static void s2_mmu_unmap_stage2_va(struct kvm_s2_mmu *mmu,
 				   const union tlbi_info *info)
 {
-	__kvm_tlb_el1_instr(mmu, info->va.addr, info->va.encoding);
+	WARN_ON(__kvm_tlb_el1_instr(mmu, info->va.addr, info->va.encoding));
 }
 
 static bool handle_tlbi_el1(struct kvm_vcpu *vcpu, struct sys_reg_params *p,

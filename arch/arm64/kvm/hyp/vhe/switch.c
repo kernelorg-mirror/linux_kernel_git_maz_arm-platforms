@@ -205,27 +205,26 @@ void kvm_vcpu_put_vhe(struct kvm_vcpu *vcpu)
 	__vcpu_put_switch_sysregs(vcpu);
 }
 
-static bool kvm_hyp_handle_tlbi(struct kvm_vcpu *vcpu, u64 *exit_code)
+static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	int ret = -EINVAL;
 	u32 instr;
 	u64 val;
 
 	/*
-	 * Ideally, we would never trap on EL1 TLB invalidations when the
+	 * Ideally, we would never trap on EL2 S1 TLB invalidations when the
 	 * guest's HCR_EL2.{E2H,TGE} == {1,1}. But "thanks" to ARMv8.4, we
-	 * don't trap writes to HCR_EL2, meaning that we can't track
-	 * changes to the virtual TGE bit. So we leave HCR_EL2.TTLB set on
-	 * the host. Oopsie...
+	 * don't trap writes to HCR_EL2, meaning that we can't track changes
+	 * to the virtual TGE bit. So we leave HCR_EL2.TTLB set on the
+	 * host. Oopsie...
 	 *
-	 * In order to speed-up EL1 TLBIs from the vEL2 guest when TGE is
-	 * set, try and handle these invalidation as quickly as possible,
-	 * without fully exiting. Note that we don't need to consider
-	 * any forwarding here, as having E2H+TGE set is the very definition
-	 * of being InHost.
+	 * In order to speed-up EL2 TLBIs when TGE is set, try and handle
+	 * these invalidation as quickly as possible, without fully
+	 * exiting. Note that we don't need to consider any forwarding here,
+	 * as having E2H+TGE set is the very definition of being InHost.
 	 *
-	 * Similarly, we can handle EL2 S1 invalidation early as long
-	 * as we're in hypervisor context.
+	 * For the lesser hypervisors out there that have failed to get on
+	 * with the VHE program, we can also handle EL2 invalidation.
 	 */
 	if (!(is_hyp_ctxt(vcpu)))
 		return false;
@@ -241,7 +240,9 @@ static bool kvm_hyp_handle_tlbi(struct kvm_vcpu *vcpu, u64 *exit_code)
 		ret = __kvm_tlb_el1_instr(NULL, val, instr);
 	else if (sys_reg_Op0(instr) == TLBI_Op0 &&
 		 sys_reg_Op1(instr) == TLBI_Op1_EL2 &&
-		 sys_reg_CRn(instr) == TLBI_CRn_XS)
+		 sys_reg_CRn(instr) == TLBI_CRn_XS &&
+		 (sys_reg_CRm(instr) == TLBI_CRm_nRIS ||
+		  sys_reg_CRm(instr) == TLBI_CRm_nRNS))
 		ret = __kvm_tlb_vae2is(NULL, val, instr);
 
 	if (ret)
@@ -321,7 +322,7 @@ static bool kvm_hyp_handle_timer(struct kvm_vcpu *vcpu, u64 *exit_code)
 
 static bool kvm_hyp_handle_sysreg_vhe(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
-	if (kvm_hyp_handle_tlbi(vcpu, exit_code))
+	if (kvm_hyp_handle_tlbi_el2(vcpu, exit_code))
 		return true;
 
 	if (kvm_hyp_handle_timer(vcpu, exit_code))

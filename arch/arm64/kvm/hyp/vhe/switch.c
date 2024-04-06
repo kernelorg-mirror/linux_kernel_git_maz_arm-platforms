@@ -205,8 +205,9 @@ void kvm_vcpu_put_vhe(struct kvm_vcpu *vcpu)
 	__vcpu_put_switch_sysregs(vcpu);
 }
 
-static bool kvm_hyp_handle_tlbi_el1(struct kvm_vcpu *vcpu, u64 *exit_code)
+static bool kvm_hyp_handle_tlbi(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
+	int ret = -EINVAL;
 	u32 instr;
 	u64 val;
 
@@ -222,19 +223,28 @@ static bool kvm_hyp_handle_tlbi_el1(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * without fully exiting. Note that we don't need to consider
 	 * any forwarding here, as having E2H+TGE set is the very definition
 	 * of being InHost.
+	 *
+	 * Similarly, we can handle EL2 S1 invalidation early as long
+	 * as we're in hypervisor context.
 	 */
-	if (!(is_hyp_ctxt(vcpu) &&
-	      vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
+	if (!(is_hyp_ctxt(vcpu)))
 		return false;
 
 	instr = esr_sys64_to_sysreg(kvm_vcpu_get_esr(vcpu));
-	if (sys_reg_Op0(instr) != TLBI_Op0 ||
-	    sys_reg_Op1(instr) != TLBI_Op1_EL1 ||
-	    sys_reg_CRn(instr) != TLBI_CRn_XS)
-		return false;
-
 	val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
-	if (__kvm_tlb_el1_instr(NULL, val, instr))
+
+	if (sys_reg_Op0(instr) == TLBI_Op0 &&
+	    sys_reg_Op1(instr) == TLBI_Op1_EL1 &&
+	    sys_reg_CRn(instr) == TLBI_CRn_XS &&
+	    vcpu_el2_e2h_is_set(vcpu) &&
+	    vcpu_el2_tge_is_set(vcpu))
+		ret = __kvm_tlb_el1_instr(NULL, val, instr);
+	else if (sys_reg_Op0(instr) == TLBI_Op0 &&
+		 sys_reg_Op1(instr) == TLBI_Op1_EL2 &&
+		 sys_reg_CRn(instr) == TLBI_CRn_XS)
+		ret = __kvm_tlb_vae2is(NULL, val, instr);
+
+	if (ret)
 		return false;
 
 	__kvm_skip_instr(vcpu);
@@ -311,7 +321,7 @@ static bool kvm_hyp_handle_timer(struct kvm_vcpu *vcpu, u64 *exit_code)
 
 static bool kvm_hyp_handle_sysreg_vhe(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
-	if (kvm_hyp_handle_tlbi_el1(vcpu, exit_code))
+	if (kvm_hyp_handle_tlbi(vcpu, exit_code))
 		return true;
 
 	if (kvm_hyp_handle_timer(vcpu, exit_code))

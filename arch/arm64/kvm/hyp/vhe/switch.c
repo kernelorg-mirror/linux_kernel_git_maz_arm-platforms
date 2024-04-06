@@ -223,17 +223,20 @@ static bool kvm_hyp_handle_tlbi_el1(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * any forwarding here, as having E2H+TGE set is the very definition
 	 * of being InHost.
 	 */
-	if (!vcpu_has_nv(vcpu) || !vcpu_is_el2(vcpu) ||
-	    !(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
+	if (!(is_hyp_ctxt(vcpu) &&
+	      vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
 		return false;
 
 	instr = esr_sys64_to_sysreg(kvm_vcpu_get_esr(vcpu));
 	if (sys_reg_Op0(instr) != TLBI_Op0 ||
-	    sys_reg_Op1(instr) != TLBI_Op1_EL1)
+	    sys_reg_Op1(instr) != TLBI_Op1_EL1 ||
+	    sys_reg_CRn(instr) != TLBI_CRn_XS)
 		return false;
 
 	val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
-	__kvm_tlb_el1_instr(NULL, val, instr);
+	if (__kvm_tlb_el1_instr(NULL, val, instr))
+		return false;
+
 	__kvm_skip_instr(vcpu);
 
 	return true;

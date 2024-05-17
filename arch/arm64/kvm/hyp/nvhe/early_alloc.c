@@ -4,7 +4,7 @@
  * Author: Quentin Perret <qperret@google.com>
  */
 
-#include <asm/kvm_pgtable.h>
+//#include <asm/kvm_pgtable.h>
 
 #include <nvhe/early_alloc.h>
 #include <nvhe/memory.h>

@@ -8,7 +8,6 @@
 #define __ARM64_KVM_PGTABLE_H__
 
 #include <linux/bits.h>
-#include <linux/kvm_host.h>
 #include <linux/types.h>
 
 #define KVM_PGTABLE_FIRST_LEVEL		-1

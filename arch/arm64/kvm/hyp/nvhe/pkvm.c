@@ -394,7 +394,6 @@ static pkvm_handle_t insert_vm_table_entry(struct kvm *host_kvm,
 	atomic64_set(&mmu->vmid.id, idx + 1);
 
 	mmu->arch = &hyp_vm->kvm.arch;
-	mmu->pgt = &hyp_vm->pgt;
 
 	vm_table[idx] = hyp_vm;
 	return hyp_vm->kvm.arch.pkvm.handle;

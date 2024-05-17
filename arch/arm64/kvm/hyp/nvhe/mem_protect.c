@@ -148,14 +148,12 @@ int kvm_host_prepare_stage2(void *pgt_pool_base)
 	if (ret)
 		return ret;
 
-	ret = __kvm_pgtable_stage2_init(&host_mmu.pgt, mmu,
-					&host_mmu.mm_ops, KVM_HOST_S2_FLAGS,
+	ret = __kvm_pgtable_stage2_init(mmu, &host_mmu.mm_ops, KVM_HOST_S2_FLAGS,
 					host_stage2_force_pte_cb);
 	if (ret)
 		return ret;
 
-	mmu->pgd_phys = __hyp_pa(host_mmu.pgt.pgd);
-	mmu->pgt = &host_mmu.pgt;
+	mmu->pgd_phys = __hyp_pa(mmu->pgt.pgd);
 	atomic64_set(&mmu->vmid.id, 0);
 
 	return 0;
@@ -255,13 +253,13 @@ int kvm_guest_prepare_stage2(struct pkvm_hyp_vm *vm, void *pgd)
 	};
 
 	guest_lock_component(vm);
-	ret = __kvm_pgtable_stage2_init(mmu->pgt, mmu, &vm->mm_ops, 0,
+	ret = __kvm_pgtable_stage2_init(mmu, &vm->mm_ops, 0,
 					guest_stage2_force_pte_cb);
 	guest_unlock_component(vm);
 	if (ret)
 		return ret;
 
-	vm->kvm.arch.mmu.pgd_phys = __hyp_pa(vm->pgt.pgd);
+	vm->kvm.arch.mmu.pgd_phys = __hyp_pa(mmu->pgt.pgd);
 
 	return 0;
 }
@@ -272,7 +270,7 @@ void reclaim_guest_pages(struct pkvm_hyp_vm *vm, struct kvm_hyp_memcache *mc)
 
 	/* Dump all pgtable pages in the hyp_pool */
 	guest_lock_component(vm);
-	kvm_pgtable_stage2_destroy(&vm->pgt);
+	kvm_pgtable_stage2_destroy(&vm->kvm.arch.mmu.pgt);
 	vm->kvm.arch.mmu.pgd_phys = 0ULL;
 	guest_unlock_component(vm);
 
@@ -479,7 +477,8 @@ int host_stage2_idmap_locked(phys_addr_t addr, u64 size,
 
 int host_stage2_set_owner_locked(phys_addr_t addr, u64 size, u8 owner_id)
 {
-	return host_stage2_try(kvm_pgtable_stage2_set_owner, &host_mmu.pgt,
+	return host_stage2_try(kvm_pgtable_stage2_set_owner,
+			       &host_mmu.arch.mmu.pgt,
 			       addr, size, &host_s2_pool, owner_id);
 }
 

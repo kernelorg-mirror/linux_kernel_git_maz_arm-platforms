@@ -363,7 +363,6 @@ static inline bool kvm_pgtable_walk_lock_held(void)
  * @start_level:	Level at which the page-table walk starts.
  * @pgd:		Pointer to the first top-level entry of the page-table.
  * @mm_ops:		Memory management callbacks.
- * @mmu:		Stage-2 KVM MMU struct. Unused for stage-1 page-tables.
  * @flags:		Stage-2 page-table flags.
  * @force_pte_cb:	Function that returns true if page level mappings must
  *			be used instead of block mappings.
@@ -375,7 +374,6 @@ struct kvm_pgtable {
 	struct kvm_pgtable_mm_ops		*mm_ops;
 
 	/* Stage-2 only */
-	struct kvm_s2_mmu			*mmu;
 	enum kvm_pgtable_stage2_flags		flags;
 	kvm_pgtable_force_pte_cb_t		force_pte_cb;
 };
@@ -469,8 +467,8 @@ size_t kvm_pgtable_stage2_pgd_size(u64 vtcr);
 
 /**
  * __kvm_pgtable_stage2_init() - Initialise a guest stage-2 page-table.
- * @pgt:	Uninitialised page-table structure to initialise.
- * @mmu:	S2 MMU context for this S2 translation
+ * @mmu:	S2 MMU context for this S2 translation with
+ *		its uninitialised PGT
  * @mm_ops:	Memory management callbacks.
  * @flags:	Stage-2 configuration flags.
  * @force_pte_cb: Function that returns true if page level mappings must
@@ -478,13 +476,13 @@ size_t kvm_pgtable_stage2_pgd_size(u64 vtcr);
  *
  * Return: 0 on success, negative error code on failure.
  */
-int __kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
+int __kvm_pgtable_stage2_init(struct kvm_s2_mmu *mmu,
 			      struct kvm_pgtable_mm_ops *mm_ops,
 			      enum kvm_pgtable_stage2_flags flags,
 			      kvm_pgtable_force_pte_cb_t force_pte_cb);
 
-#define kvm_pgtable_stage2_init(pgt, mmu, mm_ops) \
-	__kvm_pgtable_stage2_init(pgt, mmu, mm_ops, 0, NULL)
+#define kvm_pgtable_stage2_init(mmu, mm_ops) \
+	__kvm_pgtable_stage2_init(mmu, mm_ops, 0, NULL)
 
 /**
  * kvm_pgtable_stage2_destroy() - Destroy an unused guest stage-2 page-table.

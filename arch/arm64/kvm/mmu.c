@@ -63,9 +63,7 @@ static int stage2_apply_range(struct kvm_s2_mmu *mmu, phys_addr_t addr,
 	u64 next;
 
 	do {
-		struct kvm_pgtable *pgt = mmu->pgt;
-		if (!pgt)
-			return -EINVAL;
+		struct kvm_pgtable *pgt = &mmu->pgt;
 
 		next = stage2_range_addr_end(addr, end);
 		ret = fn(pgt, addr, next - addr);
@@ -142,9 +140,7 @@ static int kvm_mmu_split_huge_pages(struct kvm *kvm, phys_addr_t addr,
 				break;
 		}
 
-		pgt = kvm->arch.mmu.pgt;
-		if (!pgt)
-			return -EINVAL;
+		pgt = &kvm->arch.mmu.pgt;
 
 		next = __stage2_range_addr_end(addr, end, chunk_size);
 		ret = kvm_pgtable_stage2_split(pgt, addr, next - addr, cache);
@@ -913,7 +909,6 @@ static int kvm_init_ipa_range(struct kvm_s2_mmu *mmu, unsigned long type)
 int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long type)
 {
 	int cpu, err;
-	struct kvm_pgtable *pgt;
 
 	/*
 	 * If we already have our page tables in place, and that the
@@ -925,7 +920,7 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long t
 	 * than once on the same vcpu. Since that's actually legal,
 	 * don't kick a fuss and leave gracefully.
 	 */
-	if (mmu->pgt != NULL) {
+	if (mmu->pgt.pgd != NULL) {
 		if (kvm_is_nested_s2_mmu(kvm, mmu))
 			return 0;
 
@@ -937,14 +932,10 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long t
 	if (err)
 		return err;
 
-	pgt = kzalloc(sizeof(*pgt), GFP_KERNEL_ACCOUNT);
-	if (!pgt)
-		return -ENOMEM;
-
 	mmu->arch = &kvm->arch;
-	err = kvm_pgtable_stage2_init(pgt, mmu, &kvm_s2_mm_ops);
+	err = kvm_pgtable_stage2_init(mmu, &kvm_s2_mm_ops);
 	if (err)
-		goto out_free_pgtable;
+		return err;
 
 	mmu->last_vcpu_ran = alloc_percpu(typeof(*mmu->last_vcpu_ran));
 	if (!mmu->last_vcpu_ran) {
@@ -959,8 +950,7 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long t
 	mmu->split_page_chunk_size = KVM_ARM_EAGER_SPLIT_CHUNK_SIZE_DEFAULT;
 	mmu->split_page_cache.gfp_zero = __GFP_ZERO;
 
-	mmu->pgt = pgt;
-	mmu->pgd_phys = __pa(pgt->pgd);
+	mmu->pgd_phys = __pa(mmu->pgt.pgd);
 
 	if (kvm_is_nested_s2_mmu(kvm, mmu))
 		kvm_init_nested_s2_mmu(mmu);
@@ -968,9 +958,7 @@ int kvm_init_stage2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu, unsigned long t
 	return 0;
 
 out_destroy_pgtable:
-	kvm_pgtable_stage2_destroy(pgt);
-out_free_pgtable:
-	kfree(pgt);
+	kvm_pgtable_stage2_destroy(&mmu->pgt);
 	return err;
 }
 
@@ -1053,21 +1041,14 @@ void stage2_unmap_vm(struct kvm *kvm)
 void kvm_free_stage2_pgd(struct kvm_s2_mmu *mmu)
 {
 	struct kvm *kvm = kvm_s2_mmu_to_kvm(mmu);
-	struct kvm_pgtable *pgt = NULL;
 
 	write_lock(&kvm->mmu_lock);
-	pgt = mmu->pgt;
-	if (pgt) {
+	if (mmu->pgt.pgd) {
 		mmu->pgd_phys = 0;
-		mmu->pgt = NULL;
+		kvm_pgtable_stage2_destroy(&mmu->pgt);
 		free_percpu(mmu->last_vcpu_ran);
 	}
 	write_unlock(&kvm->mmu_lock);
-
-	if (pgt) {
-		kvm_pgtable_stage2_destroy(pgt);
-		kfree(pgt);
-	}
 }
 
 static void hyp_mc_free_fn(void *addr, void *unused)
@@ -1112,7 +1093,6 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 	int ret = 0;
 	struct kvm_mmu_memory_cache cache = { .gfp_zero = __GFP_ZERO };
 	struct kvm_s2_mmu *mmu = &kvm->arch.mmu;
-	struct kvm_pgtable *pgt = mmu->pgt;
 	enum kvm_pgtable_prot prot = KVM_PGTABLE_PROT_DEVICE |
 				     KVM_PGTABLE_PROT_R |
 				     (writable ? KVM_PGTABLE_PROT_W : 0);
@@ -1130,7 +1110,7 @@ int kvm_phys_addr_ioremap(struct kvm *kvm, phys_addr_t guest_ipa,
 			break;
 
 		write_lock(&kvm->mmu_lock);
-		ret = kvm_pgtable_stage2_map(pgt, addr, PAGE_SIZE, pa, prot,
+		ret = kvm_pgtable_stage2_map(&mmu->pgt, addr, PAGE_SIZE, pa, prot,
 					     &cache, 0);
 		write_unlock(&kvm->mmu_lock);
 		if (ret)
@@ -1613,7 +1593,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	}
 
 	read_lock(&kvm->mmu_lock);
-	pgt = vcpu->arch.hw_mmu->pgt;
+	pgt = &vcpu->arch.hw_mmu->pgt;
 	if (mmu_invalidate_retry(kvm, mmu_seq)) {
 		ret = -EAGAIN;
 		goto out_unlock;
@@ -1706,7 +1686,7 @@ static void handle_access_fault(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa)
 
 	read_lock(&vcpu->kvm->mmu_lock);
 	mmu = vcpu->arch.hw_mmu;
-	pte = kvm_pgtable_stage2_mkyoung(mmu->pgt, fault_ipa);
+	pte = kvm_pgtable_stage2_mkyoung(&mmu->pgt, fault_ipa);
 	read_unlock(&vcpu->kvm->mmu_lock);
 
 	if (kvm_pte_valid(pte))
@@ -1749,7 +1729,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		}
 
 		/* Falls between the IPA range and the PARange? */
-		if (fault_ipa >= BIT_ULL(vcpu->arch.hw_mmu->pgt->ia_bits)) {
+		if (fault_ipa >= BIT_ULL(vcpu->arch.hw_mmu->pgt.ia_bits)) {
 			fault_ipa |= kvm_vcpu_get_hfar(vcpu) & GENMASK(11, 0);
 
 			if (is_iabt)
@@ -1897,7 +1877,7 @@ out_unlock:
 
 bool kvm_unmap_gfn_range(struct kvm *kvm, struct kvm_gfn_range *range)
 {
-	if (!kvm->arch.mmu.pgt)
+	if (!kvm->arch.mmu.pgt.pgd)
 		return false;
 
 	__unmap_stage2_range(&kvm->arch.mmu, range->start << PAGE_SHIFT,
@@ -1912,7 +1892,7 @@ bool kvm_set_spte_gfn(struct kvm *kvm, struct kvm_gfn_range *range)
 {
 	kvm_pfn_t pfn = pte_pfn(range->arg.pte);
 
-	if (!kvm->arch.mmu.pgt)
+	if (!kvm->arch.mmu.pgt.pgd)
 		return false;
 
 	WARN_ON(range->end - range->start != 1);
@@ -1935,7 +1915,7 @@ bool kvm_set_spte_gfn(struct kvm *kvm, struct kvm_gfn_range *range)
 	 * therefore we never need to clear out a huge PMD through this
 	 * calling path and a memcache is not required.
 	 */
-	kvm_pgtable_stage2_map(kvm->arch.mmu.pgt, range->start << PAGE_SHIFT,
+	kvm_pgtable_stage2_map(&kvm->arch.mmu.pgt, range->start << PAGE_SHIFT,
 			       PAGE_SIZE, __pfn_to_phys(pfn),
 			       KVM_PGTABLE_PROT_R, NULL, 0);
 
@@ -1947,10 +1927,10 @@ bool kvm_age_gfn(struct kvm *kvm, struct kvm_gfn_range *range)
 {
 	u64 size = (range->end - range->start) << PAGE_SHIFT;
 
-	if (!kvm->arch.mmu.pgt)
+	if (!kvm->arch.mmu.pgt.pgd)
 		return false;
 
-	return kvm_pgtable_stage2_test_clear_young(kvm->arch.mmu.pgt,
+	return kvm_pgtable_stage2_test_clear_young(&kvm->arch.mmu.pgt,
 						   range->start << PAGE_SHIFT,
 						   size, true);
 	/*
@@ -1963,10 +1943,10 @@ bool kvm_test_age_gfn(struct kvm *kvm, struct kvm_gfn_range *range)
 {
 	u64 size = (range->end - range->start) << PAGE_SHIFT;
 
-	if (!kvm->arch.mmu.pgt)
+	if (!kvm->arch.mmu.pgt.pgd)
 		return false;
 
-	return kvm_pgtable_stage2_test_clear_young(kvm->arch.mmu.pgt,
+	return kvm_pgtable_stage2_test_clear_young(&kvm->arch.mmu.pgt,
 						   range->start << PAGE_SHIFT,
 						   size, false);
 }

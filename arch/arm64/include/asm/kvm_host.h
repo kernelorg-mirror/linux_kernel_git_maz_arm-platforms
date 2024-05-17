@@ -159,7 +159,7 @@ struct kvm_s2_mmu {
 	 * canonical stage-2 page tables.
 	 */
 	phys_addr_t	pgd_phys;
-	struct kvm_pgtable *pgt;
+	struct kvm_pgtable pgt;
 
 	/*
 	 * VTCR value used on the host. For a non-NV guest (or a NV
@@ -218,6 +218,8 @@ struct kvm_s2_mmu {
 	 */
 	atomic_t refcnt;
 };
+
+#define pgt_to_mmu(p)	container_of((p), struct kvm_s2_mmu, pgt)
 
 struct kvm_arch_memory_slot {
 };

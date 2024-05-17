@@ -31,8 +31,11 @@ struct pkvm_hyp_vm {
 	/* Backpointer to the host's (untrusted) KVM instance. */
 	struct kvm *host_kvm;
 
-	/* The guest's stage-2 page-table managed by the hypervisor. */
-	struct kvm_pgtable pgt;
+	/*
+	 * The guest's stage-2 page-table managed by the hypervisor,
+	 * using the page table structure embedded in the kvm_s2_mmu
+	 * structure.
+	 */
 	struct kvm_pgtable_mm_ops mm_ops;
 	struct hyp_pool pool;
 	hyp_spinlock_t lock;

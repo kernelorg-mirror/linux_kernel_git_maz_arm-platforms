@@ -583,7 +583,6 @@ int kvm_pgtable_hyp_init(struct kvm_pgtable *pgt, u32 va_bits,
 	pgt->ia_bits		= va_bits;
 	pgt->start_level	= start_level;
 	pgt->mm_ops		= mm_ops;
-	pgt->mmu		= NULL;
 	pgt->force_pte_cb	= NULL;
 
 	return 0;
@@ -960,7 +959,7 @@ static int stage2_map_walker_try_leaf(const struct kvm_pgtable_visit_ctx *ctx,
 	kvm_pte_t new;
 	u64 phys = stage2_map_walker_phys_addr(ctx, data);
 	u64 granule = kvm_granule_size(ctx->level);
-	struct kvm_pgtable *pgt = data->mmu->pgt;
+	struct kvm_pgtable *pgt = &data->mmu->pgt;
 	struct kvm_pgtable_mm_ops *mm_ops = ctx->mm_ops;
 
 	if (!stage2_leaf_mapping_allowed(ctx, data))
@@ -1099,7 +1098,7 @@ int kvm_pgtable_stage2_map(struct kvm_pgtable *pgt, u64 addr, u64 size,
 	int ret;
 	struct stage2_map_data map_data = {
 		.phys		= ALIGN_DOWN(phys, PAGE_SIZE),
-		.mmu		= pgt->mmu,
+		.mmu		= pgt_to_mmu(pgt),
 		.memcache	= mc,
 		.force_pte	= pgt->force_pte_cb && pgt->force_pte_cb(addr, addr + size, prot),
 	};
@@ -1129,7 +1128,7 @@ int kvm_pgtable_stage2_set_owner(struct kvm_pgtable *pgt, u64 addr, u64 size,
 	int ret;
 	struct stage2_map_data map_data = {
 		.phys		= KVM_PHYS_INVALID,
-		.mmu		= pgt->mmu,
+		.mmu		= pgt_to_mmu(pgt),
 		.memcache	= mc,
 		.owner_id	= owner_id,
 		.force_pte	= true,
@@ -1152,7 +1151,7 @@ static int stage2_unmap_walker(const struct kvm_pgtable_visit_ctx *ctx,
 			       enum kvm_pgtable_walk_flags visit)
 {
 	struct kvm_pgtable *pgt = ctx->arg;
-	struct kvm_s2_mmu *mmu = pgt->mmu;
+	struct kvm_s2_mmu *mmu = pgt_to_mmu(pgt);
 	struct kvm_pgtable_mm_ops *mm_ops = ctx->mm_ops;
 	kvm_pte_t *childp = NULL;
 	bool need_flush = false;
@@ -1203,7 +1202,7 @@ int kvm_pgtable_stage2_unmap(struct kvm_pgtable *pgt, u64 addr, u64 size)
 	ret = kvm_pgtable_walk(pgt, addr, size, &walker);
 	if (stage2_unmap_defer_tlb_flush(pgt))
 		/* Perform the deferred TLB invalidations */
-		kvm_tlb_flush_vmid_range(pgt->mmu, addr, size);
+		kvm_tlb_flush_vmid_range(pgt_to_mmu(pgt), addr, size);
 
 	return ret;
 }
@@ -1376,7 +1375,7 @@ int kvm_pgtable_stage2_relax_perms(struct kvm_pgtable *pgt, u64 addr,
 				       KVM_PGTABLE_WALK_HANDLE_FAULT |
 				       KVM_PGTABLE_WALK_SHARED);
 	if (!ret || ret == -EAGAIN)
-		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa_nsh, pgt->mmu, addr, level);
+		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa_nsh, pgt_to_mmu(pgt), addr, level);
 	return ret;
 }
 
@@ -1416,7 +1415,7 @@ kvm_pte_t *kvm_pgtable_stage2_create_unlinked(struct kvm_pgtable *pgt,
 {
 	struct stage2_map_data map_data = {
 		.phys		= phys,
-		.mmu		= pgt->mmu,
+		.mmu		= pgt_to_mmu(pgt),
 		.memcache	= mc,
 		.force_pte	= force_pte,
 	};
@@ -1531,7 +1530,7 @@ static int stage2_split_walker(const struct kvm_pgtable_visit_ctx *ctx,
 	phys = kvm_pte_to_phys(pte);
 	prot = kvm_pgtable_stage2_pte_prot(pte);
 
-	childp = kvm_pgtable_stage2_create_unlinked(mmu->pgt, phys,
+	childp = kvm_pgtable_stage2_create_unlinked(&mmu->pgt, phys,
 						    level, prot, mc, force_pte);
 	if (IS_ERR(childp))
 		return PTR_ERR(childp);
@@ -1564,7 +1563,7 @@ int kvm_pgtable_stage2_split(struct kvm_pgtable *pgt, u64 addr, u64 size,
 	return kvm_pgtable_walk(pgt, addr, size, &walker);
 }
 
-int __kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
+int __kvm_pgtable_stage2_init(struct kvm_s2_mmu *mmu,
 			      struct kvm_pgtable_mm_ops *mm_ops,
 			      enum kvm_pgtable_stage2_flags flags,
 			      kvm_pgtable_force_pte_cb_t force_pte_cb)
@@ -1574,6 +1573,7 @@ int __kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
 	u32 ia_bits = VTCR_EL2_IPA(vtcr);
 	u32 sl0 = FIELD_GET(VTCR_EL2_SL0_MASK, vtcr);
 	s8 start_level = VTCR_EL2_TGRAN_SL0_BASE - sl0;
+	struct kvm_pgtable *pgt = &mmu->pgt;
 
 	pgd_sz = kvm_pgd_pages(ia_bits, start_level) * PAGE_SIZE;
 	pgt->pgd = (kvm_pteref_t)mm_ops->zalloc_pages_exact(pgd_sz);
@@ -1583,7 +1583,6 @@ int __kvm_pgtable_stage2_init(struct kvm_pgtable *pgt, struct kvm_s2_mmu *mmu,
 	pgt->ia_bits		= ia_bits;
 	pgt->start_level	= start_level;
 	pgt->mm_ops		= mm_ops;
-	pgt->mmu		= mmu;
 	pgt->flags		= flags;
 	pgt->force_pte_cb	= force_pte_cb;
 

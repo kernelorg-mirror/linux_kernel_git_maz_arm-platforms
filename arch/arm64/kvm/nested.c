@@ -74,14 +74,6 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	if (!tmp)
 		return -ENOMEM;
 
-	/*
-	 * If we went through a realocation, adjust the MMU back-pointers in
-	 * the previously initialised kvm_pgtable structures.
-	 */
-	if (kvm->arch.nested_mmus != tmp)
-		for (int i = 0; i < kvm->arch.nested_mmus_size; i++)
-			tmp[i].pgt->mmu = &tmp[i];
-
 	for (int i = kvm->arch.nested_mmus_size; !ret && i < num_mmus; i++)
 		ret = init_nested_s2_mmu(kvm, &tmp[i]);
 
@@ -483,7 +475,7 @@ again:
 		return 0;
 
 	tmp &= ~(sz - 1);
-	if (kvm_pgtable_get_leaf(mmu->pgt, tmp, &pte, NULL))
+	if (kvm_pgtable_get_leaf(&mmu->pgt, tmp, &pte, NULL))
 		goto again;
 	if (!(pte & PTE_VALID))
 		goto again;

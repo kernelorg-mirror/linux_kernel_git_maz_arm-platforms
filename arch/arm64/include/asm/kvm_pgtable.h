@@ -368,10 +368,10 @@ static inline bool kvm_pgtable_walk_lock_held(void)
  *			be used instead of block mappings.
  */
 struct kvm_pgtable {
-	u32					ia_bits;
-	s8					start_level;
 	kvm_pteref_t				pgd;
 	struct kvm_pgtable_mm_ops		*mm_ops;
+	u8					ia_bits;
+	s8					start_level;
 
 	/* Stage-2 only */
 	enum kvm_pgtable_stage2_flags		flags;

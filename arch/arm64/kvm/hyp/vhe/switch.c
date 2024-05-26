@@ -116,7 +116,7 @@ static void __activate_traps(struct kvm_vcpu *vcpu)
 	}
 
 	if (vcpu_has_nv(vcpu)) {
-		u64 cptr = __vcpu_sys_reg(vcpu, CPTR_EL2);
+		u64 cptr = vcpu_read_sys_reg(vcpu, CPTR_EL2);
 
 		if (!vcpu_el2_e2h_is_set(vcpu)) {
 			cptr = translate_cptr_el2_to_cpacr_el1(cptr);
@@ -135,14 +135,17 @@ static void __activate_traps(struct kvm_vcpu *vcpu)
 				val |= cptr & CPACR_ELx_E0POE;
 		}
 
-		/*
-		 * If the guest has any cleared SVE/FP enable bit,
-		 * follow that so that trap forwarding works.
-		 */
-		val &= ~(cptr ^ (CPACR_ELx_ZEN_MASK | CPACR_ELx_FPEN_MASK));
+		if (!is_hyp_ctxt(vcpu)) {
+			/*
+			 * If the guest has any cleared SVE/FP enable bit,
+			 * follow that so that trap forwarding works.
+			 */
+			val &= ~(cptr ^ (CPACR_ELx_ZEN_MASK |
+					 CPACR_ELx_FPEN_MASK));
 
-		/* Propagate TCPAC if set */
-		val |= cptr & CPTR_EL2_TCPAC;
+			/* Propagate TCPAC if set */
+			val |= cptr & CPTR_EL2_TCPAC;
+		}
 	}
 
 	write_sysreg(val, cpacr_el1);

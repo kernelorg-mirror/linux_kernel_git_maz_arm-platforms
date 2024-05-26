@@ -446,6 +446,24 @@ static bool access_actlr(struct kvm_vcpu *vcpu,
 	return true;
 }
 
+static bool access_cpacr(struct kvm_vcpu *vcpu,
+			 struct sys_reg_params *p,
+			 const struct sys_reg_desc *r)
+{
+	/* we should never be here outside of HCR_EL2.{E2H,TGE} = {1,1} */
+	if (WARN_ON_ONCE(!is_hyp_ctxt(vcpu))) {
+		kvm_inject_undefined(vcpu);
+		return false;
+	}
+
+	if (p->is_write)
+		vcpu_write_sys_reg(vcpu, p->regval, CPTR_EL2);
+	else
+		p->regval = vcpu_read_sys_reg(vcpu, CPTR_EL2);
+
+	return true;
+}
+
 /*
  * Trap handler for the GICv3 SGI generation system register.
  * Forward the request to the VGIC emulation.
@@ -2558,7 +2576,7 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 
 	{ SYS_DESC(SYS_SCTLR_EL1), access_vm_reg, reset_val, SCTLR_EL1, 0x00C50078 },
 	{ SYS_DESC(SYS_ACTLR_EL1), access_actlr, reset_actlr, ACTLR_EL1 },
-	{ SYS_DESC(SYS_CPACR_EL1), NULL, reset_val, CPACR_EL1, 0 },
+	{ SYS_DESC(SYS_CPACR_EL1), access_cpacr, reset_val, CPACR_EL1, 0 },
 
 	MTE_REG(RGSR_EL1),
 	MTE_REG(GCR_EL1),

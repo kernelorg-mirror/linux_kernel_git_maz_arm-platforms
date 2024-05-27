@@ -982,6 +982,9 @@ static void set_sysreg_masks(struct kvm *kvm, int sr, u64 res0, u64 res1)
 {
 	int i = sr - __VNCR_START__;
 
+	if (WARN_ONCE(i < 0, "Illegal register number%d\n", sr))
+		return;
+
 	kvm->arch.sysreg_masks->mask[i].res0 = res0;
 	kvm->arch.sysreg_masks->mask[i].res1 = res1;
 }
@@ -1058,6 +1061,8 @@ int kvm_init_nv_sysregs(struct kvm *kvm)
 		res0 |= (HCR_TEA | HCR_TERR);
 	if (!kvm_has_feat(kvm, ID_AA64MMFR1_EL1, LO, IMP))
 		res0 |= HCR_TLOR;
+	if (!kvm_has_feat(kvm, ID_AA64MMFR1_EL1, VH, IMP))
+		res0 |= HCR_E2H;
 	if (!kvm_has_feat(kvm, ID_AA64MMFR4_EL1, E2H0, IMP))
 		res1 |= HCR_E2H;
 	set_sysreg_masks(kvm, HCR_EL2, res0, res1);

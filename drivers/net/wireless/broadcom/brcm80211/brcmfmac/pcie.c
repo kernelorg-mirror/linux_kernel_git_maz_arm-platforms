@@ -2045,15 +2045,6 @@ static int brcmf_pcie_populate_footers(struct brcmf_pciedev_info *devinfo,
 	return 0;
 }
 
-static noinline_for_stack void
-brcmf_pcie_provide_random_bytes(struct brcmf_pciedev_info *devinfo, u32 address)
-{
-	u8 randbuf[BRCMF_RANDOM_SEED_LENGTH];
-
-	get_random_bytes(randbuf, BRCMF_RANDOM_SEED_LENGTH);
-	memcpy_toio(devinfo->tcm + address, randbuf, BRCMF_RANDOM_SEED_LENGTH);
-}
-
 static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
 					const struct firmware *fw,
 					const struct firmware *fwsig,
@@ -2092,26 +2083,6 @@ static int brcmf_pcie_download_fw_nvram(struct brcmf_pciedev_info *devinfo,
 		address -= nvram_len;
 		memcpy_toio(devinfo->tcm + address, nvram, nvram_len);
 		brcmf_fw_nvram_free(nvram);
-
-		if (devinfo->otp.valid) {
-			size_t rand_len = BRCMF_RANDOM_SEED_LENGTH;
-			struct brcmf_random_seed_footer footer = {
-				.length = cpu_to_le32(rand_len),
-				.magic = cpu_to_le32(BRCMF_RANDOM_SEED_MAGIC),
-			};
-
-			/* Some Apple chips/firmwares expect a buffer of random
-			 * data to be present before NVRAM
-			 */
-			brcmf_dbg(PCIE, "Download random seed\n");
-
-			address -= sizeof(footer);
-			memcpy_toio(devinfo->tcm + address, &footer,
-				    sizeof(footer));
-
-			address -= rand_len;
-			brcmf_pcie_provide_random_bytes(devinfo, address);
-		}
 
 		err = brcmf_pcie_populate_footers(devinfo, &address, fwsig);
 		if (err)

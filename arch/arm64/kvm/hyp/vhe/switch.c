@@ -65,6 +65,46 @@ static u64 __compute_hcr(struct kvm_vcpu *vcpu)
 	return hcr | (__vcpu_sys_reg(vcpu, HCR_EL2) & ~NV_HCR_GUEST_EXCLUDE);
 }
 
+static u64 compute_cptr_el2(struct kvm_vcpu *vcpu, u64 val)
+{
+	u64 cptr;
+
+	if (!vcpu_has_nv(vcpu))
+		return val;
+
+	cptr = __vcpu_sys_reg(vcpu, CPTR_EL2);
+
+	if (!vcpu_el2_e2h_is_set(vcpu)) {
+		cptr = translate_cptr_el2_to_cpacr_el1(cptr);
+	} else {
+		/*
+		 * The architecture is a bit crap (what a surprise): an EL2
+		 * guest writing to CPTR_EL2 via CPACR_EL1 can't set any of
+		 * TCPAC or TTA, as they are RES0 in the guest's view. To
+		 * work around it, trap the sucker using the very same bit
+		 * it can't set...
+		 */
+		if (is_hyp_ctxt(vcpu))
+			val |= CPTR_EL2_TCPAC;
+
+		if (kvm_has_feat(vcpu->kvm, ID_AA64MMFR3_EL1, S2POE, IMP))
+			val |= cptr & CPACR_ELx_E0POE;
+	}
+
+	if (!is_hyp_ctxt(vcpu)) {
+		/*
+		 * If the guest has any cleared SVE/FP enable bit, follow
+		 * that so that trap forwarding works.
+		 */
+		val &= ~(cptr ^ (CPACR_ELx_ZEN_MASK |  CPACR_ELx_FPEN_MASK));
+
+		/* Propagate TCPAC if set */
+		val |= cptr & CPTR_EL2_TCPAC;
+	}
+
+	return val;
+}
+
 static void __activate_traps(struct kvm_vcpu *vcpu)
 {
 	u64 val;
@@ -114,6 +154,8 @@ static void __activate_traps(struct kvm_vcpu *vcpu)
 		val &= ~(CPACR_EL1_FPEN_EL0EN | CPACR_EL1_FPEN_EL1EN);
 		__activate_traps_fpsimd32(vcpu);
 	}
+
+	val = compute_cptr_el2(vcpu, val);
 
 	write_sysreg(val, cpacr_el1);
 

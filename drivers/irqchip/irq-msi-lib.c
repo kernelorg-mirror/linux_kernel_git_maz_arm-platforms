@@ -28,6 +28,7 @@ bool msi_lib_init_dev_msi_info(struct device *dev, struct irq_domain *domain,
 			       struct msi_domain_info *info)
 {
 	const struct msi_parent_ops *pops = real_parent->msi_parent_ops;
+	u32 required_flags = pops->required_flags;
 
 	/*
 	 * MSI parent domain specific settings. For now there is only the
@@ -48,6 +49,12 @@ bool msi_lib_init_dev_msi_info(struct device *dev, struct irq_domain *domain,
 
 	/* Is the target domain bus token supported? */
 	switch(info->bus_token) {
+	case DOMAIN_BUS_PCI_DEVICE_MSI:
+	case DOMAIN_BUS_PCI_DEVICE_MSIX:
+		if (WARN_ON_ONCE(!IS_ENABLED(CONFIG_PCI_MSI)))
+			return false;
+
+		break;
 	default:
 		/*
 		 * This should never be reached. See
@@ -63,7 +70,7 @@ bool msi_lib_init_dev_msi_info(struct device *dev, struct irq_domain *domain,
 	 */
 	info->flags			&= pops->supported_flags;
 	/* Enforce the required flags */
-	info->flags			|= pops->required_flags;
+	info->flags			|= required_flags;
 
 	/* Chip updates for all child bus types */
 	if (!info->chip->irq_eoi)

@@ -195,3 +195,60 @@ out:
 
 	write_unlock(&vcpu->kvm->mmu_lock);
 }
+
+void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
+{
+	struct kvm_s2_mmu *mmu;
+	unsigned long flags;
+	u64 val, hcr, par;
+	bool fail;
+
+	write_lock(&vcpu->kvm->mmu_lock);
+
+	mmu = &vcpu->kvm->arch.mmu;
+
+	/*
+	 * We've trapped, so everything is live on the CPU. As we will
+	 * be switching context behind everybody's back, disable
+	 * interrupts...
+	 */
+	local_irq_save(flags);
+
+	val = hcr = read_sysreg(hcr_el2);
+	val &= ~HCR_TGE;
+	val |= HCR_VM;
+
+	if (!vcpu_el2_e2h_is_set(vcpu))
+		val |= HCR_NV | HCR_NV1;
+
+	write_sysreg(val, hcr_el2);
+	isb();
+
+	switch (op) {
+	case OP_AT_S1E2R:
+		fail = __kvm_at(OP_AT_S1E1R, vaddr);
+		break;
+	case OP_AT_S1E2W:
+		fail = __kvm_at(OP_AT_S1E1W, vaddr);
+		break;
+	default:
+		WARN_ON_ONCE(1);
+		fail = true;
+	}
+
+	isb();
+
+	if (!fail)
+		par = read_sysreg_par();
+	else
+		par = SYS_PAR_EL1_F;
+
+	write_sysreg(hcr, hcr_el2);
+	isb();
+
+	local_irq_restore(flags);
+
+	write_unlock(&vcpu->kvm->mmu_lock);
+
+	vcpu_write_sys_reg(vcpu, par, PAR_EL1);
+}

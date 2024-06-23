@@ -693,6 +693,9 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	case OP_AT_S1E0W:
 		perm_fail |= !uw;
 		break;
+	case OP_AT_S1E1A:
+	case OP_AT_S1E2A:
+		break;
 	default:
 		BUG();
 	}
@@ -862,6 +865,9 @@ skip_mmu_switch:
 	case OP_AT_S1E0W:
 		fail = __kvm_at(OP_AT_S1E0W, vaddr);
 		break;
+	case OP_AT_S1E1A:
+		fail = __kvm_at(OP_AT_S1E1A, vaddr);
+		break;
 	default:
 		WARN_ON_ONCE(1);
 		fail = true;
@@ -930,6 +936,9 @@ void __kvm_at_s1e2(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 			break;
 		case OP_AT_S1E2W:
 			fail = __kvm_at(OP_AT_S1E1W, vaddr);
+			break;
+		case OP_AT_S1E2A:
+			fail = __kvm_at(OP_AT_S1E1A, vaddr);
 			break;
 		default:
 			WARN_ON_ONCE(1);

@@ -146,6 +146,7 @@
 #define PMD_SECT_UXN		(_AT(pmdval_t, 1) << 54)
 #define PMD_TABLE_PXN		(_AT(pmdval_t, 1) << 59)
 #define PMD_TABLE_UXN		(_AT(pmdval_t, 1) << 60)
+#define PMD_TABLE_AP		(_AT(pmdval_t, 3) << 61)
 
 /*
  * AttrIndx[2:0] encoding (mapping attributes defined in the MAIR* registers).
@@ -306,6 +307,12 @@
 #define TCR_TCMA0		(UL(1) << 57)
 #define TCR_TCMA1		(UL(1) << 58)
 #define TCR_DS			(UL(1) << 59)
+
+#define TCR_HPD0_SHIFT		41
+#define TCR_HPD0		BIT(TCR_HPD0_SHIFT)
+
+#define TCR_HPD1_SHIFT		42
+#define TCR_HPD1		BIT(TCR_HPD1_SHIFT)
 
 /*
  * TTBR.

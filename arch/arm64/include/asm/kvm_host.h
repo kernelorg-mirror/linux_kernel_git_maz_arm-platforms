@@ -464,6 +464,7 @@ enum vcpu_sysreg {
 	TTBR1_EL2,	/* Translation Table Base Register 1 (EL2) */
 	TCR_EL2,	/* Translation Control Register (EL2) */
 	TCR2_EL2,	/* Extended Translation Control Register (EL2) */
+	PIR_EL2,	/* Permission Indirection Register 1 (EL2) */
 	SPSR_EL2,	/* EL2 saved program status register */
 	ELR_EL2,	/* EL2 exception link register */
 	AFSR0_EL2,	/* Auxiliary Fault Status Register 0 (EL2) */
@@ -518,6 +519,7 @@ enum vcpu_sysreg {
 	/* Permission Indirection Extension registers */
 	VNCR(PIR_EL1),	 /* Permission Indirection Register 1 (EL1) */
 	VNCR(PIRE0_EL1), /*  Permission Indirection Register 0 (EL1) */
+	VNCR(PIRE0_EL2), /*  Permission Indirection Register 0 (EL2) */
 
 	VNCR(HFGRTR_EL2),
 	VNCR(HFGWTR_EL2),

@@ -148,6 +148,20 @@ static inline bool cpu_has_amu(void)
                ID_AA64PFR0_EL1_AMU_SHIFT);
 }
 
+static inline bool requires_pire0_el1_trap(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * When E2H=1 and that we're at EL2, PIRE0_EL2 lands in the
+	 * VNCR page, while PIRE0_EL1 hits the register. In order to
+	 * reconcile the two, trap write accesses to PIRE0_EL1 to make
+	 * sure both are in sync
+	 */
+	return (cpus_have_final_cap(ARM64_HAS_S1PIE) &&
+		is_hyp_ctxt(vcpu) &&
+		vcpu_el2_e2h_is_set(vcpu) &&
+		kvm_has_feat(kern_hyp_va(vcpu->kvm), ID_AA64MMFR3_EL1, S1PIE, IMP));
+}
+
 static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *hctxt = host_data_ptr(host_ctxt);
@@ -165,7 +179,9 @@ static inline void __activate_traps_hfgxtr(struct kvm_vcpu *vcpu)
 		return;
 
 	update_fgt_traps(hctxt, vcpu, kvm, HFGRTR_EL2);
-	update_fgt_traps_cs(hctxt, vcpu, kvm, HFGWTR_EL2, 0,
+	update_fgt_traps_cs(hctxt, vcpu, kvm, HFGWTR_EL2,
+			    requires_pire0_el1_trap(vcpu) ?
+			    HFGxTR_EL2_nPIRE0_EL1_MASK : 0,
 			    cpus_have_final_cap(ARM64_WORKAROUND_AMPERE_AC03_CPU_38) ?
 			    HFGxTR_EL2_TCR_EL1_MASK : 0);
 	update_fgt_traps(hctxt, vcpu, kvm, HFGITR_EL2);

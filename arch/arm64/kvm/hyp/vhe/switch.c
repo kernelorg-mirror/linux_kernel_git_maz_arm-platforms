@@ -370,6 +370,10 @@ static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 
 	spsr = (spsr & ~(PSR_MODE_MASK | PSR_MODE32_BIT)) | mode;
 
+	/* Propagate PIRE0_EL2 when going back to host EL0 */
+	if (mode == PSR_MODE_EL0t && requires_pire0_el1_trap(vcpu))
+		write_sysreg_el1(__vcpu_sys_reg(vcpu, PIRE0_EL2), SYS_PIRE0);
+
 	write_sysreg_el2(spsr, SYS_SPSR);
 	write_sysreg_el2(elr, SYS_ELR);
 
@@ -468,6 +472,34 @@ static bool kvm_hyp_handle_zcr_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	return false;
 }
 
+static bool kvm_hyp_handle_pire0_el1(struct kvm_vcpu *vcpu, u64 *exit_code)
+{
+	u64 esr, val;
+	u32 sysreg;
+	int rt;
+
+	if (!is_hyp_ctxt(vcpu) || !vcpu_el2_e2h_is_set(vcpu))
+		return false;
+
+	esr = kvm_vcpu_get_esr(vcpu);
+	sysreg = esr_sys64_to_sysreg(esr);
+
+	if (sysreg != SYS_PIRE0_EL1)
+		return false;
+
+	if ((esr & ESR_ELx_SYS64_ISS_DIR_MASK) == ESR_ELx_SYS64_ISS_DIR_READ)
+		return false;
+
+	rt = ESR_ELx_SYS64_ISS_RT(esr);
+	val = vcpu_get_reg(vcpu, rt);
+	__vcpu_sys_reg(vcpu, PIRE0_EL2) = val;
+	write_sysreg_el1(val, SYS_PIRE0);
+
+	__kvm_skip_instr(vcpu);
+
+	return true;
+}
+
 static bool kvm_hyp_handle_sysreg_vhe(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	if (kvm_hyp_handle_tlbi_el2(vcpu, exit_code))
@@ -480,6 +512,9 @@ static bool kvm_hyp_handle_sysreg_vhe(struct kvm_vcpu *vcpu, u64 *exit_code)
 		return true;
 
 	if (kvm_hyp_handle_zcr_el2(vcpu, exit_code))
+		return true;
+
+	if (kvm_hyp_handle_pire0_el1(vcpu, exit_code))
 		return true;
 
 	return kvm_hyp_handle_sysreg(vcpu, exit_code);

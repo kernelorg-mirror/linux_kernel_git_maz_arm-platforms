@@ -55,6 +55,13 @@ static void __sysreg_save_vel2_state(struct kvm_cpu_context *ctxt)
 			ctxt_sys_reg(ctxt, TCR2_EL2) = read_sysreg_el1(SYS_TCR2);
 
 		/*
+		 * PIRE0_EL2 is always in memory, thanks to us trapping
+		 * PIRE0_EL1 due to the architecture oddities.
+		 */
+		if (ctxt_has_s1pie(ctxt))
+			ctxt_sys_reg(ctxt, PIR_EL2) = read_sysreg_el1(SYS_PIR);
+
+		/*
 		 * The EL1 view of CNTKCTL_EL1 has a bunch of RES0 bits where
 		 * the interesting CNTHCTL_EL2 bits live. So preserve these
 		 * bits when reading back the guest-visible value.
@@ -96,6 +103,8 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		write_sysreg_el1(ctxt_sys_reg(ctxt, TTBR1_EL2),	SYS_TTBR1);
 		write_sysreg_el1(ctxt_sys_reg(ctxt, TCR_EL2),	SYS_TCR);
 		write_sysreg_el1(ctxt_sys_reg(ctxt, CNTHCTL_EL2), SYS_CNTKCTL);
+		if (ctxt_has_s1pie(ctxt))
+			write_sysreg_el1(ctxt_sys_reg(ctxt, PIRE0_EL2),	SYS_PIRE0);
 	} else {
 		/*
 		 * CNTHCTL_EL2 only affects EL1 when running nVHE, so
@@ -110,6 +119,9 @@ static void __sysreg_restore_vel2_state(struct kvm_cpu_context *ctxt)
 		val = translate_tcr_el2_to_tcr_el1(ctxt_sys_reg(ctxt, TCR_EL2));
 		write_sysreg_el1(val, SYS_TCR);
 	}
+
+	if (ctxt_has_s1pie(ctxt))
+		write_sysreg_el1(ctxt_sys_reg(ctxt, PIR_EL2),	SYS_PIR);
 
 	if (ctxt_has_tcrx(ctxt))
 		write_sysreg_el1(ctxt_sys_reg(ctxt, TCR2_EL2), SYS_TCR2);

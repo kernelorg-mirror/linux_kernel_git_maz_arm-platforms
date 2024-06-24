@@ -1856,6 +1856,15 @@ static u64 read_sanitised_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 	return val;
 }
 
+static u64 read_sanitised_id_aa64mmfr3_el1(struct kvm_vcpu *vcpu,
+					   const struct sys_reg_desc *rd)
+{
+	u64 val = read_sanitised_ftr_reg(SYS_ID_AA64MMFR3_EL1);
+
+	return val & (ID_AA64MMFR3_EL1_TCRX	|
+		      ID_AA64MMFR3_EL1_S1PIE);
+}
+
 #define ID_REG_LIMIT_FIELD_ENUM(val, reg, field, limit)			       \
 ({									       \
 	u64 __f_val = FIELD_GET(reg##_##field##_MASK, val);		       \
@@ -2619,6 +2628,13 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 					ID_AA64MMFR2_EL1_IDS |
 					ID_AA64MMFR2_EL1_NV |
 					ID_AA64MMFR2_EL1_CCIDX)),
+	{ SYS_DESC(SYS_ID_AA64MMFR3_EL1),
+	  .access	= access_id_reg,
+	  .get_user	= get_id_reg,
+	  .set_user	= set_id_reg,
+	  .reset	= read_sanitised_id_aa64mmfr3_el1,
+	  .val		= (ID_AA64MMFR3_EL1_TCRX	|
+			   ID_AA64MMFR3_EL1_S1PIE), },
 	ID_SANITISED(ID_AA64MMFR3_EL1),
 	ID_SANITISED(ID_AA64MMFR4_EL1),
 	ID_UNALLOCATED(7,5),

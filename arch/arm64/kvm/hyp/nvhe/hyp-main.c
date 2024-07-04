@@ -78,6 +78,10 @@ static void fpsimd_sve_sync(struct kvm_vcpu *vcpu)
 	else
 		__fpsimd_restore_state(*host_data_ptr(fpsimd_state));
 
+	if (system_supports_fpmr() &&
+	    kvm_has_feat(kern_hyp_va(vcpu->kvm), ID_AA64PFR2_EL1, FPMR, IMP))
+		write_sysreg_s(*host_data_ptr(fpmr), SYS_FPMR);
+
 	*host_data_ptr(fp_owner) = FP_STATE_HOST_OWNED;
 }
 

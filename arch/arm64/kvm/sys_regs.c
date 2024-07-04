@@ -4923,6 +4923,9 @@ void kvm_calculate_traps(struct kvm_vcpu *vcpu)
 
 		if (kvm_has_feat(kvm, ID_AA64ISAR1_EL1, LS64, LS64_ACCDATA))
 			vcpu->arch.hcrx_el2 |= HCRX_EL2_EnAS0;
+
+		if (kvm_has_feat(kvm, ID_AA64PFR2_EL1, FPMR, IMP))
+			vcpu->arch.hcrx_el2 |= HCRX_EL2_EnFPM;
 	}
 
 	if (test_bit(KVM_ARCH_FLAG_FGU_INITIALIZED, &kvm->arch.flags))

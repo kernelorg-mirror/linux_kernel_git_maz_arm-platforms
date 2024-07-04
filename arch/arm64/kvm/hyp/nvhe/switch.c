@@ -198,6 +198,15 @@ static void kvm_hyp_save_fpsimd_host(struct kvm_vcpu *vcpu)
 	} else {
 		__fpsimd_save_state(*host_data_ptr(fpsimd_state));
 	}
+
+	if (kvm_has_fpmr(vcpu->kvm)) {
+		u64 fpmr = read_sysreg_s(SYS_FPMR);
+
+		if (unlikely(is_protected_kvm_enabled()))
+			*host_data_ptr(fpmr) = fpmr;
+		else
+			**host_data_ptr(fpmr_ptr) = fpmr;
+	}
 }
 
 static const exit_handler_fn hyp_exit_handlers[] = {

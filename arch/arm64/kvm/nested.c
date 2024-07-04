@@ -819,9 +819,9 @@ static void limit_nv_id_regs(struct kvm *kvm)
 	val &= ~NV_FTR(ISAR0, TME);
 	kvm_set_vm_id_reg(kvm, SYS_ID_AA64ISAR0_EL1, val);
 
-	/* Support everything but Spec Invalidation */
+	/* Support everything but Spec Invalidation and XS */
 	val = kvm_read_vm_id_reg(kvm, SYS_ID_AA64ISAR1_EL1);
-	val &= ~(GENMASK_ULL(63, 56)	|
+	val &= ~(NV_FTR(ISAR1, XS)	|
 		 NV_FTR(ISAR1, SPECRES));
 	kvm_set_vm_id_reg(kvm, SYS_ID_AA64ISAR1_EL1, val);
 

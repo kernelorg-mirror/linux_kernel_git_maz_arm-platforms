@@ -84,7 +84,9 @@ enum cgt_group_id {
 	CGT_CPTR_TCPAC,
 
 	CGT_HCRX_EnFPM,
+	CGT_HCRX_SCTLR2En,
 	CGT_HCRX_TCR2En,
+	CGT_HCRX_TALLINT,
 
 	/*
 	 * Anything after this point is a combination of coarse trap
@@ -379,11 +381,23 @@ static const struct trap_bits coarse_trap_bits[] = {
 		.mask		= HCRX_EL2_EnFPM,
 		.behaviour	= BEHAVE_FORWARD_ANY,
 	},
+	[CGT_HCRX_SCTLR2En] = {
+		.index		= HCRX_EL2,
+		.value 		= 0,
+		.mask		= HCRX_EL2_SCTLR2En,
+		.behaviour	= BEHAVE_FORWARD_ANY,
+	},
 	[CGT_HCRX_TCR2En] = {
 		.index		= HCRX_EL2,
 		.value 		= 0,
 		.mask		= HCRX_EL2_TCR2En,
 		.behaviour	= BEHAVE_FORWARD_ANY,
+	},
+	[CGT_HCRX_TALLINT] = {
+		.index		= HCRX_EL2,
+		.value 		= 1,
+		.mask		= HCRX_EL2_TALLINT,
+		.behaviour	= BEHAVE_FORWARD_WRITE,
 	},
 };
 

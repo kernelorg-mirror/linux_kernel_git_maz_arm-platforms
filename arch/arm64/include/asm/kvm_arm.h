@@ -343,12 +343,11 @@
 /*
  * FGT register definitions
  *
- * RES0 and polarity masks as of DDI0487J.a, to be updated as needed.
- * We're not using the generated masks as they are usually ahead of
- * the published ARM ARM, which we use as a reference.
+ * For each FGT register, define 3 constants:
  *
- * Once we get to a point where the two describe the same thing, we'll
- * merge the definitions. One day.
+ * __H*FG*TR_EL2_RES0:	the RES0 bits that apply to this register
+ * __H*FG*TR_EL2_MASK:	the bits that are active when set to 1
+ * __H*FG*TR_EL2_nMASK:	the bits that are RES0 or active when set to 0
  */
 #define __HFGRTR_EL2_RES0	HFGxTR_EL2_RES0
 #define __HFGRTR_EL2_MASK	GENMASK(49, 0)

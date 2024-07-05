@@ -1883,6 +1883,15 @@ static u64 read_sanitised_id_aa64mmfr3_el1(struct kvm_vcpu *vcpu,
 		      ID_AA64MMFR3_EL1_S1PIE);
 }
 
+static u64 read_sanitised_id_aa64pfr2_el1(struct kvm_vcpu *vcpu,
+					  const struct sys_reg_desc *rd)
+{
+	u64 val = read_sanitised_ftr_reg(SYS_ID_AA64PFR2_EL1);
+
+	/* We only expose FPMR */
+	return val & ID_AA64PFR2_EL1_FPMR;
+}
+
 #define ID_REG_LIMIT_FIELD_ENUM(val, reg, field, limit)			       \
 ({									       \
 	u64 __f_val = FIELD_GET(reg##_##field##_MASK, val);		       \
@@ -2600,7 +2609,12 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 		   ID_AA64PFR0_EL1_AdvSIMD |
 		   ID_AA64PFR0_EL1_FP), },
 	ID_SANITISED(ID_AA64PFR1_EL1),
-	ID_UNALLOCATED(4,2),
+	{ SYS_DESC(SYS_ID_AA64PFR2_EL1),
+	  .access	= access_id_reg,
+	  .get_user	= get_id_reg,
+	  .set_user	= set_id_reg,
+	  .reset	= read_sanitised_id_aa64pfr2_el1,
+	  .val		= ID_AA64PFR2_EL1_FPMR, },
 	ID_UNALLOCATED(4,3),
 	ID_WRITABLE(ID_AA64ZFR0_EL1, ~ID_AA64ZFR0_EL1_RES0),
 	ID_HIDDEN(ID_AA64SMFR0_EL1),

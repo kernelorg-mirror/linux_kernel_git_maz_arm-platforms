@@ -585,9 +585,33 @@ static u64 compute_par_s1(struct kvm_vcpu *vcpu, struct s1_walk_result *wr)
 	return par;
 }
 
+static bool pan3_enabled(struct kvm_vcpu *vcpu)
+{
+	int el;
+
+	if (!kvm_has_feat(vcpu->kvm, ID_AA64MMFR1_EL1, PAN, PAN3))
+		return false;
+
+	el = (vcpu_el2_e2h_is_set(vcpu) &&
+	      vcpu_el2_tge_is_set(vcpu)) ? 2 : 1;
+
+	if (el == 1 || vcpu_el2_e2h_is_set(vcpu)) {
+		u64 sctlr;
+
+		if (el == 1)
+			sctlr = vcpu_read_sys_reg(vcpu, SCTLR_EL1);
+		else
+			sctlr = vcpu_read_sys_reg(vcpu, SCTLR_EL2);
+
+		return sctlr & SCTLR_EL1_EPAN;
+	}
+
+	return false;
+}
+
 static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 {
-	bool perm_fail, ur, uw, pr, pw, pan;
+	bool perm_fail, ur, uw, ux, pr, pw, pan;
 	struct s1_walk_result wr = {};
 	struct s1_walk_info wi = {};
 	int ret, idx, el;
@@ -616,7 +640,7 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 		goto compute_par;
 
 	/* FIXME: revisit when adding indirect permission support */
-
+	ux = pan3_enabled(vcpu) && !(wr.desc & PTE_UXN);
 	pw = !(wr.desc & PTE_RDONLY);
 
 	if (wi.single_range) {
@@ -640,6 +664,7 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 
 	ur &= !(wr.APTable & BIT(0));
 	uw &= !(wr.APTable != 0);
+	ux &= !wr.UXNTable;
 
 	pw &= !(wr.APTable & BIT(1));
 
@@ -649,14 +674,14 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 
 	switch (op) {
 	case OP_AT_S1E1RP:
-		perm_fail |= pan && (ur || uw);
+		perm_fail |= pan && (ur || uw || ux);
 		fallthrough;
 	case OP_AT_S1E1R:
 	case OP_AT_S1E2R:
 		perm_fail |= !pr;
 		break;
 	case OP_AT_S1E1WP:
-		perm_fail |= pan && (ur || uw);
+		perm_fail |= pan && (ur || uw || ux);
 		fallthrough;
 	case OP_AT_S1E1W:
 	case OP_AT_S1E2W:
@@ -773,7 +798,18 @@ static u64 __kvm_at_s1e01_fast(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 
 	par = SYS_PAR_EL1_F;
 
- 	/*
+	switch (op) {
+	case OP_AT_S1E1RP:
+	case OP_AT_S1E1WP:
+		/*
+		 * There is no fast path with PAN3 (no AT instruction
+		 * checks for it). Let's cut out losses early.
+		 */
+		if (pan3_enabled(vcpu))
+			return par;
+	}
+
+	/*
 	 * We've trapped, so everything is live on the CPU. As we will
 	 * be switching contexts behind everybody's back, disable
 	 * interrupts while holding the mmu lock.

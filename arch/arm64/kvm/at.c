@@ -51,6 +51,75 @@ static void __mmu_config_restore(struct mmu_config *config)
 	isb();
 }
 
+static bool check_at_pan(struct kvm_vcpu *vcpu, u64 vaddr, u64 *res)
+{
+	u64 par_e0;
+	bool fail;
+
+	/*
+	 * For PAN-involved AT operations, perform the same translation,
+	 * using EL0 this time. Twice. Much fun.
+	 */
+	fail = __kvm_at(OP_AT_S1E0R, vaddr);
+	if (fail)
+		return true;
+
+	par_e0 = read_sysreg_par();
+	if (!(par_e0 & SYS_PAR_EL1_F))
+		goto out;
+
+	fail = __kvm_at(OP_AT_S1E0W, vaddr);
+	if (fail)
+		return true;
+
+	par_e0 = read_sysreg_par();
+out:
+	*res = par_e0;
+	return false;
+}
+
+static u64 __kvm_at_s1e1p_fast(struct kvm_vcpu *vcpu, u64 vaddr, u64 par)
+{
+	u64 pan_par;
+	bool fail;
+
+	if (par & SYS_PAR_EL1_F)
+		return par;
+
+	/*
+	 * If the PAN check failed by taking an exception (funky guest?),
+	 * pretend the initial walk didn't work either...
+	 */
+	fail = check_at_pan(vcpu, vaddr, &pan_par);
+	if (fail)
+		return SYS_PAR_EL1_F;
+
+	/*
+	 * If the EL0 translation has succeeded, we need to pretend
+	 * the AT operation has failed, as the PAN setting forbids
+	 * such a translation.
+	 */
+	if (pan_par & SYS_PAR_EL1_F) {
+		u8 fst = FIELD_GET(SYS_PAR_EL1_FST, pan_par);
+
+		/*
+		 * If we get something other than a permission fault,
+		 * declare failure as we're missed in the PTs.
+		 */
+		if ((fst & ESR_ELx_FSC_TYPE) != ESR_ELx_FSC_PERM)
+			par = SYS_PAR_EL1_F;
+	} else {
+		/*
+		 * The EL0 access succeded, which is an indication of a PAN
+		 * failure. We don't have the full syndrom information to
+		 * synthetize the failure.
+		 */
+		par = SYS_PAR_EL1_F;
+	}
+
+	return par;
+}
+
 /*
  * Return the PAR_EL1 value as the result of a valid translation.
  *
@@ -108,9 +177,11 @@ skip_mmu_switch:
 
 	switch (op) {
 	case OP_AT_S1E1R:
+	case OP_AT_S1E1RP:
 		fail = __kvm_at(OP_AT_S1E1R, vaddr);
 		break;
 	case OP_AT_S1E1W:
+	case OP_AT_S1E1WP:
 		fail = __kvm_at(OP_AT_S1E1W, vaddr);
 		break;
 	case OP_AT_S1E0R:
@@ -127,6 +198,15 @@ skip_mmu_switch:
 
 	if (!fail)
 		par = read_sysreg_par();
+
+	switch (op) {
+	case OP_AT_S1E1RP:
+	case OP_AT_S1E1WP:
+		if (vcpu_el2_e2h_is_set(vcpu) &&	/* I_YMLJD */
+		    (*vcpu_cpsr(vcpu) & PSR_PAN_BIT))	/* R_XTSQH */
+			par = __kvm_at_s1e1p_fast(vcpu, vaddr, par);
+		break;
+	}
 
 	if (!(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
 		__mmu_config_restore(&config);

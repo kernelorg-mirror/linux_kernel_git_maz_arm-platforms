@@ -2274,6 +2274,54 @@ static u64 kvm_check_illegal_exception_return(struct kvm_vcpu *vcpu, u64 spsr)
 	return spsr;
 }
 
+union nv_switch_data {
+	struct {
+		u64			esr;
+		u64			elr;
+		u64			spsr;
+	} eret;
+	struct {
+		u64			esr;
+		enum exception_type	type;
+	} except;
+};
+
+typedef void (*nv_switch_fn)(struct kvm_vcpu *, const union nv_switch_data *);
+
+static void nested_switch(struct kvm_vcpu *vcpu, nv_switch_fn fn, const union nv_switch_data *data)
+{
+	preempt_disable();
+
+	/*
+	 * We may have an exception or PC update in the EL0/EL1 context.
+	 * Commit it before entering EL2. An ERET is always from HYP
+	 * context, so this won't do a thing.
+	 */
+	if (!is_hyp_ctxt(vcpu))
+		__kvm_adjust_pc(vcpu);
+
+	kvm_arch_vcpu_put(vcpu);
+
+	fn(vcpu, data);
+
+	kvm_arch_vcpu_load(vcpu, smp_processor_id());
+	preempt_enable();
+}
+
+static void nv_switch_eret(struct kvm_vcpu *vcpu, const union nv_switch_data *data)
+{
+	u64 elr = data->eret.elr;
+	u64 spsr = data->eret.spsr;
+
+	if (!esr_iss_is_eretax(data->eret.esr))
+		elr = __vcpu_sys_reg(vcpu, ELR_EL2);
+
+	trace_kvm_nested_eret(vcpu, elr, spsr);
+
+	*vcpu_pc(vcpu) = elr;
+	*vcpu_cpsr(vcpu) = spsr;
+}
+
 void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 {
 	u64 spsr, elr, esr;
@@ -2309,19 +2357,14 @@ void kvm_emulate_nested_eret(struct kvm_vcpu *vcpu)
 		}
 	}
 
-	preempt_disable();
-	kvm_arch_vcpu_put(vcpu);
-
-	if (!esr_iss_is_eretax(esr))
-		elr = __vcpu_sys_reg(vcpu, ELR_EL2);
-
-	trace_kvm_nested_eret(vcpu, elr, spsr);
-
-	*vcpu_pc(vcpu) = elr;
-	*vcpu_cpsr(vcpu) = spsr;
-
-	kvm_arch_vcpu_load(vcpu, smp_processor_id());
-	preempt_enable();
+	nested_switch(vcpu, nv_switch_eret,
+		      &(const union nv_switch_data){
+			      .eret = {
+				      .esr	= esr,
+				      .elr	= elr,
+				      .spsr	= spsr,
+			      },
+		      });
 }
 
 static void kvm_inject_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
@@ -2340,6 +2383,22 @@ static void kvm_inject_el2_exception(struct kvm_vcpu *vcpu, u64 esr_el2,
 	default:
 		WARN_ONCE(1, "Unsupported EL2 exception injection %d\n", type);
 	}
+}
+
+static void nv_switch_exception(struct kvm_vcpu *vcpu, const union nv_switch_data *data)
+{
+	kvm_inject_el2_exception(vcpu, data->except.esr, data->except.type);
+
+	/*
+	 * A hard requirement is that a switch between EL1 and EL2
+	 * contexts has to happen between a put/load, so that we can
+	 * pick the correct timer and interrupt configuration, among
+	 * other things.
+	 *
+	 * Make sure the exception actually took place before we load
+	 * the new context.
+	 */
+	__kvm_adjust_pc(vcpu);
 }
 
 /*
@@ -2373,36 +2432,16 @@ static int kvm_inject_nested(struct kvm_vcpu *vcpu, u64 esr_el2,
 			  vcpu_el2_tge_is_set(vcpu));
 	direct_inject |= (mode == PSR_MODE_EL2h || mode == PSR_MODE_EL2t);
 
-	if (direct_inject) {
+	if (direct_inject)
 		kvm_inject_el2_exception(vcpu, esr_el2, type);
-		return 1;
-	}
-
-	preempt_disable();
-
-	/*
-	 * We may have an exception or PC update in the EL0/EL1 context.
-	 * Commit it before entering EL2.
-	 */
-	__kvm_adjust_pc(vcpu);
-
-	kvm_arch_vcpu_put(vcpu);
-
-	kvm_inject_el2_exception(vcpu, esr_el2, type);
-
-	/*
-	 * A hard requirement is that a switch between EL1 and EL2
-	 * contexts has to happen between a put/load, so that we can
-	 * pick the correct timer and interrupt configuration, among
-	 * other things.
-	 *
-	 * Make sure the exception actually took place before we load
-	 * the new context.
-	 */
-	__kvm_adjust_pc(vcpu);
-
-	kvm_arch_vcpu_load(vcpu, smp_processor_id());
-	preempt_enable();
+	else
+		nested_switch(vcpu, nv_switch_exception,
+			      &(const union nv_switch_data){
+				      .except = {
+					      .esr	= esr_el2,
+					      .type	= type,
+				      },
+			      });
 
 	return 1;
 }

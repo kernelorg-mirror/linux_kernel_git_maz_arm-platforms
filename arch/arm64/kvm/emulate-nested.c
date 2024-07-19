@@ -2300,11 +2300,16 @@ static void nested_switch(struct kvm_vcpu *vcpu, nv_switch_fn fn, const union nv
 	if (!is_hyp_ctxt(vcpu))
 		__kvm_adjust_pc(vcpu);
 
+	vcpu_set_flag(vcpu, TRANSIENT_PUT_LOAD);
+
 	kvm_arch_vcpu_put(vcpu);
 
 	fn(vcpu, data);
 
 	kvm_arch_vcpu_load(vcpu, smp_processor_id());
+
+	vcpu_clear_flag(vcpu, TRANSIENT_PUT_LOAD);
+
 	preempt_enable();
 }
 

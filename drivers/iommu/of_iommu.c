@@ -27,8 +27,6 @@ static int of_iommu_xlate(struct device *dev,
 
 	if (!of_device_is_available(iommu_spec->np))
 		return -ENODEV;
-	if (!ops)
-		return driver_deferred_probe_check_state(dev);
 
 	ret = iommu_fwspec_init(dev, of_fwnode_handle(iommu_spec->np));
 	if (ret == -EPROBE_DEFER)

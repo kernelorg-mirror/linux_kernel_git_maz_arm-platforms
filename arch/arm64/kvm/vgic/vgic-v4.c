@@ -134,11 +134,10 @@ static void vgic_v4_enable_vsgis(struct kvm_vcpu *vcpu)
 			goto unlock;
 
 		irq->hw = true;
-		irq->host_irq = irq_find_mapping(vpe->sgi_domain, i);
+		desc = __irq_resolve_mapping(vpe->sgi_domain, i, &irq->host_irq);
 
 		/* Transfer the full irq state to the vPE */
 		vgic_v4_sync_sgi_config(vpe, irq);
-		desc = irq_to_desc(irq->host_irq);
 		ret = irq_domain_activate_irq(irq_desc_get_irq_data(desc),
 					      false);
 		if (!WARN_ON(ret)) {

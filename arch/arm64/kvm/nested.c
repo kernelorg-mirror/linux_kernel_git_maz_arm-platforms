@@ -268,11 +268,6 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 		return 1;
 	}
 
-	/*
-	 * We don't use the contiguous bit in the stage-2 ptes, so skip check
-	 * for misprogramming of the contiguous bit.
-	 */
-
 	if (check_output_size(wi, desc)) {
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ADDRSZ);
 		out->desc = desc;
@@ -283,6 +278,20 @@ static int walk_nested_s2_pgd(phys_addr_t ipa,
 		out->esr = compute_fsc(level, ESR_ELx_FSC_ACCESS);
 		out->desc = desc;
 		return 1;
+	}
+
+	/* Adjust alignment for the contiguous bit as per StageOA() */
+	if (desc & PTE_CONT) {
+		switch (BIT(wi->pgshift)) {
+		case SZ_4K:
+			addr_bottom += 4;
+			break;
+		case SZ_16K:
+			addr_bottom += level == 2 ? 5 : 7;
+			break;
+		case SZ_64K:
+			addr_bottom += 5;
+		}
 	}
 
 	/* Calculate and return the result */

@@ -62,7 +62,7 @@ static int get_ia_size(struct s1_walk_info *wi)
 	return 64 - wi->txsz;
 }
 
-/* return true of the IPA is out of the OA range */
+/* Return true if the IPA is out of the OA range */
 static bool check_output_size(u64 ipa, struct s1_walk_info *wi)
 {
 	return wi->max_oa_bits < 48 && (ipa & GENMASK_ULL(47, wi->max_oa_bits));
@@ -102,7 +102,8 @@ static int setup_s1_walk(struct kvm_vcpu *vcpu, u32 op, struct s1_walk_info *wi,
 	if (wi->regime == TR_EL2 && va55)
 		goto addrsz;
 
-	wi->s2 = wi->regime == TR_EL10 && (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_VM);
+	wi->s2 = (wi->regime == TR_EL10 &&
+		  (__vcpu_sys_reg(vcpu, HCR_EL2) & (HCR_VM | HCR_DC)));
 
 	switch (wi->regime) {
 	case TR_EL10:
@@ -136,12 +137,22 @@ static int setup_s1_walk(struct kvm_vcpu *vcpu, u32 op, struct s1_walk_info *wi,
 	va = (u64)sign_extend64(va, 55);
 
 	/* Let's put the MMU disabled case aside immediately */
-	if (!(sctlr & SCTLR_ELx_M) ||
-	    (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_DC)) {
+	switch (wi->regime) {
+	case TR_EL10:
+		if (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_DC)
+			wr->level = S1_MMU_DISABLED;
+		fallthrough;
+	case TR_EL2:
+	case TR_EL20:
+		if (!(sctlr & SCTLR_ELx_M))
+			wr->level = S1_MMU_DISABLED;
+		break;
+	}
+
+	if (wr->level == S1_MMU_DISABLED) {
 		if (va >= BIT(kvm_get_pa_bits(vcpu->kvm)))
 			goto addrsz;
 
-		wr->level = S1_MMU_DISABLED;
 		wr->pa = va;
 		return 0;
 	}
@@ -185,10 +196,13 @@ static int setup_s1_walk(struct kvm_vcpu *vcpu, u32 op, struct s1_walk_info *wi,
 	}
 
 	/* R_PLCGL, R_YXNYW */
-	if ((!kvm_has_feat_enum(vcpu->kvm, ID_AA64MMFR2_EL1, ST, 48_47) &&
-	     wi->txsz > 39) ||
-	    (wi->pgshift == 16 && wi->txsz > 47) || wi->txsz > 48)
-		goto transfault_l0;
+	if (!kvm_has_feat_enum(vcpu->kvm, ID_AA64MMFR2_EL1, ST, 48_47)) {
+		if (wi->txsz > 39)
+			goto transfault_l0;
+	} else {
+		if (wi->txsz > 48 || (wi->pgshift == 16 && wi->txsz > 47))
+			goto transfault_l0;
+	}
 
 	/* R_GTJBY, R_SXWGM */
 	switch (BIT(wi->pgshift)) {
@@ -215,7 +229,7 @@ static int setup_s1_walk(struct kvm_vcpu *vcpu, u32 op, struct s1_walk_info *wi,
 	    (va55 && va < GENMASK(63, ia_bits)))
 		goto transfault_l0;
 
-	/* R_ZFSYQ */
+	/* I_ZFSYQ */
 	if (wi->regime != TR_EL2 &&
 	    (tcr & ((va55) ? TCR_EPD1_MASK : TCR_EPD0_MASK)))
 		goto transfault_l0;
@@ -309,13 +323,19 @@ static int walk_s1(struct kvm_vcpu *vcpu, struct s1_walk_info *wi,
 		else
 			desc = le64_to_cpu((__force __le64)desc);
 
-		if (!(desc & 1) || ((desc & 3) == 1 && level == 3))
+		/* Invalid descriptor */
+		if (!(desc & BIT(0)))
 			goto transfault;
 
-		/* We found a leaf, handle that */
-		if ((desc & 3) == 1 || level == 3)
+		/* Block mapping, check validity down the line */
+		if (!(desc & BIT(1)))
 			break;
 
+		/* Page mapping */
+		if (level == 3)
+			break;
+
+		/* Table handling */
 		if (!wi->hpd) {
 			wr->APTable  |= FIELD_GET(S1_TABLE_AP, desc);
 			wr->UXNTable |= FIELD_GET(PMD_TABLE_UXN, desc);
@@ -354,12 +374,25 @@ static int walk_s1(struct kvm_vcpu *vcpu, struct s1_walk_info *wi,
 	if (check_output_size(desc & GENMASK(47, va_bottom), wi))
 		goto addrsz;
 
+	/* Adjust alignment for the contiguous bit as per StageOA() */
+	if (desc & PTE_CONT) {
+		switch (BIT(wi->pgshift)) {
+		case SZ_4K:
+			va_bottom += 4;
+			break;
+		case SZ_16K:
+			va_bottom += level == 2 ? 5 : 7;
+			break;
+		case SZ_64K:
+			va_bottom += 5;
+		}
+	}
+
 	wr->failed = false;
 	wr->level = level;
 	wr->desc = desc;
 	wr->pa = desc & GENMASK(47, va_bottom);
-	if (va_bottom > 12)
-		wr->pa |= va & GENMASK_ULL(va_bottom - 1, 12);
+	wr->pa |= va & GENMASK_ULL(va_bottom - 1, 0);
 
 	return 0;
 
@@ -653,19 +686,23 @@ static u64 compute_par_s1(struct kvm_vcpu *vcpu, struct s1_walk_result *wr,
 		par |= wr->s2 ? SYS_PAR_EL1_S : 0;
 	} else if (wr->level == S1_MMU_DISABLED) {
 		/* MMU off or HCR_EL2.DC == 1 */
-		par = wr->pa & GENMASK_ULL(47, 12);
+		par  = SYS_PAR_EL1_NSE;
+		par |= wr->pa & GENMASK_ULL(47, 12);
 
-		if (!(__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_DC)) {
-			par |= FIELD_PREP(SYS_PAR_EL1_ATTR, 0); /* nGnRnE */
-			par |= FIELD_PREP(SYS_PAR_EL1_SH, 0b10); /* OS */
-		} else {
+		if (regime == TR_EL10 &&
+		    (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_DC)) {
 			par |= FIELD_PREP(SYS_PAR_EL1_ATTR,
 					  MEMATTR(WbRaWa, WbRaWa));
-			par |= FIELD_PREP(SYS_PAR_EL1_SH, 0b00); /* NS */
+			par |= FIELD_PREP(SYS_PAR_EL1_SH, ATTR_NSH);
+		} else {
+			par |= FIELD_PREP(SYS_PAR_EL1_ATTR, 0); /* nGnRnE */
+			par |= FIELD_PREP(SYS_PAR_EL1_SH, ATTR_OSH);
 		}
 	} else {
 		u64 mair, sctlr;
 		u8 sh;
+
+		par  = SYS_PAR_EL1_NSE;
 
 		mair = (regime == TR_EL10 ?
 			vcpu_read_sys_reg(vcpu, MAIR_EL1) :
@@ -682,7 +719,7 @@ static u64 compute_par_s1(struct kvm_vcpu *vcpu, struct s1_walk_result *wr,
 		if (!(sctlr & SCTLR_EL1_C) && !MEMATTR_IS_DEVICE(mair))
 			mair = MEMATTR(NC, NC);
 
-		par  = FIELD_PREP(SYS_PAR_EL1_ATTR, mair);
+		par |= FIELD_PREP(SYS_PAR_EL1_ATTR, mair);
 		par |= wr->pa & GENMASK_ULL(47, 12);
 
 		sh = compute_sh(mair, wr->desc);
@@ -930,9 +967,12 @@ void __kvm_at_s1e01(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	u64 par = __kvm_at_s1e01_fast(vcpu, op, vaddr);
 
 	/*
-	 * If we see a permission fault at S1, then the fast path
-	 * succeedded. By failing. Otherwise, take a walk on the wild
-	 * side.
+	 * If PAR_EL1 reports that AT failed on a S1 permission fault, we
+	 * know for sure that the PTW was able to walk the S1 tables and
+	 * there's nothing else to do.
+	 *
+	 * If AT failed for any other reason, then we must walk the guest S1
+	 * to emulate the instruction.
 	 */
 	if ((par & SYS_PAR_EL1_F) && !par_check_s1_perm_fault(par))
 		par = handle_at_slow(vcpu, op, vaddr);

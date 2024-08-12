@@ -297,10 +297,11 @@ void __vgic_v3_activate_traps(struct vgic_v3_cpu_if *cpu_if)
 	/*
 	 * If we need to trap system registers, we must write
 	 * ICH_HCR_EL2 anyway, even if no interrupts are being
-	 * injected,
+	 * injected. Note that this also applies if we don't expect
+	 * any system register access (GICv2 or no vgic at all).
 	 */
 	if (static_branch_unlikely(&vgic_v3_cpuif_trap) ||
-	    cpu_if->its_vpe.its_vm)
+	    cpu_if->its_vpe.its_vm || !cpu_if->vgic_sre)
 		write_gicreg(cpu_if->vgic_hcr, ICH_HCR_EL2);
 }
 
@@ -326,7 +327,7 @@ void __vgic_v3_deactivate_traps(struct vgic_v3_cpu_if *cpu_if)
 	 * no interrupts were being injected, and we disable it again here.
 	 */
 	if (static_branch_unlikely(&vgic_v3_cpuif_trap) ||
-	    cpu_if->its_vpe.its_vm)
+	    cpu_if->its_vpe.its_vm || !cpu_if->vgic_sre)
 		write_gicreg(0, ICH_HCR_EL2);
 }
 

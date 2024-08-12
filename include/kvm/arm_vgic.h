@@ -234,7 +234,7 @@ struct vgic_dist {
 	bool			initialized;
 
 	/* vGIC model the kernel emulates for the guest (GICv2 or GICv3) */
-	u32			vgic_model;
+	enum kvm_device_type	vgic_model;
 
 	/* Implementation revision as reported in the GICD_IIDR */
 	u32			implementation_rev;

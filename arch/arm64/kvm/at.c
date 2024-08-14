@@ -803,7 +803,7 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 		}
 
 		/* We don't use px for anything yet, but hey... */
-		px = !((wr.desc & PTE_PXN) || wr.PXNTable || pw);
+		px = !((wr.desc & PTE_PXN) || wr.PXNTable || uw);
 		ux = !((wr.desc & PTE_UXN) || wr.UXNTable);
 
 		if (op == OP_AT_S1E1RP || op == OP_AT_S1E1WP) {

@@ -298,12 +298,8 @@ void vcpu_set_ich_hcr(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *vgic_v3 = &vcpu->arch.vgic_cpu.vgic_v3;
 
-	if (!static_branch_unlikely(&kvm_vgic_global_state.gicv3_cpuif))
-		return;
-
 	/* Hide GICv3 sysreg if necessary */
-	if (!irqchip_in_kernel(vcpu->kvm) ||
-	    vcpu->kvm->arch.vgic.vgic_model != KVM_DEV_TYPE_ARM_VGIC_V3) {
+	if (!kvm_has_gicv3(vcpu->kvm)) {
 		vgic_v3->vgic_hcr = ICH_HCR_TALL0 | ICH_HCR_TALL1 | ICH_HCR_TC;
 		return;
 	}

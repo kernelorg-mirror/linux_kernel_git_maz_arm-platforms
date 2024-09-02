@@ -840,6 +840,176 @@ static u64 reset_mpidr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r)
 	return mpidr;
 }
 
+struct visibility_node;
+
+enum atom_type {
+	ATOM_TYPE_NODE		= 0,
+	ATOM_TYPE_FEAT		= 1,
+	ATOM_TYPE_SENTINEL	= 2,
+	ATOM_TYPE_FLAG		= 3,
+	ATOM_TYPE_MAX
+};
+
+union visibility_atom {
+	u64			val;
+
+	union {
+		const struct visibility_node *node;
+
+		const struct {
+			unsigned long	atom_type:2; /* Must Be ATOM_FLAG */
+			unsigned long	number:4;
+		} flag;
+
+		const struct {
+			unsigned long	atom_type:2; /* Must Be ATOM_FEAT */
+			unsigned long	limit:8; /* Enough? */
+			unsigned long	reg:8;
+			unsigned long	shift:6;
+			unsigned long	width:6;
+			unsigned long	is_signed:1;
+			unsigned long	is_enum:1;
+		} feature;
+	};
+} __aligned(ATOM_TYPE_MAX);			/* Ensure that bits [1:0] are 0. */
+
+enum visibility_logical_op {
+	ATOM_OP_UNARY,
+	ATOM_OP_OR,
+	ATOM_OP_AND,
+};
+
+struct visibility_node {
+	enum visibility_logical_op	atom_op;
+	const union visibility_atom	*atoms;
+};
+
+#define ATOM_SENTINEL	{ .val = ATOM_TYPE_SENTINEL, }
+
+#define ATOM_FLAG(flg)							\
+	{								\
+		.flag	= {						\
+			.atom_type	= ATOM_TYPE_FLAG,		\
+			.number		= KVM_ARM_VCPU_##flg,		\
+		},							\
+	}
+
+#define ATOM_FEAT(id, fld, val)						\
+	{								\
+		.feature = {						\
+			.atom_type	= ATOM_TYPE_FEAT,		\
+			.limit		= id##_##fld##_##val,		\
+			.shift		= id##_##fld##_SHIFT,		\
+			.width		= id##_##fld##_WIDTH,		\
+			.is_signed	= id##_##fld##_SIGNED,		\
+			.is_enum	= 0,				\
+		},							\
+	}
+
+#define VIS_NODE(op, ...)						\
+	(const struct visibility_node){					\
+		.atom_op = ATOM_OP_##op,				\
+		.atoms	=  (const union visibility_atom[]) {		\
+			__VA_ARGS__, ATOM_SENTINEL			\
+		}							\
+	}
+
+#define VIS_SUBNODE(op, ...)						\
+	{								\
+		.node = &VIS_NODE(op, __VA_ARGS__)			\
+	}
+
+struct visibility_node feat_vhe = VIS_NODE(UNARY,
+					   ATOM_FEAT(ID_AA64MMFR1_EL1, VH, IMP));
+/*
+ * AND(PTRAUTH_ADDRESS, PTRAUTH_GENERIC,
+ *     OR(AND(ID_AA64ISAR1_EL1.APA, ID_AA64ISAR1_EL1.GPA),
+ *        AND(ID_AA64ISAR1_EL1.API, ID_AA64ISAR1_EL1.GPI),
+ *        AND(ID_AA64ISAR2_EL1.APA3, ID_AA64ISAR2_EL1.GPA3)))
+ */
+const struct visibility_node feat_pauth =
+	VIS_NODE(AND,
+		 ATOM_FLAG(PTRAUTH_ADDRESS),
+		 ATOM_FLAG(PTRAUTH_GENERIC),
+		 VIS_SUBNODE(OR,
+			     VIS_SUBNODE(AND,
+					 ATOM_FEAT(ID_AA64ISAR1_EL1, APA, PAuth),
+					 ATOM_FEAT(ID_AA64ISAR1_EL1, GPA, IMP)),
+			     VIS_SUBNODE(AND,
+					 ATOM_FEAT(ID_AA64ISAR1_EL1, API, PAuth),
+					 ATOM_FEAT(ID_AA64ISAR1_EL1, GPI, IMP)),
+			     VIS_SUBNODE(AND,
+					 ATOM_FEAT(ID_AA64ISAR2_EL1, APA3, PAuth),
+					 ATOM_FEAT(ID_AA64ISAR2_EL1, GPA3, IMP))));
+
+#define for_each_subnode(n, _i)			\
+	for(int _i = 0; (n)->atoms[_i].val != ATOM_TYPE_SENTINEL; _i++)
+
+static bool eval_single(const struct kvm *kvm,
+			const union visibility_atom *atom);
+
+bool test_visibility(const struct kvm *kvm, const struct visibility_node *vnode)
+{
+	bool res;
+
+	switch (vnode->atom_op) {
+	case ATOM_OP_UNARY:
+		return eval_single(kvm, &vnode->atoms[0]);
+	case ATOM_OP_AND:
+		res = true;
+		for_each_subnode(vnode, i)
+			res &= eval_single(kvm, &vnode->atoms[i]);
+		break;
+	case ATOM_OP_OR:
+		res = false;
+		for_each_subnode(vnode, i)
+			res |= eval_single(kvm, &vnode->atoms[i]);
+		break;
+	}
+
+	return res;
+}
+
+static bool eval_feat(const struct kvm *kvm,
+		      const union visibility_atom *atom)
+{
+	s64 limit, field_val;
+	u64 reg_val;
+
+	limit = atom->feature.limit;
+	if (atom->feature.is_signed)
+		limit = sign_extend64(limit, atom->feature.width - 1);
+
+	reg_val = kvm->arch.id_regs[atom->feature.reg];
+	field_val = reg_val >> atom->feature.shift;
+	field_val &= GENMASK(atom->feature.width - 1, 0);
+	if (atom->feature.is_signed)
+		field_val = sign_extend64(field_val, atom->feature.width - 1);
+
+	if (atom->feature.is_enum)
+		return field_val == limit;
+
+	return field_val >= limit;
+}
+
+static bool eval_single(const struct kvm *kvm,
+			const union visibility_atom *atom)
+{
+	enum atom_type t = atom->val & (ATOM_TYPE_MAX - 1);
+
+	switch (t) {
+	case ATOM_TYPE_NODE:
+		return test_visibility(kvm, atom->node);
+	case ATOM_TYPE_FLAG:
+		return __vcpu_has_feature(&kvm->arch, atom->flag.number);
+	case ATOM_TYPE_FEAT:
+		return eval_feat(kvm, atom);
+	default:
+		BUG();
+	}
+	return false;
+}
+
 static unsigned int pmu_visibility(const struct kvm_vcpu *vcpu,
 				   const struct sys_reg_desc *r)
 {

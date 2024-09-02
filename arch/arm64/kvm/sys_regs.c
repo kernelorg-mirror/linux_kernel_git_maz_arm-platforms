@@ -899,6 +899,7 @@ struct visibility_node {
 		.feature = {						\
 			.atom_type	= ATOM_TYPE_FEAT,		\
 			.limit		= id##_##fld##_##val,		\
+			.reg		= IDREG_IDX(SYS_##id),		\
 			.shift		= id##_##fld##_SHIFT,		\
 			.width		= id##_##fld##_WIDTH,		\
 			.is_signed	= id##_##fld##_SIGNED,		\
@@ -914,33 +915,44 @@ struct visibility_node {
 		}							\
 	}
 
+#define DEFINE_VISIBILITY(__name, op, ...)				\
+	const struct visibility_node __name = VIS_NODE(op, __VA_ARGS__)
+
+#define DEFINE_VISIBILITY_UNARY(__name, ...)				\
+	DEFINE_VISIBILITY(__name, UNARY, __VA_ARGS__)
+
+#define DEFINE_VISIBILITY_AND(__name, ...)				\
+	DEFINE_VISIBILITY(__name, AND, __VA_ARGS__)
+
+#define DEFINE_VISIBILITY_OR(__name, ...)				\
+	DEFINE_VISIBILITY(__name, OR, __VA_ARGS__)
+
 #define VIS_SUBNODE(op, ...)						\
 	{								\
 		.node = &VIS_NODE(op, __VA_ARGS__)			\
 	}
 
-struct visibility_node feat_vhe = VIS_NODE(UNARY,
-					   ATOM_FEAT(ID_AA64MMFR1_EL1, VH, IMP));
+#define VIS_AND(...)	VIS_SUBNODE(AND, __VA_ARGS__)
+
+#define VIS_OR(...)	VIS_SUBNODE(OR, __VA_ARGS__)
+
+#define VIS_UNARY(...)	VIS_SUBNODE(UNARY, __VA_ARGS__)
+
 /*
  * AND(PTRAUTH_ADDRESS, PTRAUTH_GENERIC,
  *     OR(AND(ID_AA64ISAR1_EL1.APA, ID_AA64ISAR1_EL1.GPA),
  *        AND(ID_AA64ISAR1_EL1.API, ID_AA64ISAR1_EL1.GPI),
  *        AND(ID_AA64ISAR2_EL1.APA3, ID_AA64ISAR2_EL1.GPA3)))
  */
-const struct visibility_node feat_pauth =
-	VIS_NODE(AND,
-		 ATOM_FLAG(PTRAUTH_ADDRESS),
-		 ATOM_FLAG(PTRAUTH_GENERIC),
-		 VIS_SUBNODE(OR,
-			     VIS_SUBNODE(AND,
-					 ATOM_FEAT(ID_AA64ISAR1_EL1, APA, PAuth),
-					 ATOM_FEAT(ID_AA64ISAR1_EL1, GPA, IMP)),
-			     VIS_SUBNODE(AND,
-					 ATOM_FEAT(ID_AA64ISAR1_EL1, API, PAuth),
-					 ATOM_FEAT(ID_AA64ISAR1_EL1, GPI, IMP)),
-			     VIS_SUBNODE(AND,
-					 ATOM_FEAT(ID_AA64ISAR2_EL1, APA3, PAuth),
-					 ATOM_FEAT(ID_AA64ISAR2_EL1, GPA3, IMP))));
+static
+DEFINE_VISIBILITY_AND(feat_pauth,
+		      ATOM_FLAG(PTRAUTH_ADDRESS), ATOM_FLAG(PTRAUTH_GENERIC),
+		      VIS_OR(VIS_AND(ATOM_FEAT(ID_AA64ISAR1_EL1, APA, PAuth),
+				     ATOM_FEAT(ID_AA64ISAR1_EL1, GPA, IMP)),
+			     VIS_AND(ATOM_FEAT(ID_AA64ISAR1_EL1, API, PAuth),
+				     ATOM_FEAT(ID_AA64ISAR1_EL1, GPI, IMP)),
+			     VIS_AND(ATOM_FEAT(ID_AA64ISAR2_EL1, APA3, PAuth),
+				     ATOM_FEAT(ID_AA64ISAR2_EL1, GPA3, IMP))));
 
 #define for_each_subnode(n, _i)			\
 	for(int _i = 0; (n)->atoms[_i].val != ATOM_TYPE_SENTINEL; _i++)
@@ -948,7 +960,8 @@ const struct visibility_node feat_pauth =
 static bool eval_single(const struct kvm *kvm,
 			const union visibility_atom *atom);
 
-bool test_visibility(const struct kvm *kvm, const struct visibility_node *vnode)
+static bool test_visibility(const struct kvm *kvm,
+			    const struct visibility_node *vnode)
 {
 	bool res;
 
@@ -1514,7 +1527,7 @@ static int set_pmcr(struct kvm_vcpu *vcpu, const struct sys_reg_desc *r,
 static unsigned int ptrauth_visibility(const struct kvm_vcpu *vcpu,
 			const struct sys_reg_desc *rd)
 {
-	return vcpu_has_ptrauth(vcpu) ? 0 : REG_HIDDEN;
+	return test_visibility(vcpu->kvm, &feat_pauth) ? 0 : REG_HIDDEN;
 }
 
 /*

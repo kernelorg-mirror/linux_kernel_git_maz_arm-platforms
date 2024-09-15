@@ -52,6 +52,7 @@ struct s1_walk_result {
 
 struct s1_perms {
 	bool	ur, uw, ux, pr, pw, px;
+	bool	uwxn, pwxn;
 	bool	uov, pov;
 };
 
@@ -845,6 +846,8 @@ static void compute_s1_direct_permissions(struct kvm_vcpu *vcpu,
 					  struct s1_walk_result *wr,
 					  struct s1_perms *s1p)
 {
+	bool wxn;
+
 	/* Non-hierarchical part of AArch64.S1DirectBasePermissions() */
 	if (wi->regime != TR_EL2) {
 		switch (FIELD_GET(PTE_USER | PTE_RDONLY, wr->desc)) {
@@ -882,6 +885,17 @@ static void compute_s1_direct_permissions(struct kvm_vcpu *vcpu,
 		s1p->px = !(wr->desc & PTE_UXN);
 	}
 
+	switch (wi->regime) {
+	case TR_EL2:
+	case TR_EL20:
+		wxn = (vcpu_read_sys_reg(vcpu, SCTLR_EL2) & SCTLR_ELx_WXN);
+		break;
+	case TR_EL10:
+		wxn = (__vcpu_sys_reg(vcpu, SCTLR_EL1) & SCTLR_ELx_WXN);
+		break;
+	}
+
+	s1p->pwxn = s1p->uwxn = wxn;
 	s1p->pov = wi->poe;
 	s1p->uov = wi->e0poe;
 }
@@ -932,6 +946,16 @@ static void compute_s1_hierarchical_permissions(struct kvm_vcpu *vcpu,
 		(p)->ur = (r);		\
 		(p)->uw = (w);		\
 		(p)->ux = (x);		\
+	} while (0)
+
+#define set_priv_wxn(p, v)		\
+	do {				\
+		(p)->pwxn = (v);	\
+	} while (0)
+
+#define set_unpriv_wxn(p, v)		\
+	do {				\
+		(p)->uwxn = (v);	\
 	} while (0)
 
 /* Similar to AArch64.S1IndirectBasePermissions(), without GCS  */
@@ -988,6 +1012,10 @@ static void compute_s1_hierarchical_permissions(struct kvm_vcpu *vcpu,
 			set_ ## w ## _perms((p), false, false, false);	\
 			break;						\
 		}							\
+									\
+		/* R_HJYGR */						\
+		set_ ## w ## _wxn((p), ((ip) == 0b0110));		\
+									\
 	} while (0)
 
 static void compute_s1_indirect_permissions(struct kvm_vcpu *vcpu,
@@ -1091,6 +1119,22 @@ static void compute_s1_permissions(struct kvm_vcpu *vcpu,
 
 	if (wi->poe || wi->e0poe)
 		compute_s1_overlay_permissions(vcpu, wi, wr, s1p);
+
+	/* R_QXXPC */
+	if (s1p->pwxn) {
+		if (!s1p->pov && s1p->pw)
+			s1p->px = false;
+		if (s1p->pov && s1p->px)
+			s1p->pw = false;
+	}
+
+	/* R_NPBXC */
+	if (s1p->uwxn) {
+		if (!s1p->uov && s1p->uw)
+			s1p->ux = false;
+		if (s1p->uov && s1p->ux)
+			s1p->uw = false;
+	}
 
 	pan = wi->pan && (s1p->ur || s1p->uw ||
 			  (pan3_enabled(vcpu, wi->regime) && s1p->ux));

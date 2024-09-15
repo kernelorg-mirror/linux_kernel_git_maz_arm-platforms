@@ -26,6 +26,7 @@ struct s1_walk_info {
 	bool	     		hpd;
 	bool			e0poe;
 	bool			poe;
+	bool			pan;
 	bool	     		be;
 	bool	     		s2;
 };
@@ -149,6 +150,8 @@ static int setup_s1_walk(struct kvm_vcpu *vcpu, u32 op, struct s1_walk_info *wi,
 
 	wi->regime = compute_translation_regime(vcpu, op);
 	as_el0 = (op == OP_AT_S1E0R || op == OP_AT_S1E0W);
+	wi->pan = (op == OP_AT_S1E1RP || op == OP_AT_S1E1WP) &&
+		  (*vcpu_cpsr(vcpu) & PSR_PAN_BIT);
 
 	va55 = va & BIT(55);
 
@@ -1021,11 +1024,13 @@ static void compute_s1_indirect_permissions(struct kvm_vcpu *vcpu,
 	}
 }
 
-static void compute_s1_permissions(struct kvm_vcpu *vcpu, u32 op,
+static void compute_s1_permissions(struct kvm_vcpu *vcpu,
 				   struct s1_walk_info *wi,
 				   struct s1_walk_result *wr,
 				   struct s1_perms *s1p)
 {
+	bool pan;
+
 	if (!s1pie_enabled(vcpu, wi->regime))
 		compute_s1_direct_permissions(vcpu, wi, wr, s1p);
 	else
@@ -1034,14 +1039,10 @@ static void compute_s1_permissions(struct kvm_vcpu *vcpu, u32 op,
 	if (!wi->hpd)
 		compute_s1_hierarchical_permissions(vcpu, wi, wr, s1p);
 
-	if (op == OP_AT_S1E1RP || op == OP_AT_S1E1WP) {
-		bool pan;
-
-		pan = *vcpu_cpsr(vcpu) & PSR_PAN_BIT;
-		pan &= s1p->ur || s1p->uw || (pan3_enabled(vcpu, wi->regime) && s1p->ux);
-		s1p->pw &= !pan;
-		s1p->pr &= !pan;
-	}
+	pan = wi->pan && (s1p->ur || s1p->uw ||
+			  (pan3_enabled(vcpu, wi->regime) && s1p->ux));
+	s1p->pw &= !pan;
+	s1p->pr &= !pan;
 }
 
 static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
@@ -1068,7 +1069,7 @@ static u64 handle_at_slow(struct kvm_vcpu *vcpu, u32 op, u64 vaddr)
 	if (ret)
 		goto compute_par;
 
-	compute_s1_permissions(vcpu, op, &wi, &wr, &s1p);
+	compute_s1_permissions(vcpu, &wi, &wr, &s1p);
 
 	switch (op) {
 	case OP_AT_S1E1RP:

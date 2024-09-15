@@ -1900,6 +1900,8 @@ config RUST
 	depends on RUST_IS_AVAILABLE
 	depends on !CFI_CLANG
 	depends on !MODVERSIONS
+	depends on !GCC_PLUGIN_RANDSTRUCT
+	depends on RANDSTRUCT_NONE
 	depends on !GCC_PLUGINS
 	depends on !RANDSTRUCT
 	depends on !SHADOW_CALL_STACK

@@ -510,9 +510,13 @@ static void early_exit_filter(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	/*
 	 * If we were in HYP context on entry, adjust the PSTATE view
-	 * so that the usual helpers work correctly.
+	 * so that the usual helpers work correctly. Special care must
+	 * be taken to identify the case where L1 itself is nesting
+	 * (its own HCR_EL2.NV is set). We completely rely on the
+	 * guest's in-memory HCR_EL2 being sanitised on access!
 	 */
-	if (vcpu_has_nv(vcpu) && (read_sysreg(hcr_el2) & HCR_NV)) {
+	if (vcpu_has_nv(vcpu) && (read_sysreg(hcr_el2) & HCR_NV) &&
+	    !(__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_NV)) {
 		u64 mode = *vcpu_cpsr(vcpu) & (PSR_MODE_MASK | PSR_MODE32_BIT);
 
 		switch (mode) {

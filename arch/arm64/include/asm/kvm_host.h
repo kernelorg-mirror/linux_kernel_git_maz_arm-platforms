@@ -644,6 +644,8 @@ struct kvm_host_data {
 #define HOST_SVE_ENABLED	0
 	/* SME enabled for EL0 */
 #define HOST_SME_ENABLED	1
+	/* Entering guest from HYP context */
+#define VCPU_IN_HYP_CONTEXT	2
 	unsigned long flags;
 
 	struct kvm_cpu_context host_ctxt;

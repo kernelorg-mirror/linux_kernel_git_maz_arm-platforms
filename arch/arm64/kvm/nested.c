@@ -856,8 +856,7 @@ bool vgic_state_is_nested(struct kvm_vcpu *vcpu)
 
 int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu)
 {
-	if (!kvm_has_feat(vcpu->kvm, ID_AA64MMFR2_EL1, NV, NV2) &&
-	    !kvm_has_feat(vcpu->kvm, ID_AA64MMFR4_EL1, NV_frac, NV2_ONLY))
+	if (!kvm_has_nv2(vcpu->kvm))
 		return 0;
 
 	vcpu->arch.vncr_tlb = kmalloc(sizeof(*vcpu->arch.vncr_tlb),
@@ -1094,7 +1093,7 @@ int kvm_init_nv_sysregs(struct kvm *kvm)
 		res0 |= HCR_FIEN;
 	if (!kvm_has_feat(kvm, ID_AA64MMFR2_EL1, FWB, IMP))
 		res0 |= HCR_FWB;
-	if (!kvm_has_feat(kvm, ID_AA64MMFR2_EL1, NV, NV2))
+	if (!kvm_has_nv2(kvm))
 		res0 |= HCR_NV2;
 	if (!kvm_has_feat(kvm, ID_AA64MMFR2_EL1, NV, IMP))
 		res0 |= (HCR_AT | HCR_NV1 | HCR_NV);
@@ -1312,6 +1311,9 @@ int kvm_init_nv_sysregs(struct kvm *kvm)
 	if (!kvm_has_feat(kvm, ID_AA64MMFR1_EL1, PAN, PAN3))
 		res0 |= SCTLR_EL1_EPAN;
 	set_sysreg_masks(kvm, SCTLR_EL1, res0, res1);
+
+	/* VNCR_EL2 */
+	set_sysreg_masks(kvm, VNCR_EL2, VNCR_EL2_RES0, VNCR_EL2_RES1);
 
 	return 0;
 }

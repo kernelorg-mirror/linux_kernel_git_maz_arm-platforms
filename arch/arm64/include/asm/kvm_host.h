@@ -52,6 +52,7 @@
 #define KVM_REQ_SUSPEND			KVM_ARCH_REQ(6)
 #define KVM_REQ_RESYNC_PMU_EL0		KVM_ARCH_REQ(7)
 #define KVM_REQ_GUEST_HYP_IRQ_PENDING	KVM_ARCH_REQ(8)
+#define KVM_REQ_MAP_L1_VNCR_EL2		KVM_ARCH_REQ(9)
 
 #define KVM_DIRTY_LOG_MANUAL_CAPS   (KVM_DIRTY_LOG_MANUAL_PROTECT_ENABLE | \
 				     KVM_DIRTY_LOG_INITIALLY_SET)
@@ -749,7 +750,7 @@ struct kvm_vcpu_arch {
 	u8 iflags;
 
 	/* State flags for kernel bookkeeping, unused by the hypervisor code */
-	u8 sflags;
+	u16 sflags;
 
 	/*
 	 * Don't run the guest (internal implementation need).
@@ -961,7 +962,8 @@ struct kvm_vcpu_arch {
 #define PMUSERENR_ON_CPU	__vcpu_single_flag(sflags, BIT(6))
 /* WFI instruction trapped */
 #define IN_WFI			__vcpu_single_flag(sflags, BIT(7))
-
+/* L1 VNCR mapped at EL2 */
+#define L1_VNCR_MAPPED		__vcpu_single_flag(sflags, BIT(8))
 
 /* Pointer to the vcpu's SVE FFR for sve_{save,load}_state() */
 #define vcpu_sve_pffr(vcpu) (kern_hyp_va((vcpu)->arch.sve_state) +	\

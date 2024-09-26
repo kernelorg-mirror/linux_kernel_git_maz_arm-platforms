@@ -273,6 +273,8 @@ struct s1_walk_result {
 			u8	APTable;
 			bool	UXNTable;
 			bool	PXNTable;
+			bool	nG;
+			u16	asid;
 		};
 		struct {
 			u8	fst;

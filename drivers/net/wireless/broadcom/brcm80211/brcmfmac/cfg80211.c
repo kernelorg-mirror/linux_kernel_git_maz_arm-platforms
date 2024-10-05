@@ -1075,6 +1075,7 @@ static void brcmf_scan_params_v2_to_v1(struct brcmf_scan_params_v2_le *params_v2
 }
 
 static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
+			     struct brcmf_if *ifp,
 			     struct brcmf_scan_params_v2_le *params_le,
 			     struct cfg80211_scan_request *request)
 {
@@ -1091,8 +1092,13 @@ static void brcmf_escan_prep(struct brcmf_cfg80211_info *cfg,
 
 	length = BRCMF_SCAN_PARAMS_V2_FIXED_SIZE;
 
-	params_le->version = cpu_to_le16(BRCMF_SCAN_PARAMS_VERSION_V2);
+	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_V3))
+		params_le->version = cpu_to_le16(BRCMF_SCAN_PARAMS_VERSION_V3);
+	else
+		params_le->version = cpu_to_le16(BRCMF_SCAN_PARAMS_VERSION_V2);
+
 	params_le->bss_type = DOT11_BSSTYPE_ANY;
+	params_le->ssid_type = 0;
 	params_le->scan_type = cpu_to_le32(BRCMF_SCANTYPE_ACTIVE);
 	params_le->channel_num = 0;
 	params_le->nprobes = cpu_to_le32(-1);
@@ -1186,7 +1192,7 @@ s32 brcmf_notify_escan_complete(struct brcmf_cfg80211_info *cfg,
 		/* Do a scan abort to stop the driver's scan engine */
 		brcmf_dbg(SCAN, "ABORT scan in firmware\n");
 
-		brcmf_escan_prep(cfg, &params_v2_le, NULL);
+		brcmf_escan_prep(cfg, ifp, &params_v2_le, NULL);
 
 		/* E-Scan (or anyother type) can be aborted by SCAN */
 		if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_V2)) {
@@ -1446,11 +1452,13 @@ brcmf_run_escan(struct brcmf_cfg80211_info *cfg, struct brcmf_if *ifp,
 		goto exit;
 	}
 	BUG_ON(params_size + sizeof("escan") >= BRCMF_DCMD_MEDLEN);
-	brcmf_escan_prep(cfg, &params->params_v2_le, request);
+	brcmf_escan_prep(cfg, ifp, &params->params_v2_le, request);
 
-	params->version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION_V2);
-
-	if (!brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_V2)) {
+	if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_V3)) {
+		params->version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION_V3);
+	} else if (brcmf_feat_is_enabled(ifp, BRCMF_FEAT_SCAN_V2)) {
+		params->version = cpu_to_le32(BRCMF_ESCAN_REQ_VERSION_V2);
+	} else {
 		struct brcmf_escan_params_le *params_v1;
 
 		params_size -= BRCMF_SCAN_PARAMS_V2_FIXED_SIZE;
@@ -3402,8 +3410,9 @@ static s32 brcmf_inform_bss(struct brcmf_cfg80211_info *cfg)
 
 	bss_list = (struct brcmf_scan_results *)cfg->escan_info.escan_buf;
 	if (bss_list->count != 0 &&
-	    bss_list->version != BRCMF_BSS_INFO_VERSION) {
-		bphy_err(drvr, "Version %d != WL_BSS_INFO_VERSION\n",
+	    (bss_list->version < BRCMF_BSS_INFO_MIN_VERSION ||
+	    bss_list->version > BRCMF_BSS_INFO_MAX_VERSION)) {
+		bphy_err(drvr, "BSS info version %d unsupported\n",
 			 bss_list->version);
 		return -EOPNOTSUPP;
 	}
@@ -5123,6 +5132,25 @@ brcmf_cfg80211_start_ap(struct wiphy *wiphy, struct net_device *ndev,
 		  settings->inactivity_timeout);
 	dev_role = ifp->vif->wdev.iftype;
 	mbss = ifp->vif->mbss;
+	/* Bring firmware into correct state for AP mode*/
+	if (dev_role == NL80211_IFTYPE_AP) {
+		brcmf_dbg(TRACE, "set AP mode\n");
+		err = brcmf_fil_cmd_int_set(ifp, BRCMF_C_SET_AP, 1);
+		if (err < 0) {
+			bphy_err(drvr, "setting AP mode failed %d\n",
+				err);
+			goto exit;
+		}
+
+		bss_enable.bsscfgidx = cpu_to_le32(ifp->bsscfgidx);
+		bss_enable.enable = cpu_to_le32(WLC_AP_IOV_OP_MANUAL_AP_BSSCFG_CREATE);
+		err = brcmf_fil_iovar_data_set(ifp, "bss", &bss_enable,
+							sizeof(bss_enable));
+		if (err < 0) {
+			bphy_err(drvr, "AP role set error, %d\n", err);
+			goto exit;
+		}
+	}
 
 	/* store current 11d setting */
 	if (brcmf_fil_cmd_int_get(ifp, BRCMF_C_GET_REGULATORY,
@@ -6969,7 +6997,6 @@ static int brcmf_construct_chaninfo(struct brcmf_cfg80211_info *cfg,
 	if (band)
 		for (i = 0; i < band->n_channels; i++)
 			band->channels[i].flags = IEEE80211_CHAN_DISABLED;
-
 	total = le32_to_cpu(list->count);
 	if (total > BRCMF_MAX_CHANSPEC_LIST) {
 		bphy_err(drvr, "Invalid count of channel Spec. (%u)\n",
@@ -7193,7 +7220,7 @@ static void brcmf_get_bwcap(struct brcmf_if *ifp, u32 bw_cap[])
 }
 
 static void brcmf_update_ht_cap(struct ieee80211_supported_band *band,
-				u32 bw_cap[2], u32 nchain)
+				u32 bw_cap[2], u32 nrxchain)
 {
 	band->ht_cap.ht_supported = true;
 	if (bw_cap[band->band] & WLC_BW_40MHZ_BIT) {
@@ -7204,24 +7231,26 @@ static void brcmf_update_ht_cap(struct ieee80211_supported_band *band,
 	band->ht_cap.cap |= IEEE80211_HT_CAP_DSSSCCK40;
 	band->ht_cap.ampdu_factor = IEEE80211_HT_MAX_AMPDU_64K;
 	band->ht_cap.ampdu_density = IEEE80211_HT_MPDU_DENSITY_16;
-	memset(band->ht_cap.mcs.rx_mask, 0xff, nchain);
+	memset(band->ht_cap.mcs.rx_mask, 0xff, nrxchain);
 	band->ht_cap.mcs.tx_params = IEEE80211_HT_MCS_TX_DEFINED;
 }
 
-static __le16 brcmf_get_mcs_map(u32 nchain, enum ieee80211_vht_mcs_support supp)
+static __le16 brcmf_get_mcs_map(u32 nstreams,
+				enum ieee80211_vht_mcs_support supp)
 {
 	u16 mcs_map;
 	int i;
 
-	for (i = 0, mcs_map = 0xFFFF; i < nchain; i++)
+	for (i = 0, mcs_map = 0xFFFF; i < nstreams; i++)
 		mcs_map = (mcs_map << 2) | supp;
 
 	return cpu_to_le16(mcs_map);
 }
 
 static void brcmf_update_vht_cap(struct ieee80211_supported_band *band,
-				 u32 bw_cap[2], u32 nchain, u32 txstreams,
-				 u32 txbf_bfe_cap, u32 txbf_bfr_cap)
+				 u32 bw_cap[2], u32 txstreams, u32 rxstreams,
+				 u32 txbf_bfe_cap, u32 txbf_bfr_cap,
+				 u32 ldpc_cap, u32 stbc_rx, u32 stbc_tx)
 {
 	__le16 mcs_map;
 
@@ -7230,6 +7259,21 @@ static void brcmf_update_vht_cap(struct ieee80211_supported_band *band,
 		return;
 
 	band->vht_cap.vht_supported = true;
+	band->vht_cap.vht_mcs.tx_highest = cpu_to_le16(433 * txstreams);
+	band->vht_cap.vht_mcs.rx_highest = cpu_to_le16(433 * rxstreams);
+
+	band->vht_cap.cap |= IEEE80211_VHT_CAP_RX_ANTENNA_PATTERN |
+			     IEEE80211_VHT_CAP_TX_ANTENNA_PATTERN;
+
+	if (ldpc_cap)
+		band->vht_cap.cap |= IEEE80211_VHT_CAP_RXLDPC;
+	if (stbc_tx)
+		band->vht_cap.cap |= IEEE80211_VHT_CAP_TXSTBC;
+
+	if (stbc_rx)
+		band->vht_cap.cap |=
+			(stbc_rx << IEEE80211_VHT_CAP_RXSTBC_SHIFT);
+
 	/* 80MHz is mandatory */
 	band->vht_cap.cap |= IEEE80211_VHT_CAP_SHORT_GI_80;
 	if (bw_cap[band->band] & WLC_BW_160MHZ_BIT) {
@@ -7237,8 +7281,10 @@ static void brcmf_update_vht_cap(struct ieee80211_supported_band *band,
 		band->vht_cap.cap |= IEEE80211_VHT_CAP_SHORT_GI_160;
 	}
 	/* all support 256-QAM */
-	mcs_map = brcmf_get_mcs_map(nchain, IEEE80211_VHT_MCS_SUPPORT_0_9);
+	mcs_map = brcmf_get_mcs_map(rxstreams, IEEE80211_VHT_MCS_SUPPORT_0_9);
 	band->vht_cap.vht_mcs.rx_mcs_map = mcs_map;
+	mcs_map = brcmf_get_mcs_map(txstreams, IEEE80211_VHT_MCS_SUPPORT_0_9);
+
 	band->vht_cap.vht_mcs.tx_mcs_map = mcs_map;
 
 	/* Beamforming support information */
@@ -7254,11 +7300,15 @@ static void brcmf_update_vht_cap(struct ieee80211_supported_band *band,
 	if ((txbf_bfe_cap || txbf_bfr_cap) && (txstreams > 1)) {
 		band->vht_cap.cap |=
 			(2 << IEEE80211_VHT_CAP_BEAMFORMEE_STS_SHIFT);
-		band->vht_cap.cap |= ((txstreams - 1) <<
-				IEEE80211_VHT_CAP_SOUNDING_DIMENSIONS_SHIFT);
+		band->vht_cap.cap |=
+			((txstreams - 1)
+			 << IEEE80211_VHT_CAP_SOUNDING_DIMENSIONS_SHIFT);
 		band->vht_cap.cap |=
 			IEEE80211_VHT_CAP_VHT_LINK_ADAPTATION_VHT_MRQ_MFB;
 	}
+	/* AMPDU length limit, support max 1MB (2 ^ (13 + 7)) */
+	band->vht_cap.cap |=
+		(7 << IEEE80211_VHT_CAP_MAX_A_MPDU_LENGTH_EXPONENT_SHIFT);
 }
 
 static int brcmf_setup_wiphybands(struct brcmf_cfg80211_info *cfg)
@@ -7269,16 +7319,25 @@ static int brcmf_setup_wiphybands(struct brcmf_cfg80211_info *cfg)
 	u32 nmode;
 	u32 vhtmode = 0;
 	u32 bw_cap[2] = { WLC_BW_20MHZ_BIT, WLC_BW_20MHZ_BIT };
-	u32 rxchain;
-	u32 nchain;
+	u32 rxchain = 0;
+	u32 txchain;
+	u32 nrxchain;
+	u32 ntxchain;
 	int err;
 	s32 i;
 	struct ieee80211_supported_band *band;
 	u32 txstreams = 0;
+	u32 rxstreams = 0;
 	u32 txbf_bfe_cap = 0;
 	u32 txbf_bfr_cap = 0;
+	u32 ldpc_cap = 0;
+	u32 stbc_rx = 0;
+	u32 stbc_tx = 0;
 
 	(void)brcmf_fil_iovar_int_get(ifp, "vhtmode", &vhtmode);
+	(void)brcmf_fil_iovar_int_get(ifp, "ldpc_cap", &ldpc_cap);
+	(void)brcmf_fil_iovar_int_get(ifp, "stbc_rx", &stbc_rx);
+	(void)brcmf_fil_iovar_int_get(ifp, "stbc_tx", &stbc_tx);
 	err = brcmf_fil_iovar_int_get(ifp, "nmode", &nmode);
 	if (err) {
 		bphy_err(drvr, "nmode error (%d)\n", err);
@@ -7297,12 +7356,31 @@ static int brcmf_setup_wiphybands(struct brcmf_cfg80211_info *cfg)
 		else
 			bphy_err(drvr, "rxchain error (%d)\n", err);
 
-		nchain = 1;
+		nrxchain = 1;
+		rxchain = 1;
 	} else {
-		for (nchain = 0; rxchain; nchain++)
+		for (nrxchain = 0; rxchain; nrxchain++)
 			rxchain = rxchain & (rxchain - 1);
 	}
-	brcmf_dbg(INFO, "nchain=%d\n", nchain);
+	brcmf_dbg(INFO, "nrxchain=%d\n", nrxchain);
+	err = brcmf_fil_iovar_int_get(ifp, "txchain", &txchain);
+	if (err) {
+		/* rxchain unsupported by firmware of older chips */
+		if (err == -EBADE)
+			bphy_info_once(drvr, "rxchain unsupported\n");
+		else
+			bphy_err(drvr, "rxchain error (%d)\n", err);
+
+		ntxchain = 1;
+		txchain = 1;
+	} else {
+		for (ntxchain = 0; txchain; ntxchain++)
+			txchain = txchain & (txchain - 1);
+	}
+	brcmf_dbg(INFO, "ntxchain=%d\n", ntxchain);
+
+	wiphy->available_antennas_rx = nrxchain;
+	wiphy->available_antennas_tx = ntxchain;
 
 	err = brcmf_construct_chaninfo(cfg, bw_cap);
 	if (err) {
@@ -7311,6 +7389,7 @@ static int brcmf_setup_wiphybands(struct brcmf_cfg80211_info *cfg)
 	}
 
 	if (vhtmode) {
+		(void)brcmf_fil_iovar_int_get(ifp, "rxstreams", &rxstreams);
 		(void)brcmf_fil_iovar_int_get(ifp, "txstreams", &txstreams);
 		(void)brcmf_fil_iovar_int_get(ifp, "txbf_bfe_cap",
 					      &txbf_bfe_cap);
@@ -7324,10 +7403,11 @@ static int brcmf_setup_wiphybands(struct brcmf_cfg80211_info *cfg)
 			continue;
 
 		if (nmode)
-			brcmf_update_ht_cap(band, bw_cap, nchain);
+			brcmf_update_ht_cap(band, bw_cap, nrxchain);
 		if (vhtmode)
-			brcmf_update_vht_cap(band, bw_cap, nchain, txstreams,
-					     txbf_bfe_cap, txbf_bfr_cap);
+			brcmf_update_vht_cap(band, bw_cap, txstreams, rxstreams,
+					     txbf_bfe_cap, txbf_bfr_cap,
+					     ldpc_cap, stbc_rx, stbc_tx);
 	}
 
 	return 0;
@@ -7579,7 +7659,7 @@ static int brcmf_setup_wiphy(struct wiphy *wiphy, struct brcmf_if *ifp)
 	struct ieee80211_supported_band *band;
 	u16 max_interfaces = 0;
 	bool gscan;
-	__le32 bandlist[3];
+	__le32 bandlist[16];
 	u32 n_bands;
 	int err, i;
 

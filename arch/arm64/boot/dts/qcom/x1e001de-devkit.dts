@@ -809,3 +809,36 @@
 &usb_1_ss2_qmpphy_out {
 	remote-endpoint = <&pmic_glink_ss2_ss_in>;
 };
+
+/* We can't and don't need to use zap shader in EL2. */
+&{/soc@0/gpu@3d00000/zap-shader} {
+	status = "disabled";
+};
+
+/* PCIe needs IOMMU to be controlled by Linux when running in el2. */
+&{/soc@0} {
+	pcie_smmu: iommu@15400000 {
+		compatible = "arm,smmu-v3";
+		reg = <0 0x15400000 0 0x80000>;
+		interrupts = <0 /*GIC_SPI*/ 138 1 /*IRQ_TYPE_EDGE_RISING*/>,
+			     <0 /*GIC_SPI*/ 134 1 /*IRQ_TYPE_EDGE_RISING*/>,
+			     <0 /*GIC_SPI*/ 136 1 /*IRQ_TYPE_EDGE_RISING*/>;
+		interrupt-names = "eventq",
+				  "gerror",
+				  "cmdq-sync";
+		#iommu-cells = <1>;
+		dma-coherent;
+	};
+};
+
+&{/soc@0/pci@1bf8000} {
+	iommu-map = <0 &pcie_smmu 0x60000 0x10000>;
+};
+
+&{/soc@0/pci@1c00000} {
+	iommu-map = <0 &pcie_smmu 0x50000 0x10000>;
+};
+
+&{/soc@0/pci@1c08000} {
+	iommu-map = <0 &pcie_smmu 0x40000 0x10000>;
+};

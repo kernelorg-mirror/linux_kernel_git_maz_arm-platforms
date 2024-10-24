@@ -38,6 +38,13 @@
 # Fields	<fieldsname>
 # EndSysreg
 
+# For register names indicating a cross-EL access (*_EL12, *EL02),
+# a Mapping entry describes the register it actually accesses:
+
+# Sysreg 	<name_EL12>	<op0> 	<op1>	<crn>	<crm>	<op2>
+# Mapping	<name_EL1>
+# EndSysreg
+
 # For ID registers we adopt a few conventions for translating the
 # language in the ARM into defines:
 #

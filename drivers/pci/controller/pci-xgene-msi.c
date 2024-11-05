@@ -31,14 +31,12 @@ struct xgene_msi_group {
 };
 
 struct xgene_msi {
-	struct device_node	*node;
 	struct irq_domain	*inner_domain;
 	u64			msi_addr;
 	void __iomem		*msi_regs;
 	unsigned long		*bitmap;
 	struct mutex		bitmap_lock;
 	struct xgene_msi_group	*msi_groups;
-	int			num_cpus;
 };
 
 /* Global data */
@@ -235,9 +233,10 @@ static const struct msi_parent_ops xgene_msi_parent_ops = {
 	.init_dev_msi_info	= msi_lib_init_dev_msi_info,
 };
 
-static int xgene_allocate_domains(struct xgene_msi *msi)
+static int xgene_allocate_domains(struct device_node *node,
+				  struct xgene_msi *msi)
 {
-	msi->inner_domain = msi_create_parent_irq_domain(of_node_to_fwnode(msi->node),
+	msi->inner_domain = msi_create_parent_irq_domain(of_node_to_fwnode(node),
 							 &xgene_msi_parent_ops,
 							 &xgene_msi_domain_ops,
 							 0, NR_MSI_VEC, msi, NULL);
@@ -357,7 +356,7 @@ static int xgene_msi_hwirq_alloc(unsigned int cpu)
 	int i;
 	int err;
 
-	for (i = cpu; i < NR_HW_IRQS; i += msi->num_cpus) {
+	for (i = cpu; i < NR_HW_IRQS; i += num_possible_cpus()) {
 		msi_group = &msi->msi_groups[i];
 
 		/*
@@ -385,11 +384,10 @@ static int xgene_msi_hwirq_free(unsigned int cpu)
 	struct xgene_msi_group *msi_group;
 	int i;
 
-	for (i = cpu; i < NR_HW_IRQS; i += msi->num_cpus) {
+	for (i = cpu; i < NR_HW_IRQS; i += num_possible_cpus()) {
 		msi_group = &msi->msi_groups[i];
 		if (!msi_group->gic_irq)
 			continue;
-
 		irq_set_chained_handler_and_data(msi_group->gic_irq, NULL,
 						 NULL);
 	}
@@ -419,8 +417,6 @@ static int xgene_msi_probe(struct platform_device *pdev)
 		goto error;
 	}
 	xgene_msi->msi_addr = res->start;
-	xgene_msi->node = pdev->dev.of_node;
-	xgene_msi->num_cpus = num_possible_cpus();
 
 	rc = xgene_msi_init_allocator(xgene_msi);
 	if (rc) {
@@ -428,7 +424,7 @@ static int xgene_msi_probe(struct platform_device *pdev)
 		goto error;
 	}
 
-	rc = xgene_allocate_domains(xgene_msi);
+	rc = xgene_allocate_domains(dev_of_node(&pdev->dev), xgene_msi);
 	if (rc) {
 		dev_err(&pdev->dev, "Failed to allocate MSI domain\n");
 		goto error;

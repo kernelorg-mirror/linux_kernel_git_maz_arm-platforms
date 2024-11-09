@@ -55,6 +55,12 @@ static struct irq_ops arch_timer_irq_ops = {
 	.get_input_level = kvm_arch_timer_get_input_level,
 };
 
+static bool broken_cntvoff(void)
+{
+	return unlikely((has_vhe() || has_hvhe()) &&
+			cpus_have_final_cap(ARM64_WORKAROUND_QCOM_ORYON_CNTVOFF));
+}
+
 static int nr_timers(struct kvm_vcpu *vcpu)
 {
 	if (!vcpu_has_nv(vcpu))
@@ -514,7 +520,12 @@ static void timer_save_state(struct arch_timer_context *ctx)
 	case TIMER_VTIMER:
 	case TIMER_HVTIMER:
 		timer_set_ctl(ctx, read_sysreg_el0(SYS_CNTV_CTL));
-		timer_set_cval(ctx, read_sysreg_el0(SYS_CNTV_CVAL));
+		cval = read_sysreg_el0(SYS_CNTV_CVAL);
+
+		if (broken_cntvoff())
+			cval -= timer_get_offset(ctx);
+
+		timer_set_cval(ctx, cval);
 
 		/* Disable the timer */
 		write_sysreg_el0(0, SYS_CNTV_CTL);
@@ -619,8 +630,15 @@ static void timer_restore_state(struct arch_timer_context *ctx)
 
 	case TIMER_VTIMER:
 	case TIMER_HVTIMER:
-		set_cntvoff(timer_get_offset(ctx));
-		write_sysreg_el0(timer_get_cval(ctx), SYS_CNTV_CVAL);
+		cval = timer_get_cval(ctx);
+		offset = timer_get_offset(ctx);
+		if (broken_cntvoff()) {
+			set_cntvoff(0);
+			cval += offset;
+		} else {
+			set_cntvoff(offset);
+		}
+		write_sysreg_el0(cval, SYS_CNTV_CVAL);
 		isb();
 		write_sysreg_el0(timer_get_ctl(ctx), SYS_CNTV_CTL);
 		break;
@@ -763,7 +781,7 @@ static void kvm_timer_vcpu_load_nested_switch(struct kvm_vcpu *vcpu,
 
 static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 {
-	bool tpt, tpc;
+	bool tpt, tpc, tvt, tvc;
 	u64 clr, set;
 
 	/*
@@ -778,7 +796,7 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 	 * within this function, reality kicks in and we start adding
 	 * traps based on emulation requirements.
 	 */
-	tpt = tpc = false;
+	tpt = tpc = tvt = tvc = false;
 
 	/*
 	 * We have two possibility to deal with a physical offset:
@@ -792,6 +810,9 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 	 */
 	if (!has_cntpoff() && timer_get_offset(map->direct_ptimer))
 		tpt = tpc = true;
+
+	if (broken_cntvoff() && timer_get_offset(map->direct_vtimer))
+		tvt = tvc = true;
 
 	/*
 	 * Apply the enable bits that the guest hypervisor has requested for
@@ -818,6 +839,8 @@ static void timer_set_traps(struct kvm_vcpu *vcpu, struct timer_map *map)
 
 	assign_clear_set_bit(tpt, CNTHCTL_EL1PCEN << 10, set, clr);
 	assign_clear_set_bit(tpc, CNTHCTL_EL1PCTEN << 10, set, clr);
+	assign_clear_set_bit(tvt, CNTHCTL_EL1TVT, clr, set);
+	assign_clear_set_bit(tvt, CNTHCTL_EL1TVCT, clr, set);
 
 	/* This only happens on VHE, so use the CNTHCTL_EL2 accessor. */
 	sysreg_clear_set(cnthctl_el2, clr, set);

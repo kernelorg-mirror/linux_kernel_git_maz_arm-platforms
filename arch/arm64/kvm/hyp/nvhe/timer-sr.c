@@ -22,15 +22,19 @@ void __kvm_timer_set_cntvoff(u64 cntvoff)
  */
 void __timer_disable_traps(struct kvm_vcpu *vcpu)
 {
-	u64 val, shift = 0;
+	u64 set, clr = 0, shift = 0;
 
-	if (has_hvhe())
+	if (has_hvhe()) {
+		if (cpus_have_final_cap(ARM64_WORKAROUND_QCOM_ORYON_CNTVOFF))
+			clr |= CNTHCTL_EL1TVT | CNTHCTL_EL1TVCT;
+
 		shift = 10;
+	}
 
 	/* Allow physical timer/counter access for the host */
-	val = read_sysreg(cnthctl_el2);
-	val |= (CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN) << shift;
-	write_sysreg(val, cnthctl_el2);
+	set = (CNTHCTL_EL1PCTEN | CNTHCTL_EL1PCEN) << shift;
+
+	sysreg_clear_set(cnthctl_el2, clr, set);
 }
 
 /*
@@ -56,6 +60,9 @@ void __timer_enable_traps(struct kvm_vcpu *vcpu)
 	if (has_hvhe()) {
 		clr <<= 10;
 		set <<= 10;
+
+		if (cpus_have_final_cap(ARM64_WORKAROUND_QCOM_ORYON_CNTVOFF))
+			set |= CNTHCTL_EL1TVT | CNTHCTL_EL1TVCT;
 	}
 
 	sysreg_clear_set(cnthctl_el2, clr, set);

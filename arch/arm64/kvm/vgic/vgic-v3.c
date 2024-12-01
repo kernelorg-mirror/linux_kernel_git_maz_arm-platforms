@@ -23,7 +23,7 @@ void vgic_v3_set_underflow(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpuif = &vcpu->arch.vgic_cpu.vgic_v3;
 
-	cpuif->vgic_hcr |= ICH_HCR_UIE;
+	cpuif->vgic_hcr |= ICH_HCR_EL2_UIE;
 }
 
 static bool lr_signals_eoi_mi(u64 lr_val)
@@ -41,7 +41,7 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 
-	cpuif->vgic_hcr &= ~ICH_HCR_UIE;
+	cpuif->vgic_hcr &= ~ICH_HCR_EL2_UIE;
 
 	for (lr = 0; lr < cpuif->used_lrs; lr++) {
 		u64 val = cpuif->vgic_lr[lr];
@@ -291,7 +291,7 @@ void vgic_v3_enable(struct kvm_vcpu *vcpu)
 					    ICH_VTR_PRI_BITS_SHIFT) + 1;
 
 	/* Get the show on the road... */
-	vgic_v3->vgic_hcr = ICH_HCR_EN;
+	vgic_v3->vgic_hcr = ICH_HCR_EL2_En;
 }
 
 void vcpu_set_ich_hcr(struct kvm_vcpu *vcpu)
@@ -300,18 +300,19 @@ void vcpu_set_ich_hcr(struct kvm_vcpu *vcpu)
 
 	/* Hide GICv3 sysreg if necessary */
 	if (!kvm_has_gicv3(vcpu->kvm)) {
-		vgic_v3->vgic_hcr |= ICH_HCR_TALL0 | ICH_HCR_TALL1 | ICH_HCR_TC;
+		vgic_v3->vgic_hcr |= (ICH_HCR_EL2_TALL0 | ICH_HCR_EL2_TALL1 |
+				      ICH_HCR_EL2_TC);
 		return;
 	}
 
 	if (group0_trap)
-		vgic_v3->vgic_hcr |= ICH_HCR_TALL0;
+		vgic_v3->vgic_hcr |= ICH_HCR_EL2_TALL0;
 	if (group1_trap)
-		vgic_v3->vgic_hcr |= ICH_HCR_TALL1;
+		vgic_v3->vgic_hcr |= ICH_HCR_EL2_TALL1;
 	if (common_trap)
-		vgic_v3->vgic_hcr |= ICH_HCR_TC;
+		vgic_v3->vgic_hcr |= ICH_HCR_EL2_TC;
 	if (dir_trap)
-		vgic_v3->vgic_hcr |= ICH_HCR_TDIR;
+		vgic_v3->vgic_hcr |= ICH_HCR_EL2_TDIR;
 }
 
 int vgic_v3_lpi_sync_pending_status(struct kvm *kvm, struct vgic_irq *irq)
@@ -734,6 +735,14 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
 
+	/* If the vgic is nested, perform the full state loading */
+	if (vgic_state_is_nested(vcpu)) {
+		vgic_v3_load_nested(vcpu);
+		return;
+	}
+
+	vcpu->arch.vgic_cpu.current_cpu_if = cpu_if;
+
 	kvm_call_hyp(__vgic_v3_restore_vmcr_aprs, cpu_if);
 
 	if (has_vhe())
@@ -745,6 +754,11 @@ void vgic_v3_load(struct kvm_vcpu *vcpu)
 void vgic_v3_put(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v3_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v3;
+
+	if (vgic_state_is_nested(vcpu)) {
+		vgic_v3_put_nested(vcpu);
+		return;
+	}
 
 	kvm_call_hyp(__vgic_v3_save_vmcr_aprs, cpu_if);
 	WARN_ON(vgic_v4_put(vcpu));

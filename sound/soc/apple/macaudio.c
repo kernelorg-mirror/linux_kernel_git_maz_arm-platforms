@@ -161,8 +161,6 @@ static struct snd_soc_dai_link macaudio_fe_links[] = {
 		.name = "Primary",
 		.stream_name = "Primary",
 		.dynamic = 1,
-		.dpcm_playback = 1,
-		.dpcm_capture = 1,
 		.dpcm_merged_rate = 1,
 		.dpcm_merged_chan = 1,
 		.dpcm_merged_format = 1,
@@ -173,7 +171,7 @@ static struct snd_soc_dai_link macaudio_fe_links[] = {
 		.name = "Secondary",
 		.stream_name = "Secondary",
 		.dynamic = 1,
-		.dpcm_playback = 1,
+		.playback_only = 1,
 		.dpcm_merged_rate = 1,
 		.dpcm_merged_chan = 1,
 		.dpcm_merged_format = 1,
@@ -184,7 +182,7 @@ static struct snd_soc_dai_link macaudio_fe_links[] = {
 		.name = "Speaker Sense",
 		.stream_name = "Speaker Sense",
 		.dynamic = 1,
-		.dpcm_capture = 1,
+		.capture_only = 1,
 		.dai_fmt = (SND_SOC_DAIFMT_I2S | \
 					SND_SOC_DAIFMT_CBP_CFP | \
 					SND_SOC_DAIFMT_GATED | \
@@ -443,8 +441,6 @@ static int macaudio_parse_of_be_dai_link(struct macaudio_snd_data *ma,
 	int ret, i;
 
 	link->no_pcm = 1;
-	link->dpcm_playback = 1;
-	link->dpcm_capture = 1;
 
 	link->dai_fmt = MACAUDIO_DAI_FMT;
 
@@ -744,7 +740,7 @@ static int macaudio_dpcm_hw_params(struct snd_pcm_substream *substream,
 	int i;
 
 	if (props->is_sense) {
-		rate->min = rate->max = cpu_dai->rate;
+		rate->min = rate->max = cpu_dai->symmetric_rate;
 		return 0;
 	}
 
@@ -752,7 +748,7 @@ static int macaudio_dpcm_hw_params(struct snd_pcm_substream *substream,
 	if (props->is_speakers) {
 		if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
 			/* Sense PCM: keep the existing BE rate (0 if not already running) */
-			rate->min = rate->max = cpu_dai->rate;
+			rate->min = rate->max = cpu_dai->symmetric_rate;
 
 			return 0;
 		} else {
@@ -868,7 +864,7 @@ static int macaudio_be_hw_free(struct snd_pcm_substream *substream)
 		 * This won't happen automatically if the sense PCM is open.
 		 */
 		for_each_rtd_dais(rtd, i, dai) {
-			dai->rate = 0;
+			dai->symmetric_rate = 0;
 		}
 
 		/* Notify userspace that the speakers are closed */

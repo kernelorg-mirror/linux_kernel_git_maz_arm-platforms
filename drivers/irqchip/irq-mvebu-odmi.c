@@ -205,18 +205,16 @@ static int __init mvebu_odmi_init(struct device_node *node,
 
 	parent_domain = irq_find_host(parent);
 
-	inner_domain = irq_domain_create_hierarchy(parent_domain, 0,
-						   odmis_count * NODMIS_PER_FRAME,
-						   of_node_to_fwnode(node),
-						   &odmi_domain_ops, NULL);
+	inner_domain = msi_create_parent_irq_domain(&(struct irq_domain_info){
+			.fwnode		= of_node_to_fwnode(node),
+			.ops		= &odmi_domain_ops,
+			.size		= odmis_count * NODMIS_PER_FRAME,
+			.parent		= parent_domain,
+		}, &odmi_msi_parent_ops);
 	if (!inner_domain) {
 		ret = -ENOMEM;
 		goto err_unmap;
 	}
-
-	irq_domain_update_bus_token(inner_domain, DOMAIN_BUS_GENERIC_MSI);
-	inner_domain->flags |= IRQ_DOMAIN_FLAG_MSI_PARENT;
-	inner_domain->msi_parent_ops = &odmi_msi_parent_ops;
 
 	return 0;
 

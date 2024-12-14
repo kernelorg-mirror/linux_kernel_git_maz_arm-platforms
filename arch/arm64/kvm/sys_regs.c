@@ -1612,6 +1612,18 @@ static u64 __kvm_read_sanitised_id_reg(const struct kvm_vcpu *vcpu,
 		val &= ID_AA64MMFR3_EL1_TCRX | ID_AA64MMFR3_EL1_S1POE |
 			ID_AA64MMFR3_EL1_S1PIE;
 		break;
+	case SYS_ID_AA64MMFR4_EL1:
+		/* Only deal with E2H0 and NV_frac */
+		val = 0;
+		if (vcpu_has_nv(vcpu)) {
+			if (!cpus_have_final_cap(ARM64_HAS_HCR_NV1))
+				val |= FIELD_PREP(ID_AA64MMFR4_EL1_E2H0,
+						  ID_AA64MMFR4_EL1_E2H0_NI);
+
+			val |= FIELD_PREP(ID_AA64MMFR4_EL1_NV_frac,
+					  ID_AA64MMFR4_EL1_NV_frac_NV2_ONLY);
+		}
+		break;
 	case SYS_ID_MMFR4_EL1:
 		val &= ~ARM64_FEATURE_MASK(ID_MMFR4_EL1_CCIDX);
 		break;
@@ -2651,7 +2663,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	ID_WRITABLE(ID_AA64MMFR3_EL1, (ID_AA64MMFR3_EL1_TCRX	|
 				       ID_AA64MMFR3_EL1_S1PIE   |
 				       ID_AA64MMFR3_EL1_S1POE)),
-	ID_SANITISED(ID_AA64MMFR4_EL1),
+	ID_WRITABLE(ID_AA64MMFR4_EL1, (ID_AA64MMFR4_EL1_E2H0	|
+				       ID_AA64MMFR4_EL1_NV_frac)),
 	ID_UNALLOCATED(7,5),
 	ID_UNALLOCATED(7,6),
 	ID_UNALLOCATED(7,7),

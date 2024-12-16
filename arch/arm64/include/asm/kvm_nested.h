@@ -335,4 +335,10 @@ int __kvm_translate_va(struct kvm_vcpu *vcpu, struct s1_walk_info *wi,
 int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu);
 int kvm_handle_vncr_abort(struct kvm_vcpu *vcpu);
 
+static inline unsigned int vncr_fixmap(unsigned int cpu)
+{
+	BUG_ON(cpu > NR_CPUS);
+	return FIX_VNCR - cpu;
+}
+
 #endif /* __ARM64_KVM_NESTED_H */

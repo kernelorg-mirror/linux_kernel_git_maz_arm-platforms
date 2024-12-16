@@ -649,6 +649,8 @@ struct kvm_host_data {
 #define HOST_SME_ENABLED	1
 	/* Entering guest from HYP context */
 #define VCPU_IN_HYP_CONTEXT	2
+	/* L1's VNCR_EL2 mapped in fixmap */
+#define L1_VNCR_MAPPED		3
 	unsigned long flags;
 
 	struct kvm_cpu_context host_ctxt;

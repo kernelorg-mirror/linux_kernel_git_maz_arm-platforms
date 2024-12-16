@@ -1734,10 +1734,23 @@ static u64 __kvm_read_sanitised_id_reg(const struct kvm_vcpu *vcpu,
 		break;
 	case SYS_ID_AA64MMFR2_EL1:
 		val &= ~ID_AA64MMFR2_EL1_CCIDX_MASK;
+		val &= ~ID_AA64MMFR2_EL1_NV;
 		break;
 	case SYS_ID_AA64MMFR3_EL1:
 		val &= ID_AA64MMFR3_EL1_TCRX | ID_AA64MMFR3_EL1_S1POE |
 			ID_AA64MMFR3_EL1_S1PIE;
+		break;
+	case SYS_ID_AA64MMFR4_EL1:
+		/* Only deal with E2H0 and NV_frac */
+		val = 0;
+		if (vcpu_has_nv(vcpu)) {
+			if (!cpus_have_final_cap(ARM64_HAS_HCR_NV1))
+				val |= FIELD_PREP(ID_AA64MMFR4_EL1_E2H0,
+						  ID_AA64MMFR4_EL1_E2H0_NI);
+
+			val |= FIELD_PREP(ID_AA64MMFR4_EL1_NV_frac,
+					  ID_AA64MMFR4_EL1_NV_frac_NV2_ONLY);
+		}
 		break;
 	case SYS_ID_MMFR4_EL1:
 		val &= ~ARM64_FEATURE_MASK(ID_MMFR4_EL1_CCIDX);
@@ -2047,6 +2060,19 @@ static int set_id_aa64pfr1_el1(struct kvm_vcpu *vcpu,
 		user_val &= ~ID_AA64PFR1_EL1_MPAM_frac_MASK;
 
 	return set_id_reg(vcpu, rd, user_val);
+}
+
+static int set_id_aa64mmfr1_el1(struct kvm_vcpu *vcpu,
+				const struct sys_reg_desc *rd,
+				u64 val)
+{
+	/* Only allow VH==0 for NV if NV1 is supported on the host */
+	if (vcpu_has_nv(vcpu) &&
+	    SYS_FIELD_GET(ID_AA64MMFR1_EL1, VH, val) == 0 &&
+	    !cpus_have_final_cap(ARM64_HAS_HCR_NV1))
+		return -EINVAL;
+
+	return set_id_reg(vcpu, rd, val);
 }
 
 static int set_ctr_el0(struct kvm_vcpu *vcpu,
@@ -2809,12 +2835,15 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 					ID_AA64MMFR0_EL1_TGRAN4_2 |
 					ID_AA64MMFR0_EL1_TGRAN64_2 |
 					ID_AA64MMFR0_EL1_TGRAN16_2)),
-	ID_WRITABLE(ID_AA64MMFR1_EL1, ~(ID_AA64MMFR1_EL1_RES0 |
-					ID_AA64MMFR1_EL1_HCX |
-					ID_AA64MMFR1_EL1_TWED |
-					ID_AA64MMFR1_EL1_XNX |
-					ID_AA64MMFR1_EL1_VH |
-					ID_AA64MMFR1_EL1_VMIDBits)),
+
+	ID_FILTERED(ID_AA64MMFR1_EL1,
+		    id_aa64mmfr1_el1,
+		    ~(ID_AA64MMFR1_EL1_RES0	|
+		      ID_AA64MMFR1_EL1_HCX	|
+		      ID_AA64MMFR1_EL1_TWED	|
+		      ID_AA64MMFR1_EL1_XNX	|
+		      ID_AA64MMFR1_EL1_VMIDBits)),
+
 	ID_WRITABLE(ID_AA64MMFR2_EL1, ~(ID_AA64MMFR2_EL1_RES0 |
 					ID_AA64MMFR2_EL1_EVT |
 					ID_AA64MMFR2_EL1_FWB |
@@ -2824,7 +2853,8 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	ID_WRITABLE(ID_AA64MMFR3_EL1, (ID_AA64MMFR3_EL1_TCRX	|
 				       ID_AA64MMFR3_EL1_S1PIE   |
 				       ID_AA64MMFR3_EL1_S1POE)),
-	ID_SANITISED(ID_AA64MMFR4_EL1),
+	ID_WRITABLE(ID_AA64MMFR4_EL1, (ID_AA64MMFR4_EL1_E2H0	|
+				       ID_AA64MMFR4_EL1_NV_frac)),
 	ID_UNALLOCATED(7,5),
 	ID_UNALLOCATED(7,6),
 	ID_UNALLOCATED(7,7),

@@ -245,9 +245,47 @@ def accessorencoding:
 	(.name | ltrimstr("A64.")) as $name |
 	.encoding[] | "\(.asmvalue)\t\(encodings)\t\($name)";
 
+# This is currently broken.
+def walkaccessperm(dep):
+	def accesscond(dep):
+		"if \(.condition | walknode)";
+
+	def accesspermarray(cond; dep):
+		. as $a | (length - 1) as $l | .[] | . as $o | ($a | index($o)) as $i |
+		if ($i == 0) then
+			"\(depthstr(dep))\(cond) {",
+			walkaccessperm(dep + 1),
+			if ($i < $l) then
+				"\(depthstr(dep))} else {"
+			else
+				"\(depthstr(dep))}"
+			end
+		elif ($i > 0 and $i < $l) then
+			walkaccessperm(dep + 1),
+			"\(depthstr(dep))} else {"
+		else
+			walkaccessperm(dep + 1),
+			"\(depthstr(dep))}"
+		end;
+
+	accesscond(dep) as $c |
+	(.access | ((arrays  | accesspermarray($c; dep)),
+		    (objects | "\(depthstr(dep))\($c) { \(walknode) }"),
+		    (strings | "\(depthstr(dep))\($c) { \(.) }")
+		    ))
+	;
+
 def accessors:
 	.accessors[] |
-	accessorencoding;
+	accessorencoding,
+	if ($ARGS.named.WITHACC) then
+		# None of the MSRimmediate accessors have an access
+		# array, leading to an exception if we don't use []?.
+		# This is also missing in the ARM ARM...
+		(.access.access[]? | walkaccessperm(1))
+	else
+		empty
+	end;
 
 def regcondition:
 	if (tautology | not) then condition("Reg") else empty end;

@@ -17,6 +17,16 @@
 
 #include "sys_regs.h"
 
+struct nv_mm {
+	/*
+	 * Stage 2 paging state for VMs with nested S2 using a virtual
+	 * VMID.
+	 */
+	size_t			nv_mmu_nr;
+	int			nv_mmu_next;
+	struct kvm_s2_mmu	nv_mmus[] __counted_by(nv_mmu_nr);
+};
+
 struct vncr_tlb {
 	/* The guest's VNCR_EL2 */
 	u64			gva;
@@ -46,11 +56,12 @@ struct vncr_tlb {
  */
 #define S2_MMU_PER_VCPU		2
 
-#define NV_MMUS(__k)		((__k)->arch.nested_mmus)
+#define NV_MMUS(__k)		((__k)->arch.nv_mm->nv_mmus)
 #define NV_MMU(__k, __i)	(NV_MMUS(__k) + (__i))
-#define NV_MMU_NR(__k)		((__k)->arch.nested_mmus_size)
-#define SET_NV_MMU_NR(__k, __n)	(__k)->arch.nested_mmus_size = __n
-#define NV_MMU_NEXT(__k)	((__k)->arch.nested_mmus_next)
+#define NV_MMU_NR(__k)		((__k)->arch.nv_mm ?			\
+				 (__k)->arch.nv_mm->nv_mmu_nr : 0)
+#define SET_NV_MMU_NR(__k, __n)	(__k)->arch.nv_mm->nv_mmu_nr = __n
+#define NV_MMU_NEXT(__k)	((__k)->arch.nv_mm->nv_mmu_next)
 
 #define for_each_nested_mmu_from(__k, __f, __m)				\
 	for (int __i = (__f);						\
@@ -62,8 +73,7 @@ struct vncr_tlb {
 
 void kvm_init_nested(struct kvm *kvm)
 {
-	kvm->arch.nested_mmus = NULL;
-	kvm->arch.nested_mmus_size = 0;
+	kvm->arch.nv_mm = NULL;
 	atomic_set(&kvm->arch.vncr_map_count, 0);
 }
 
@@ -85,7 +95,7 @@ static int init_nested_s2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu)
 int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
-	struct kvm_s2_mmu *tmp;
+	struct nv_mm *tmp;
 	int num_mmus, ret = 0;
 
 	if (!vcpu->arch.ctxt.vncr_array)
@@ -101,8 +111,8 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	 * again, and there is no reason to affect the whole VM for this.
 	 */
 	num_mmus = atomic_read(&kvm->online_vcpus) * S2_MMU_PER_VCPU;
-	tmp = kvrealloc(kvm->arch.nested_mmus,
-			size_mul(sizeof(*kvm->arch.nested_mmus), num_mmus),
+	tmp = kvrealloc(kvm->arch.nv_mm,
+			struct_size(kvm->arch.nv_mm, nv_mmus, num_mmus),
 			GFP_KERNEL_ACCOUNT | __GFP_ZERO);
 	if (!tmp)
 		return -ENOMEM;
@@ -111,16 +121,16 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	 * If we went through a realocation, adjust the MMU back-pointers in
 	 * the previously initialised kvm_pgtable structures.
 	 */
-	if (kvm->arch.nested_mmus != tmp)
+	if (kvm->arch.nv_mm != tmp)
 		for (int i = 0; i < NV_MMU_NR(kvm); i++)
-			tmp[i].pgt->mmu = &tmp[i];
+			tmp->nv_mmus[i].pgt->mmu = &tmp->nv_mmus[i];
 
 	for (int i = NV_MMU_NR(kvm); !ret && i < num_mmus; i++)
-		ret = init_nested_s2_mmu(kvm, &tmp[i]);
+		ret = init_nested_s2_mmu(kvm, &tmp->nv_mmus[i]);
 
 	if (ret) {
 		for (int i = NV_MMU_NR(kvm); i < num_mmus; i++)
-			kvm_free_stage2_pgd(&tmp[i]);
+			kvm_free_stage2_pgd(&tmp->nv_mmus[i]);
 
 		free_page((unsigned long)vcpu->arch.ctxt.vncr_array);
 		vcpu->arch.ctxt.vncr_array = NULL;
@@ -128,7 +138,7 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 		return ret;
 	}
 
-	kvm->arch.nested_mmus = tmp;
+	kvm->arch.nv_mm = tmp;
 	SET_NV_MMU_NR(kvm, num_mmus);
 
 	return 0;
@@ -1102,9 +1112,7 @@ void kvm_arch_flush_shadow_all(struct kvm *kvm)
 		if (!WARN_ON(atomic_read(&mmu->refcnt)))
 			kvm_free_stage2_pgd(mmu);
 	}
-	kvfree(kvm->arch.nested_mmus);
-	kvm->arch.nested_mmus = NULL;
-	kvm->arch.nested_mmus_size = 0;
+	kvfree(kvm->arch.nv_mm);
 	kvm_uninit_stage2_mmu(kvm);
 }
 

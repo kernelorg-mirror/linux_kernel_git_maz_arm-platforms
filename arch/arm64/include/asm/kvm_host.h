@@ -278,6 +278,8 @@ enum fgt_group_id {
 	__NR_FGT_GROUP_IDS__
 };
 
+struct nv_mm;
+
 struct kvm_arch {
 	struct kvm_s2_mmu mmu;
 
@@ -290,13 +292,8 @@ struct kvm_arch {
 	 */
 	u64 fgu[__NR_FGT_GROUP_IDS__];
 
-	/*
-	 * Stage 2 paging state for VMs with nested S2 using a virtual
-	 * VMID.
-	 */
-	struct kvm_s2_mmu *nested_mmus;
-	size_t nested_mmus_size;
-	int nested_mmus_next;
+	/* NV-specific MM data */
+	struct nv_mm	*nv_mm;
 
 	/* Interrupt controller */
 	struct vgic_dist	vgic;

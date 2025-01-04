@@ -46,6 +46,20 @@ struct vncr_tlb {
  */
 #define S2_MMU_PER_VCPU		2
 
+#define NV_MMUS(__k)		((__k)->arch.nested_mmus)
+#define NV_MMU(__k, __i)	(NV_MMUS(__k) + (__i))
+#define NV_MMU_NR(__k)		((__k)->arch.nested_mmus_size)
+#define SET_NV_MMU_NR(__k, __n)	(__k)->arch.nested_mmus_size = __n
+#define NV_MMU_NEXT(__k)	((__k)->arch.nested_mmus_next)
+
+#define for_each_nested_mmu_from(__k, __f, __m)				\
+	for (int __i = (__f);						\
+	     __i < (NV_MMU_NR(__k) + (__f)) && (__m = NV_MMU((__k), __i)); \
+	     __i++, __m = NV_MMU((__k), (__i % NV_MMU_NR(__k))))
+
+#define for_each_nested_mmu(__k, __m)		\
+	for_each_nested_mmu_from(__k, 0, __m)
+
 void kvm_init_nested(struct kvm *kvm)
 {
 	kvm->arch.nested_mmus = NULL;
@@ -98,14 +112,14 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 	 * the previously initialised kvm_pgtable structures.
 	 */
 	if (kvm->arch.nested_mmus != tmp)
-		for (int i = 0; i < kvm->arch.nested_mmus_size; i++)
+		for (int i = 0; i < NV_MMU_NR(kvm); i++)
 			tmp[i].pgt->mmu = &tmp[i];
 
-	for (int i = kvm->arch.nested_mmus_size; !ret && i < num_mmus; i++)
+	for (int i = NV_MMU_NR(kvm); !ret && i < num_mmus; i++)
 		ret = init_nested_s2_mmu(kvm, &tmp[i]);
 
 	if (ret) {
-		for (int i = kvm->arch.nested_mmus_size; i < num_mmus; i++)
+		for (int i = NV_MMU_NR(kvm); i < num_mmus; i++)
 			kvm_free_stage2_pgd(&tmp[i]);
 
 		free_page((unsigned long)vcpu->arch.ctxt.vncr_array);
@@ -114,8 +128,8 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 		return ret;
 	}
 
-	kvm->arch.nested_mmus_size = num_mmus;
 	kvm->arch.nested_mmus = tmp;
+	SET_NV_MMU_NR(kvm, num_mmus);
 
 	return 0;
 }
@@ -591,11 +605,11 @@ void kvm_s2_mmu_iterate_by_vmid(struct kvm *kvm, u16 vmid,
 				void (*tlbi_callback)(struct kvm_s2_mmu *,
 						      const union tlbi_info *))
 {
+	struct kvm_s2_mmu *mmu;
+
 	write_lock(&kvm->mmu_lock);
 
-	for (int i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
+	for_each_nested_mmu(kvm, mmu) {
 		if (!kvm_s2_mmu_valid(mmu))
 			continue;
 
@@ -610,6 +624,7 @@ struct kvm_s2_mmu *lookup_s2_mmu(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
 	bool nested_stage2_enabled;
+	struct kvm_s2_mmu *mmu;
 	u64 vttbr, vtcr, hcr;
 
 	lockdep_assert_held_write(&kvm->mmu_lock);
@@ -635,9 +650,7 @@ struct kvm_s2_mmu *lookup_s2_mmu(struct kvm_vcpu *vcpu)
 	 *   and matches the VMID only, as all TLBs are tagged by VMID even
 	 *   if S2 translation is disabled.
 	 */
-	for (int i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
+	for_each_nested_mmu(kvm, mmu) {
 		if (!kvm_s2_mmu_valid(mmu))
 			continue;
 
@@ -659,7 +672,6 @@ static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 {
 	struct kvm *kvm = vcpu->kvm;
 	struct kvm_s2_mmu *s2_mmu;
-	int i;
 
 	lockdep_assert_held_write(&vcpu->kvm->mmu_lock);
 
@@ -672,18 +684,14 @@ static struct kvm_s2_mmu *get_s2_mmu_nested(struct kvm_vcpu *vcpu)
 	 * will always reuse a potentially active context, leaving
 	 * free contexts unused.
 	 */
-	for (i = kvm->arch.nested_mmus_next;
-	     i < (kvm->arch.nested_mmus_size + kvm->arch.nested_mmus_next);
-	     i++) {
-		s2_mmu = &kvm->arch.nested_mmus[i % kvm->arch.nested_mmus_size];
-
+	for_each_nested_mmu_from(kvm, NV_MMU_NEXT(kvm), s2_mmu) {
 		if (atomic_read(&s2_mmu->refcnt) == 0)
 			break;
 	}
 	BUG_ON(atomic_read(&s2_mmu->refcnt)); /* We have struct MMUs to spare */
 
 	/* Set the scene for the next search */
-	kvm->arch.nested_mmus_next = (i + 1) % kvm->arch.nested_mmus_size;
+	NV_MMU_NEXT(kvm) = (s2_mmu - NV_MMUS(kvm) + 1) % NV_MMU_NR(kvm);
 
 	/* Make sure we don't forget to do the laundry */
 	if (kvm_s2_mmu_valid(s2_mmu))
@@ -1046,13 +1054,11 @@ void kvm_handle_s1e2_tlbi(struct kvm_vcpu *vcpu, u32 inst, u64 val)
 
 void kvm_nested_s2_wp(struct kvm *kvm)
 {
-	int i;
+	struct kvm_s2_mmu *mmu;
 
 	lockdep_assert_held_write(&kvm->mmu_lock);
 
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
+	for_each_nested_mmu(kvm, mmu) {
 		if (kvm_s2_mmu_valid(mmu))
 			kvm_stage2_wp_range(mmu, 0, kvm_phys_size(mmu));
 	}
@@ -1062,13 +1068,11 @@ void kvm_nested_s2_wp(struct kvm *kvm)
 
 void kvm_nested_s2_unmap(struct kvm *kvm, bool may_block)
 {
-	int i;
+	struct kvm_s2_mmu *mmu;
 
 	lockdep_assert_held_write(&kvm->mmu_lock);
 
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
+	for_each_nested_mmu(kvm, mmu) {
 		if (kvm_s2_mmu_valid(mmu))
 			kvm_stage2_unmap_range(mmu, 0, kvm_phys_size(mmu), may_block);
 	}
@@ -1078,13 +1082,11 @@ void kvm_nested_s2_unmap(struct kvm *kvm, bool may_block)
 
 void kvm_nested_s2_flush(struct kvm *kvm)
 {
-	int i;
+	struct kvm_s2_mmu *mmu;
 
 	lockdep_assert_held_write(&kvm->mmu_lock);
 
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
-
+	for_each_nested_mmu(kvm, mmu) {
 		if (kvm_s2_mmu_valid(mmu))
 			kvm_stage2_flush_range(mmu, 0, kvm_phys_size(mmu));
 	}
@@ -1092,11 +1094,11 @@ void kvm_nested_s2_flush(struct kvm *kvm)
 
 void kvm_arch_flush_shadow_all(struct kvm *kvm)
 {
-	int i;
+	struct kvm_s2_mmu *mmu;
 
-	for (i = 0; i < kvm->arch.nested_mmus_size; i++) {
-		struct kvm_s2_mmu *mmu = &kvm->arch.nested_mmus[i];
+	lockdep_assert_held_write(&kvm->mmu_lock);
 
+	for_each_nested_mmu(kvm, mmu) {
 		if (!WARN_ON(atomic_read(&mmu->refcnt)))
 			kvm_free_stage2_pgd(mmu);
 	}

@@ -155,10 +155,10 @@ static bool check_update_reserved_asid(u64 asid, u64 newasid)
 	return hit;
 }
 
-static u64 new_context(struct mm_struct *mm)
+static u64 new_context(mm_context_t *context)
 {
 	static u32 cur_idx = 1;
-	u64 asid = atomic64_read(&mm->context.id);
+	u64 asid = atomic64_read(&context->id);
 	u64 generation = atomic64_read(&asid_generation);
 
 	if (asid != 0) {
@@ -176,7 +176,7 @@ static u64 new_context(struct mm_struct *mm)
 		 * takes priority, because even if it is also pinned, we need to
 		 * update the generation into the reserved_asids.
 		 */
-		if (refcount_read(&mm->context.pinned))
+		if (refcount_read(&context->pinned))
 			return newasid;
 
 		/*
@@ -247,7 +247,7 @@ void check_and_switch_context(struct mm_struct *mm)
 	/* Check that our ASID belongs to the current generation. */
 	asid = atomic64_read(&mm->context.id);
 	if (!asid_gen_match(asid)) {
-		asid = new_context(mm);
+		asid = new_context(&mm->context);
 		atomic64_set(&mm->context.id, asid);
 	}
 
@@ -270,7 +270,7 @@ switch_mm_fastpath:
 		cpu_switch_mm(mm->pgd, mm);
 }
 
-unsigned long arm64_mm_context_get(struct mm_struct *mm)
+unsigned long arm64_reserved_asid_get(mm_context_t *context)
 {
 	unsigned long flags;
 	u64 asid;
@@ -280,9 +280,9 @@ unsigned long arm64_mm_context_get(struct mm_struct *mm)
 
 	raw_spin_lock_irqsave(&cpu_asid_lock, flags);
 
-	asid = atomic64_read(&mm->context.id);
+	asid = atomic64_read(&context->id);
 
-	if (refcount_inc_not_zero(&mm->context.pinned))
+	if (refcount_inc_not_zero(&context->pinned))
 		goto out_unlock;
 
 	if (nr_pinned_asids >= max_pinned_asids) {
@@ -295,13 +295,13 @@ unsigned long arm64_mm_context_get(struct mm_struct *mm)
 		 * We went through one or more rollover since that ASID was
 		 * used. Ensure that it is still valid, or generate a new one.
 		 */
-		asid = new_context(mm);
-		atomic64_set(&mm->context.id, asid);
+		asid = new_context(context);
+		atomic64_set(&context->id, asid);
 	}
 
 	nr_pinned_asids++;
 	__set_bit(ctxid2asid(asid), pinned_asid_map);
-	refcount_set(&mm->context.pinned, 1);
+	refcount_set(&context->pinned, 1);
 
 out_unlock:
 	raw_spin_unlock_irqrestore(&cpu_asid_lock, flags);
@@ -314,26 +314,26 @@ out_unlock:
 
 	return asid;
 }
-EXPORT_SYMBOL_GPL(arm64_mm_context_get);
+EXPORT_SYMBOL_GPL(arm64_reserved_asid_get);
 
-void arm64_mm_context_put(struct mm_struct *mm)
+void arm64_reserved_asid_put(mm_context_t *context)
 {
 	unsigned long flags;
-	u64 asid = atomic64_read(&mm->context.id);
+	u64 asid = atomic64_read(&context->id);
 
 	if (!pinned_asid_map)
 		return;
 
 	raw_spin_lock_irqsave(&cpu_asid_lock, flags);
 
-	if (refcount_dec_and_test(&mm->context.pinned)) {
+	if (refcount_dec_and_test(&context->pinned)) {
 		__clear_bit(ctxid2asid(asid), pinned_asid_map);
 		nr_pinned_asids--;
 	}
 
 	raw_spin_unlock_irqrestore(&cpu_asid_lock, flags);
 }
-EXPORT_SYMBOL_GPL(arm64_mm_context_put);
+EXPORT_SYMBOL_GPL(arm64_reserved_asid_put);
 
 /* Errata workaround post TTBRx_EL1 update. */
 asmlinkage void post_ttbr_update_workaround(void)

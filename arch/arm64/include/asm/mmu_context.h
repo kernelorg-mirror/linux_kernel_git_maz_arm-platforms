@@ -286,8 +286,18 @@ task_cpu_possible_mask(struct task_struct *p)
 void verify_cpu_asid_bits(void);
 void post_ttbr_update_workaround(void);
 
-unsigned long arm64_mm_context_get(struct mm_struct *mm);
-void arm64_mm_context_put(struct mm_struct *mm);
+unsigned long arm64_reserved_asid_get(mm_context_t *);
+void arm64_reserved_asid_put(mm_context_t *);
+
+static inline unsigned long arm64_mm_context_get(struct mm_struct *mm)
+{
+	return arm64_reserved_asid_get(&mm->context);
+}
+
+static inline void arm64_mm_context_put(struct mm_struct *mm)
+{
+	arm64_reserved_asid_put(&mm->context);
+}
 
 #define mm_untag_mask mm_untag_mask
 static inline unsigned long mm_untag_mask(struct mm_struct *mm)

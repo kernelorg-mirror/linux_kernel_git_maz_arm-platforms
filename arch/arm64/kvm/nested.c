@@ -12,12 +12,26 @@
 #include <asm/kvm_arm.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_mmu.h>
+#include <asm/kvm_pgtable_types.h>
 #include <asm/kvm_nested.h>
 #include <asm/sysreg.h>
 
 #include "sys_regs.h"
 
 struct nv_mm {
+	/*
+	 * Per-VM fixmap using TTBR0_EL2, hence replacing userspace.
+	 * Comes with its own ASID and page tables.
+	 *
+	 * Obviously, userspace PTs need to be made available again
+	 * before we have a chance of accessing it.
+	 */
+	struct {
+		mm_context_t		context;
+		phys_addr_t		pgd_phys;
+		struct kvm_pgtable	pgt;
+	} fixmap;
+
 	/*
 	 * Stage 2 paging state for VMs with nested S2 using a virtual
 	 * VMID.
@@ -1157,6 +1171,17 @@ void kvm_arch_flush_shadow_all(struct kvm *kvm)
  *   instructions.
  */
 
+void kvm_vcpu_free_vncr_tlb(struct kvm_vcpu *vcpu)
+{
+	if (!kvm_has_feat(vcpu->kvm, ID_AA64MMFR4_EL1, NV_frac, NV2_ONLY))
+		return;
+
+	kfree(vcpu->arch.vncr_tlb);
+	vcpu->arch.vncr_tlb = NULL;
+	if (vcpu->kvm->arch.nv_mm)
+		arm64_reserved_asid_put(&vcpu->kvm->arch.nv_mm->fixmap.context);
+}
+
 int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu)
 {
 	if (!kvm_has_feat(vcpu->kvm, ID_AA64MMFR4_EL1, NV_frac, NV2_ONLY))
@@ -1166,6 +1191,12 @@ int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu)
 				      GFP_KERNEL_ACCOUNT);
 	if (!vcpu->arch.vncr_tlb)
 		return -ENOMEM;
+
+	/* Treat the lack of spare ASID as an out of memory condition. */
+	if (!arm64_reserved_asid_get(&vcpu->kvm->arch.nv_mm->fixmap.context)) {
+		kvm_vcpu_free_vncr_tlb(vcpu);
+		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -1934,4 +1965,70 @@ void check_nested_vcpu_requests(struct kvm_vcpu *vcpu)
 
 	if (kvm_check_request(KVM_REQ_MAP_L1_VNCR_EL2, vcpu))
 		kvm_map_l1_vncr(vcpu);
+}
+
+struct el0_mm_context {
+	u64 ttbr0;
+	u64 tcr;
+};
+
+static DEFINE_PER_CPU(struct el0_mm_context, el0_mm_context);
+
+void install_vm_fixmap(struct kvm *kvm)
+{
+	struct el0_mm_context *cxt;
+	u64 ttbr0, tcr;
+	u16 asid;
+
+	lockdep_assert_irqs_disabled();
+
+	asid = arm64_reserved_asid_get(&kvm->arch.nv_mm->fixmap.context);
+	BUG_ON(!asid);
+
+	cxt = this_cpu_ptr(&el0_mm_context);
+	cxt->ttbr0 = read_sysreg_el2(SYS_TTBR0);
+	cxt->tcr = read_sysreg_el2(SYS_TCR);
+
+	/*
+	 * Write the new TCR_EL2, with ASID in TTBR0, new T0SZ, but
+	 * with all TTBR0 translation disabled.
+	 */
+	tcr  = cxt->tcr;
+	tcr &= ~(TCR_A1 | TCR_T0SZ_MASK);
+	tcr |= TCR_EPD0_MASK;
+	tcr |= 64 - kvm->arch.nv_mm->fixmap.pgt.ia_bits;
+
+	write_sysreg_el2(tcr, SYS_TCR);
+	isb();
+
+	/* Install fixmap */
+	ttbr0  = __pa(kvm->arch.nv_mm->fixmap.pgt.pgd);
+	ttbr0 |= FIELD_PREP(TTBR_ASID_MASK, asid);
+	write_sysreg_el2(ttbr0, SYS_TTBR0);
+	isb();
+
+	/* Now enable TTBR0 translations, and we're off to the races */
+	tcr &= ~TCR_EPD0_MASK;
+	write_sysreg_el2(tcr, SYS_TCR);
+	isb();
+}
+
+void uninstall_vm_fixmap(struct kvm *kvm)
+{
+	struct el0_mm_context *cxt;
+
+	lockdep_assert_irqs_disabled();
+
+	cxt = this_cpu_ptr(&el0_mm_context);
+
+	write_sysreg_el2(cxt->tcr | TCR_EPD0_MASK, SYS_TCR);
+	isb();
+
+	write_sysreg_el2(cxt->ttbr0, SYS_TTBR0);
+	isb();
+
+	write_sysreg_el2(cxt->tcr, SYS_TCR);
+	isb();
+
+	arm64_reserved_asid_put(&kvm->arch.nv_mm->fixmap.context);
 }

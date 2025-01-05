@@ -333,6 +333,7 @@ int __kvm_translate_va(struct kvm_vcpu *vcpu, struct s1_walk_info *wi,
 
 /* VNCR management */
 int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu);
+void kvm_vcpu_free_vncr_tlb(struct kvm_vcpu *vcpu);
 int kvm_handle_vncr_abort(struct kvm_vcpu *vcpu);
 void kvm_handle_s1e2_tlbi(struct kvm_vcpu *vcpu, u32 inst, u64 val);
 
@@ -341,5 +342,8 @@ static inline unsigned int vncr_fixmap(unsigned int cpu)
 	BUG_ON(cpu > NR_CPUS);
 	return FIX_VNCR - cpu;
 }
+
+void install_vm_fixmap(struct kvm *kvm);
+void uninstall_vm_fixmap(struct kvm *kvm);
 
 #endif /* __ARM64_KVM_NESTED_H */

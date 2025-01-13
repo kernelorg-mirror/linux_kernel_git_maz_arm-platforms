@@ -9,6 +9,8 @@
 #include <kvm/arm_vgic.h>
 #include "vgic.h"
 
+#include <linux/irqchip/arm-gic-v5.h>
+
 /*
  * vgic_irqfd_set_irq: inject the IRQ corresponding to the
  * irqchip routing entry
@@ -19,7 +21,13 @@ static int vgic_irqfd_set_irq(struct kvm_kernel_irq_routing_entry *e,
 			struct kvm *kvm, int irq_source_id,
 			int level, bool line_status)
 {
-	unsigned int spi_id = e->irqchip.pin + VGIC_NR_PRIVATE_IRQS;
+	unsigned int spi_id;
+
+	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5) {
+		spi_id = e->irqchip.pin & GICV5_HWIRQ_ID;
+		spi_id |= FIELD_PREP(GICV5_HWIRQ_TYPE, GICV5_HWIRQ_TYPE_SPI);
+	} else
+		spi_id = e->irqchip.pin + VGIC_NR_PRIVATE_IRQS;
 
 	if (!vgic_valid_spi(kvm, spi_id))
 		return -EINVAL;
@@ -96,6 +104,10 @@ int kvm_set_msi(struct kvm_kernel_irq_routing_entry *e,
 		return -1;
 
 	kvm_populate_msi(e, &msi);
+
+	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5)
+		return vgic_v5_its_inject_msi(kvm, &msi);
+
 	return vgic_its_inject_msi(kvm, &msi);
 }
 
@@ -117,6 +129,10 @@ int kvm_arch_set_irq_inatomic(struct kvm_kernel_irq_routing_entry *e,
 			break;
 
 		kvm_populate_msi(e, &msi);
+
+		if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5)
+			return vgic_v5_its_inject_cached_translation(kvm, &msi);
+
 		return vgic_its_inject_cached_translation(kvm, &msi);
 	}
 

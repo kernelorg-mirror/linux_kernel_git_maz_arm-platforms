@@ -13,6 +13,9 @@
 #include <linux/platform_device.h>
 #include <linux/sysfs.h>
 #include <asm/cputype.h>
+#ifdef CONFIG_ARM64
+#include <asm/kvm_pmu.h>
+#endif
 
 #ifdef CONFIG_ARM_PMU
 
@@ -163,12 +166,6 @@ int arm_pmu_device_probe(struct platform_device *pdev,
 int arm_pmu_acpi_probe(armpmu_init_fn init_fn);
 #else
 static inline int arm_pmu_acpi_probe(armpmu_init_fn init_fn) { return 0; }
-#endif
-
-#ifdef CONFIG_KVM
-void kvm_host_pmu_init(struct arm_pmu *pmu);
-#else
-#define kvm_host_pmu_init(x)	do { } while(0)
 #endif
 
 bool arm_pmu_irq_is_nmi(void);

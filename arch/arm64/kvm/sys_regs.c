@@ -1909,12 +1909,17 @@ static int set_id_dfr0_el1(struct kvm_vcpu *vcpu,
 	return set_id_reg(vcpu, rd, val);
 }
 
+#define filter_field(v, r, f)						\
+	do {								\
+		u64 __hostval = read_sanitised_ftr_reg(SYS_ ## r);	\
+		u64 __mask = r ## _ ## f;				\
+		if (((v) & __mask) == (__hostval & __mask))		\
+			(v) &= ~__mask;					\
+	} while (0)
+
 static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 			       const struct sys_reg_desc *rd, u64 user_val)
 {
-	u64 hw_val = read_sanitised_ftr_reg(SYS_ID_AA64PFR0_EL1);
-	u64 mpam_mask = ID_AA64PFR0_EL1_MPAM_MASK;
-
 	/*
 	 * Commit 011e5f5bf529f ("arm64/cpufeature: Add remaining feature bits
 	 * in ID_AA64PFR0 register") exposed the MPAM field of AA64PFR0_EL1 to
@@ -1926,8 +1931,7 @@ static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 	 * by KVM. On CPUs that support MPAM, permit user-space to write
 	 * the sanitizied value to ID_AA64PFR0_EL1.MPAM, but ignore this field.
 	 */
-	if ((hw_val & mpam_mask) == (user_val & mpam_mask))
-		user_val &= ~ID_AA64PFR0_EL1_MPAM_MASK;
+	filter_field(user_val, ID_AA64PFR0_EL1, MPAM);
 
 	return set_id_reg(vcpu, rd, user_val);
 }
@@ -1935,12 +1939,8 @@ static int set_id_aa64pfr0_el1(struct kvm_vcpu *vcpu,
 static int set_id_aa64pfr1_el1(struct kvm_vcpu *vcpu,
 			       const struct sys_reg_desc *rd, u64 user_val)
 {
-	u64 hw_val = read_sanitised_ftr_reg(SYS_ID_AA64PFR1_EL1);
-	u64 mpam_mask = ID_AA64PFR1_EL1_MPAM_frac_MASK;
-
 	/* See set_id_aa64pfr0_el1 for comment about MPAM */
-	if ((hw_val & mpam_mask) == (user_val & mpam_mask))
-		user_val &= ~ID_AA64PFR1_EL1_MPAM_frac_MASK;
+	filter_field(user_val, ID_AA64PFR1_EL1, MPAM_frac);
 
 	return set_id_reg(vcpu, rd, user_val);
 }

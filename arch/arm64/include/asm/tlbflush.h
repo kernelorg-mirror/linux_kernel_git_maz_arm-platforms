@@ -174,17 +174,16 @@ static inline u64 __tlbi_vaddr_range(u64 baddr, u16 asid,
 
 /*
  * Generate 'num' values from -1 to 31 with -1 rejected by the
- * __flush_tlb_range() loop below. Its return value is only
+ * __flush_tlb_range_by_op() loop below. Its return value is only
  * significant for a maximum of MAX_TLBI_RANGE_PAGES pages. If
  * 'pages' is more than that, you must iterate over the overall
  * range.
  */
-#define __TLBI_RANGE_NUM(pages, scale)					\
-	({								\
-		int __pages = min((pages),				\
-				  __TLBI_RANGE_PAGES(31, (scale)));	\
-		(__pages >> (5 * (scale) + 1)) - 1;			\
-	})
+static inline int __tlbi_range_num(u64 pages, int scale)
+{
+	pages = min(pages, __TLBI_RANGE_PAGES(31, scale));
+	return (pages >> (5 * scale + 1)) - 1;
+}
 
 /*
  *	TLB Invalidation
@@ -422,7 +421,7 @@ void __flush_tlb_range_by_op(tlbi_level_fn_t il, tlbi_fn_t ri,
 			continue;
 		}
 
-		num = __TLBI_RANGE_NUM(pages, scale);
+		num = __tlbi_range_num(pages, scale);
 		if (num >= 0) {
 			u64 range = __TLBI_RANGE_PAGES(num, scale);
 

@@ -105,18 +105,21 @@ static inline unsigned long get_trans_granule(void)
 
 #define TLBI_TTL_UNKNOWN	INT_MAX
 
+static inline u64 insert_level(u64 addr, int level)
+{
+	if (alternative_has_cap_unlikely(ARM64_HAS_ARMv8_4_TTL) &&
+	    level >= 0 && level <= 3) {
+		u64 ttl = level & 3;
+		ttl |= get_trans_granule() << 2;
+		addr &= ~TLBI_TTL_MASK;
+		addr |= FIELD_PREP(TLBI_TTL_MASK, ttl);
+	}
+
+	return addr;
+}
+
 #define __tlbi_level(op, addr, level) do {				\
-	u64 arg = addr;							\
-									\
-	if (alternative_has_cap_unlikely(ARM64_HAS_ARMv8_4_TTL) &&	\
-	    level >= 0 && level <= 3) {					\
-		u64 ttl = level & 3;					\
-		ttl |= get_trans_granule() << 2;			\
-		arg &= ~TLBI_TTL_MASK;					\
-		arg |= FIELD_PREP(TLBI_TTL_MASK, ttl);			\
-	}								\
-									\
-	__tlbi(op, arg);						\
+	__tlbi(op, insert_level(addr, level));				\
 } while(0)
 
 #define __tlbi_user_level(op, arg, level) do {				\

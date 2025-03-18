@@ -360,17 +360,88 @@ static inline void arch_tlbbatch_flush(struct arch_tlbflush_unmap_batch *batch)
  */
 #define MAX_DVM_OPS	PTRS_PER_PTE
 
+typedef void (*tlbi_level_fn_t)(u64, int, bool);
+typedef void (*tlbi_fn_t)(u64, bool);
+
+#define __TLBI_LEVEL_FN(t, s)						\
+static inline void tlbi_level_##t##s(u64 addr, int level, bool user)	\
+{									\
+	__tlbi_level(t##s, addr, level);				\
+	if (user)							\
+		__tlbi_user_level(t##s, addr, level);			\
+}
+
+#define __TLBI_FN(t, s)							\
+static inline void tlbi_##t##s(u64 addr, bool user)			\
+{									\
+	__tlbi(t##s, addr);						\
+	if (user)							\
+		__tlbi_user(t##s, addr);				\
+}
+
+#define TLBI_FNS(t)					\
+	__TLBI_FN(t, )					\
+	__TLBI_FN(t, is)				\
+	__TLBI_FN(r##t, )				\
+	__TLBI_FN(r##t, is)				\
+	__TLBI_LEVEL_FN(t, )				\
+	__TLBI_LEVEL_FN(t, is)				\
+	__TLBI_LEVEL_FN(r##t, )				\
+	__TLBI_LEVEL_FN(r##t, is)
+
+/* These are the TLBI instructions we allow for range operation */
+TLBI_FNS(ipas2e1)
+TLBI_FNS(vae1)
+TLBI_FNS(vale1)
+TLBI_FNS(vaale1)
+
+static __always_inline
+void __flush_tlb_range_by_op(tlbi_level_fn_t il, tlbi_fn_t ri,
+			     u64 start, u64 pages, int stride,
+			     u16 asid, int tlb_level,
+			     bool tlbi_user, bool lpa2)
+{
+	int num = 0;
+	int scale = 3;
+	int shift = lpa2 ? 16 : PAGE_SHIFT;
+	unsigned long addr;
+
+	while (pages > 0) {
+		if (!system_supports_tlb_range() ||
+		    pages == 1 ||
+		    (lpa2 && start != ALIGN(start, SZ_64K))) {
+			addr = __TLBI_VADDR(start, asid);
+			il(addr, tlb_level, tlbi_user);
+			start += stride;
+			pages -= stride >> PAGE_SHIFT;
+			continue;
+		}
+
+		num = __TLBI_RANGE_NUM(pages, scale);
+		if (num >= 0) {
+			u64 range = __TLBI_RANGE_PAGES(num, scale);
+
+			addr = __TLBI_VADDR_RANGE(start >> shift, asid,
+						  scale, num, tlb_level);
+			ri(addr, tlbi_user);
+			start += range << PAGE_SHIFT;
+			pages -= range;
+		}
+		scale--;
+	}
+}
+
 /*
  * __flush_tlb_range_op - Perform TLBI operation upon a range
  *
- * @op:	TLBI instruction that operates on a range (has 'r' prefix)
+ * @op:	base TLBI instruction without the range prefix
  * @start:	The start address of the range
  * @pages:	Range as the number of pages from 'start'
  * @stride:	Flush granularity
- * @asid:	The ASID of the task (0 for IPA instructions)
+ * @asid:	The ASID of the task (0 for IPA invalidation)
  * @tlb_level:	Translation Table level hint, if known
  * @tlbi_user:	If 'true', call an additional __tlbi_user()
- *              (typically for user ASIDs). 'flase' for IPA instructions
+ *              (typically for user ASIDs). 'false' for IPA invalidation
  * @lpa2:	If 'true', the lpa2 scheme is used as set out below
  *
  * When the CPU does not support TLB range operations, flush the TLB
@@ -394,44 +465,13 @@ static inline void arch_tlbbatch_flush(struct arch_tlbflush_unmap_batch *batch)
  *    ensure 64KB start alignment is maintained for the LPA2 case.
  */
 #define __flush_tlb_range_op(op, start, pages, stride,			\
-				asid, tlb_level, tlbi_user, lpa2)	\
-do {									\
-	typeof(start) __flush_start = start;				\
-	typeof(pages) __flush_pages = pages;				\
-	int num = 0;							\
-	int scale = 3;							\
-	int shift = lpa2 ? 16 : PAGE_SHIFT;				\
-	unsigned long addr;						\
-									\
-	while (__flush_pages > 0) {					\
-		if (!system_supports_tlb_range() ||			\
-		    __flush_pages == 1 ||				\
-		    (lpa2 && __flush_start != ALIGN(__flush_start, SZ_64K))) {	\
-			addr = __TLBI_VADDR(__flush_start, asid);	\
-			__tlbi_level(op, addr, tlb_level);		\
-			if (tlbi_user)					\
-				__tlbi_user_level(op, addr, tlb_level);	\
-			__flush_start += stride;			\
-			__flush_pages -= stride >> PAGE_SHIFT;		\
-			continue;					\
-		}							\
-									\
-		num = __TLBI_RANGE_NUM(__flush_pages, scale);		\
-		if (num >= 0) {						\
-			addr = __TLBI_VADDR_RANGE(__flush_start >> shift, asid, \
-						scale, num, tlb_level);	\
-			__tlbi(r##op, addr);				\
-			if (tlbi_user)					\
-				__tlbi_user(r##op, addr);		\
-			__flush_start += __TLBI_RANGE_PAGES(num, scale) << PAGE_SHIFT; \
-			__flush_pages -= __TLBI_RANGE_PAGES(num, scale);\
-		}							\
-		scale--;						\
-	}								\
-} while (0)
+			     asid, tlb_level, tlbi_user, lpa2)		\
+	__flush_tlb_range_by_op(tlbi_level_##op, tlbi_r##op,		\
+				start, pages, stride, asid,		\
+				tlb_level, tlbi_user, lpa2)
 
 #define __flush_s2_tlb_range_op(op, start, pages, stride, tlb_level) \
-	__flush_tlb_range_op(op, start, pages, stride, 0, tlb_level, false, kvm_lpa2_is_enabled());
+	__flush_tlb_range_op(op, start, pages, stride, 0, tlb_level, false, kvm_lpa2_is_enabled())
 
 static inline bool __flush_tlb_range_limit_excess(unsigned long start,
 		unsigned long end, unsigned long pages, unsigned long stride)

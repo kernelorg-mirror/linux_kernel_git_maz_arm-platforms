@@ -128,8 +128,8 @@ static inline u64 insert_level(u64 addr, int level)
 } while (0)
 
 /*
- * This macro creates a properly formatted VA operand for the TLB RANGE. The
- * value bit assignments are:
+ * This helper creates a properly formatted VA operand for the TLB RANGE.
+ * The value bit assignments are:
  *
  * +----------+------+-------+-------+-------+----------------------+
  * |   ASID   |  TG  | SCALE |  NUM  |  TTL  |        BADDR         |
@@ -152,18 +152,20 @@ static inline u64 insert_level(u64 addr, int level)
 #define TLBIR_TTL_MASK		GENMASK_ULL(38, 37)
 #define TLBIR_BADDR_MASK	GENMASK_ULL(36,  0)
 
-#define __TLBI_VADDR_RANGE(baddr, asid, scale, num, ttl)		\
-	({								\
-		unsigned long __ta = 0;					\
-		unsigned long __ttl = (ttl >= 1 && ttl <= 3) ? ttl : 0;	\
-		__ta |= FIELD_PREP(TLBIR_BADDR_MASK, baddr);		\
-		__ta |= FIELD_PREP(TLBIR_TTL_MASK, __ttl);		\
-		__ta |= FIELD_PREP(TLBIR_NUM_MASK, num);		\
-		__ta |= FIELD_PREP(TLBIR_SCALE_MASK, scale);		\
-		__ta |= FIELD_PREP(TLBIR_TG_MASK, get_trans_granule());	\
-		__ta |= FIELD_PREP(TLBIR_ASID_MASK, asid);		\
-		__ta;							\
-	})
+static inline u64 __tlbi_vaddr_range(u64 baddr, u16 asid,
+				     int scale, int num, int ttl)
+{
+	u64 __ta = 0;
+	u64 __ttl = (ttl >= 1 && ttl <= 3) ? ttl : 0;
+	__ta |= FIELD_PREP(TLBIR_BADDR_MASK, baddr);
+	__ta |= FIELD_PREP(TLBIR_TTL_MASK, __ttl);
+	__ta |= FIELD_PREP(TLBIR_NUM_MASK, num);
+	__ta |= FIELD_PREP(TLBIR_SCALE_MASK, scale);
+	__ta |= FIELD_PREP(TLBIR_TG_MASK, get_trans_granule());
+	__ta |= FIELD_PREP(TLBIR_ASID_MASK, asid);
+
+	return __ta;
+}
 
 /* These macros are used by the TLBI RANGE feature. */
 #define __TLBI_RANGE_PAGES(num, scale)	\
@@ -424,7 +426,7 @@ void __flush_tlb_range_by_op(tlbi_level_fn_t il, tlbi_fn_t ri,
 		if (num >= 0) {
 			u64 range = __TLBI_RANGE_PAGES(num, scale);
 
-			addr = __TLBI_VADDR_RANGE(start >> shift, asid,
+			addr = __tlbi_vaddr_range(start >> shift, asid,
 						  scale, num, tlb_level);
 			ri(addr, tlbi_user);
 			start += range << PAGE_SHIFT;

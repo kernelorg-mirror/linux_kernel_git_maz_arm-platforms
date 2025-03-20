@@ -68,7 +68,7 @@ static void contpte_convert(struct mm_struct *mm, unsigned long addr,
 			pte = pte_mkyoung(pte);
 	}
 
-	__flush_tlb_range(&vma, start_addr, addr, PAGE_SIZE, true, 3);
+	__flush_tlb_range(&vma, start_addr, addr, true, 3);
 
 	__set_ptes(mm, start_addr, start_ptep, pte, CONT_PTES);
 }
@@ -336,7 +336,7 @@ int contpte_ptep_clear_flush_young(struct vm_area_struct *vma,
 		 */
 		addr = ALIGN_DOWN(addr, CONT_PTE_SIZE);
 		__flush_tlb_range_nosync(vma, addr, addr + CONT_PTE_SIZE,
-					 PAGE_SIZE, true, 3);
+					 true, 3);
 	}
 
 	return young;
@@ -431,8 +431,7 @@ int contpte_ptep_set_access_flags(struct vm_area_struct *vma,
 			__ptep_set_access_flags(vma, addr, ptep, entry, 0);
 
 		if (dirty)
-			__flush_tlb_range(vma, start_addr, addr,
-							PAGE_SIZE, true, 3);
+			__flush_tlb_range(vma, start_addr, addr, true, 3);
 	} else {
 		__contpte_try_unfold(vma->vm_mm, addr, ptep, orig_pte);
 		__ptep_set_access_flags(vma, addr, ptep, entry, dirty);

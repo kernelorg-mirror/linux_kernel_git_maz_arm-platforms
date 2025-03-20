@@ -45,9 +45,9 @@
 
 /* Set stride and tlb_level in flush_*_tlb_range */
 #define flush_pmd_tlb_range(vma, addr, end)	\
-	__flush_tlb_range(vma, addr, end, PMD_SIZE, false, 2)
+	__flush_tlb_range(vma, addr, end, false, 2)
 #define flush_pud_tlb_range(vma, addr, end)	\
-	__flush_tlb_range(vma, addr, end, PUD_SIZE, false, 1)
+	__flush_tlb_range(vma, addr, end, false, 1)
 #endif /* CONFIG_TRANSPARENT_HUGEPAGE */
 
 /*

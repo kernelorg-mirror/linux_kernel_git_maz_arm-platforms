@@ -679,13 +679,14 @@ int armpmu_request_irq(struct arm_pmu * __percpu *armpmu, int irq, int cpu)
 		}
 	} else if (armpmu_count_irq_users(cpu, irq) == 0) {
 		err = request_percpu_nmi(irq, handler, "arm-pmu",
-					 NULL,
-					 &cpu_armpmu);
+					 per_cpu(pmu_affinity, cpu),
+					 armpmu);
 
 		/* If cannot get an NMI, get a normal interrupt */
 		if (err) {
-			err = request_percpu_irq(irq, handler, "arm-pmu",
-						 &cpu_armpmu);
+			err = request_percpu_irq_affinity(irq, handler, "arm-pmu",
+							  per_cpu(pmu_affinity, cpu),
+							  armpmu);
 			irq_ops = &percpu_pmuirq_ops;
 		} else {
 			has_nmi = true;

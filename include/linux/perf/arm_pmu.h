@@ -171,6 +171,7 @@ struct pmu_probe_info {
 int arm_pmu_device_probe(struct platform_device *pdev,
 			 const struct of_device_id *of_table,
 			 const struct pmu_probe_info *probe_table);
+void armpmu_register_affinity_group(const struct cpumask *);
 
 #ifdef CONFIG_ACPI
 int arm_pmu_acpi_probe(armpmu_init_fn init_fn);

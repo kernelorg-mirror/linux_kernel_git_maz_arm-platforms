@@ -53,6 +53,8 @@ static int pmu_parse_percpu_irq(struct arm_pmu *pmu, int irq,
 	for_each_cpu(cpu, &pmu->supported_cpus)
 		per_cpu(hw_events->irq, cpu) = irq;
 
+	armpmu_register_affinity_group(&pmu->supported_cpus);
+
 	return 0;
 }
 
@@ -151,6 +153,8 @@ static int pmu_parse_irqs(struct arm_pmu *pmu)
 		per_cpu(hw_events->irq, cpu) = irq;
 		cpumask_set_cpu(cpu, &pmu->supported_cpus);
 	}
+
+	armpmu_register_affinity_group(&pmu->supported_cpus);
 
 	return 0;
 }

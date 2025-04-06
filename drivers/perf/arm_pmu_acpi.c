@@ -212,6 +212,11 @@ static int arm_pmu_acpi_parse_irqs(void)
 			pr_warn("No ACPI PMU IRQ for CPU%d\n", cpu);
 		}
 
+		if (irq_is_percpu_devid(irq))
+			armpmu_register_affinity_group(cpu_possible_mask);
+		else
+			armpmu_register_affinity_group(cpumask_of(cpu));
+
 		/*
 		 * Log and request the IRQ so the core arm_pmu code can manage
 		 * it. We'll have to sanity-check IRQs later when we associate

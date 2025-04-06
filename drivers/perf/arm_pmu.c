@@ -26,7 +26,7 @@
 
 #include <asm/irq_regs.h>
 
-static int armpmu_count_irq_users(const int irq);
+static int armpmu_count_irq_users(const int this_cpu, const int irq);
 
 struct pmu_irq_ops {
 	void (*enable_pmuirq)(unsigned int irq);
@@ -64,7 +64,7 @@ static void armpmu_enable_percpu_pmuirq(unsigned int irq)
 static void armpmu_free_percpu_pmuirq(unsigned int irq, int cpu,
 				   void __percpu *devid)
 {
-	if (armpmu_count_irq_users(irq) == 1)
+	if (armpmu_count_irq_users(cpu, irq) == 1)
 		free_percpu_irq(irq, devid);
 }
 
@@ -89,7 +89,7 @@ static void armpmu_disable_percpu_pmunmi(unsigned int irq)
 static void armpmu_free_percpu_pmunmi(unsigned int irq, int cpu,
 				      void __percpu *devid)
 {
-	if (armpmu_count_irq_users(irq) == 1)
+	if (armpmu_count_irq_users(cpu, irq) == 1)
 		free_percpu_nmi(irq, devid);
 }
 
@@ -100,10 +100,19 @@ static const struct pmu_irq_ops percpu_pmunmi_ops = {
 };
 
 DEFINE_PER_CPU(struct arm_pmu *, cpu_armpmu);
+static DEFINE_PER_CPU(const struct cpumask *, pmu_affinity);
 static DEFINE_PER_CPU(int, cpu_irq);
 static DEFINE_PER_CPU(const struct pmu_irq_ops *, cpu_irq_ops);
 
 static bool has_nmi;
+
+void armpmu_register_affinity_group(const struct cpumask *aff_grp)
+{
+	int cpu;
+
+	for_each_cpu(cpu, aff_grp)
+		per_cpu(pmu_affinity, cpu) = aff_grp;
+}
 
 static inline u64 arm_pmu_event_max_period(struct perf_event *event)
 {
@@ -580,11 +589,16 @@ static const struct attribute_group armpmu_common_attr_group = {
 	.attrs = armpmu_common_attrs,
 };
 
-static int armpmu_count_irq_users(const int irq)
+static int armpmu_count_irq_users(const int this_cpu, const int irq)
 {
+	const struct cpumask *affinity;
 	int cpu, count = 0;
 
-	for_each_possible_cpu(cpu) {
+	affinity = per_cpu(pmu_affinity, this_cpu);
+	if (WARN_ON(!affinity))
+		return 0;
+
+	for_each_cpu(cpu, affinity) {
 		if (per_cpu(cpu_irq, cpu) == irq)
 			count++;
 	}
@@ -592,12 +606,17 @@ static int armpmu_count_irq_users(const int irq)
 	return count;
 }
 
-static const struct pmu_irq_ops *armpmu_find_irq_ops(int irq)
+static const struct pmu_irq_ops *armpmu_find_irq_ops(int this_cpu, int irq)
 {
 	const struct pmu_irq_ops *ops = NULL;
+	const struct cpumask *affinity;
 	int cpu;
 
-	for_each_possible_cpu(cpu) {
+	affinity = per_cpu(pmu_affinity, this_cpu);
+	if (!affinity)
+		return NULL;
+
+	for_each_cpu(cpu, affinity) {
 		if (per_cpu(cpu_irq, cpu) != irq)
 			continue;
 
@@ -658,7 +677,7 @@ int armpmu_request_irq(int irq, int cpu)
 			has_nmi = true;
 			irq_ops = &pmunmi_ops;
 		}
-	} else if (armpmu_count_irq_users(irq) == 0) {
+	} else if (armpmu_count_irq_users(cpu, irq) == 0) {
 		err = request_percpu_nmi(irq, handler, "arm-pmu", &cpu_armpmu);
 
 		/* If cannot get an NMI, get a normal interrupt */
@@ -672,7 +691,7 @@ int armpmu_request_irq(int irq, int cpu)
 		}
 	} else {
 		/* Per cpudevid irq was already requested by another CPU */
-		irq_ops = armpmu_find_irq_ops(irq);
+		irq_ops = armpmu_find_irq_ops(cpu, irq);
 
 		if (WARN_ON(!irq_ops))
 			err = -EINVAL;

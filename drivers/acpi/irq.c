@@ -300,6 +300,21 @@ int acpi_irq_get(acpi_handle handle, unsigned int index, struct resource *res)
 }
 EXPORT_SYMBOL_GPL(acpi_irq_get);
 
+const struct cpumask *acpi_irq_get_affinity(acpi_handle handle,
+					    unsigned int index)
+{
+	struct irq_fwspec_info info;
+	unsigned long flags;
+
+	if (!acpi_irq_parse_one(handle, index, &info.fwspec, &flags)) {
+		if (!irq_populate_fwspec_info(&info) &&
+		    info.flags & IRQ_FWSPEC_INFO_AFFINITY_VALID)
+			return info.affinity;
+	}
+
+	return NULL;
+}
+
 /**
  * acpi_set_irq_model - Setup the GSI irqdomain information
  * @model: the value assigned to acpi_irq_model

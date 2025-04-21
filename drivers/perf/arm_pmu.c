@@ -31,12 +31,14 @@ static int armpmu_count_irq_users(const int this_cpu, const int irq);
 struct pmu_irq_ops {
 	void (*enable_pmuirq)(unsigned int irq);
 	void (*disable_pmuirq)(unsigned int irq);
-	void (*free_pmuirq)(unsigned int irq, int cpu, void __percpu *devid);
+	void (*free_pmuirq)(unsigned int irq, int cpu, struct arm_pmu __percpu *devid);
 };
 
-static void armpmu_free_pmuirq(unsigned int irq, int cpu, void __percpu *devid)
+static void armpmu_free_pmuirq(unsigned int irq, int cpu, struct arm_pmu __percpu *devid)
 {
-	free_irq(irq, per_cpu_ptr(devid, cpu));
+	struct arm_pmu *armpmu = per_cpu(devid, cpu);
+
+	free_irq(irq, per_cpu(armpmu->hw_events, cpu));
 }
 
 static const struct pmu_irq_ops pmuirq_ops = {
@@ -45,9 +47,11 @@ static const struct pmu_irq_ops pmuirq_ops = {
 	.free_pmuirq = armpmu_free_pmuirq
 };
 
-static void armpmu_free_pmunmi(unsigned int irq, int cpu, void __percpu *devid)
+static void armpmu_free_pmunmi(unsigned int irq, int cpu, struct arm_pmu __percpu *devid)
 {
-	free_nmi(irq, per_cpu_ptr(devid, cpu));
+	struct arm_pmu *armpmu = per_cpu(devid, cpu);
+
+	free_nmi(irq, per_cpu(armpmu->hw_events, cpu));
 }
 
 static const struct pmu_irq_ops pmunmi_ops = {
@@ -62,10 +66,12 @@ static void armpmu_enable_percpu_pmuirq(unsigned int irq)
 }
 
 static void armpmu_free_percpu_pmuirq(unsigned int irq, int cpu,
-				   void __percpu *devid)
+				      struct arm_pmu __percpu *devid)
 {
+	struct arm_pmu *armpmu = per_cpu(devid, cpu);
+
 	if (armpmu_count_irq_users(cpu, irq) == 1)
-		free_percpu_irq(irq, devid);
+		free_percpu_irq(irq, armpmu->hw_events);
 }
 
 static const struct pmu_irq_ops percpu_pmuirq_ops = {
@@ -87,10 +93,12 @@ static void armpmu_disable_percpu_pmunmi(unsigned int irq)
 }
 
 static void armpmu_free_percpu_pmunmi(unsigned int irq, int cpu,
-				      void __percpu *devid)
+				      struct arm_pmu __percpu *devid)
 {
+	struct arm_pmu *armpmu = per_cpu(devid, cpu);
+
 	if (armpmu_count_irq_users(cpu, irq) == 1)
-		free_percpu_nmi(irq, devid);
+		free_percpu_nmi(irq, armpmu->hw_events);
 }
 
 static const struct pmu_irq_ops percpu_pmunmi_ops = {
@@ -425,19 +433,16 @@ validate_group(struct perf_event *event)
 
 static irqreturn_t armpmu_dispatch_irq(int irq, void *dev)
 {
+	struct pmu_hw_events *hw_events;
 	struct arm_pmu *armpmu;
 	int ret;
 	u64 start_clock, finish_clock;
 
-	/*
-	 * we request the IRQ with a (possibly percpu) struct arm_pmu**, but
-	 * the handlers expect a struct arm_pmu*. The percpu_irq framework will
-	 * do any necessary shifting, we just need to perform the first
-	 * dereference.
-	 */
-	armpmu = *(void **)dev;
-	if (WARN_ON_ONCE(!armpmu))
+	hw_events = dev;
+	if (WARN_ON_ONCE(!hw_events) || WARN_ON_ONCE(!hw_events->percpu_pmu))
 		return IRQ_NONE;
+
+	armpmu = hw_events->percpu_pmu;
 
 	start_clock = sched_clock();
 	ret = armpmu->handle_irq(armpmu);
@@ -625,13 +630,13 @@ void armpmu_free_irq(int irq, int cpu)
 	if (WARN_ON(irq != per_cpu(cpu_irq, cpu)))
 		return;
 
-	per_cpu(cpu_irq_ops, cpu)->free_pmuirq(irq, cpu, &cpu_armpmu);
+	per_cpu(cpu_irq_ops, cpu)->free_pmuirq(irq, cpu, cpu_armpmu);
 
 	per_cpu(cpu_irq, cpu) = 0;
 	per_cpu(cpu_irq_ops, cpu) = NULL;
 }
 
-int armpmu_request_irq(int irq, int cpu)
+int armpmu_request_irq(struct arm_pmu *armpmu, int irq, int cpu)
 {
 	int err = 0;
 	const irq_handler_t handler = armpmu_dispatch_irq;
@@ -656,12 +661,12 @@ int armpmu_request_irq(int irq, int cpu)
 			    IRQF_NO_THREAD;
 
 		err = request_nmi(irq, handler, irq_flags, "arm-pmu",
-				  per_cpu_ptr(&cpu_armpmu, cpu));
+				  per_cpu(armpmu->hw_events, cpu));
 
 		/* If cannot get an NMI, get a normal interrupt */
 		if (err) {
 			err = request_irq(irq, handler, irq_flags, "arm-pmu",
-					  per_cpu_ptr(&cpu_armpmu, cpu));
+					  per_cpu(armpmu->hw_events, cpu));
 			irq_ops = &pmuirq_ops;
 		} else {
 			has_nmi = true;
@@ -670,13 +675,13 @@ int armpmu_request_irq(int irq, int cpu)
 	} else if (armpmu_count_irq_users(cpu, irq) == 0) {
 		err = request_percpu_nmi(irq, handler, "arm-pmu",
 					 per_cpu(pmu_affinity, cpu),
-					 &cpu_armpmu);
+					 armpmu->hw_events);
 
 		/* If cannot get an NMI, get a normal interrupt */
 		if (err) {
 			err = request_percpu_irq_affinity(irq, handler, "arm-pmu",
 							  per_cpu(pmu_affinity, cpu),
-							  &cpu_armpmu);
+							  armpmu->hw_events);
 			irq_ops = &percpu_pmuirq_ops;
 		} else {
 			has_nmi = true;

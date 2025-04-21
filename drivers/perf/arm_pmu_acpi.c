@@ -218,14 +218,11 @@ static int arm_pmu_acpi_parse_irqs(void)
 			armpmu_register_affinity_group(cpumask_of(cpu));
 
 		/*
-		 * Log and request the IRQ so the core arm_pmu code can manage
-		 * it. We'll have to sanity-check IRQs later when we associate
-		 * them with their PMUs.
+		 * Log the IRQ so the core arm_pmu code can manage it.
+		 * We'll have to sanity-check IRQs later when we
+		 * associate them with their PMUs.
 		 */
 		per_cpu(pmu_irqs, cpu) = irq;
-		err = armpmu_request_irq(irq, cpu);
-		if (err)
-			goto out_err;
 	}
 
 	return 0;
@@ -426,6 +423,13 @@ int arm_pmu_acpi_probe(armpmu_init_fn init_fn)
 			kfree(pmu->name);
 			return ret;
 		}
+	}
+
+	for_each_possible_cpu(cpu) {
+		struct arm_pmu *pmu = per_cpu(probed_pmus, cpu);
+		int err = armpmu_request_irq(pmu, per_cpu(pmu_irqs, cpu), cpu);
+		if (err)
+			break;
 	}
 
 	return ret;

@@ -172,7 +172,7 @@ static int armpmu_request_irqs(struct arm_pmu *armpmu)
 		if (!irq)
 			continue;
 
-		err = armpmu_request_irq(irq, cpu);
+		err = armpmu_request_irq(armpmu, irq, cpu);
 		if (err)
 			break;
 	}

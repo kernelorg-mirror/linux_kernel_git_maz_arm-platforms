@@ -663,4 +663,18 @@ struct gicv5_cmd_info {
 	u64				data;
 };
 
+struct virt_intr_data {
+	int virq;
+	u16 vm_id;
+	u32 guest_lpi;
+	u32 host_lpi; /* Note: Alternatively, could store complete old ITTE */
+	u32 host_dac; /* Ditto */
+	bool direct_inject;
+	struct list_head list;
+};
+
+int gicv5_its_enable_direct_injection(int virq, u16 vm_id, u32 guest_lpi);
+int gicv5_its_disable_direct_injection(int virq);
+
+
 #endif

@@ -59,6 +59,107 @@ static void its_writeq_relaxed(struct gicv5_its_chip_data *its_node, const u64 v
 	writeq_relaxed(val, its_node->its_base + reg_offset);
 }
 
+#ifdef CONFIG_KVM
+/*
+ * We don't expect there to my too many directly injected virtual interrupts,
+ * and therefore we use a list to track them. We should also be accessing this
+ * information relatively rarely.
+ */
+LIST_HEAD(virt_intrs);
+DEFINE_SPINLOCK(virt_intr_lock);
+
+int gicv5_its_enable_direct_injection(int virq, u16 vm_id, u32 guest_lpi)
+{
+	int ret = 0;
+
+	spin_lock(&virt_intr_lock);
+
+	struct virt_intr_data *virt_intr;
+	virt_intr = kmalloc(sizeof(*virt_intr), GFP_KERNEL);
+	if (virt_intr == NULL) {
+		pr_err("Failed to allocate memory for virtual interrupt "
+		       "tracking\n");
+		ret = -ENOMEM;
+		goto out_fail;
+	}
+
+	virt_intr->virq = virq;
+	virt_intr->vm_id = vm_id;
+	virt_intr->guest_lpi = guest_lpi;
+	virt_intr->host_lpi = -1; // Placeholder to check against
+	virt_intr->direct_inject = true;
+
+	INIT_LIST_HEAD(&virt_intr->list);
+
+	list_add_tail(&virt_intr->list, &virt_intrs);
+
+	/*
+	 * The host will never see that interrupt firing again, so it
+	 * is vital that we don't do any lazy masking.
+	 */
+	irq_set_status_flags(virq, IRQ_DISABLE_UNLAZY);
+
+	ret = irq_set_vcpu_affinity(virq, virt_intr);
+	if (ret) {
+		irq_clear_status_flags(virq, IRQ_DISABLE_UNLAZY);
+		goto out_fail;
+	}
+
+out_fail:
+	spin_unlock(&virt_intr_lock);
+	return ret;
+}
+
+int gicv5_its_disable_direct_injection(int virq)
+{
+	int ret = 0;
+	struct virt_intr_data *temp, *virt_intr = NULL;
+
+	spin_lock(&virt_intr_lock);
+
+	/* Look up the entry we want */
+	list_for_each_entry(temp, &virt_intrs, list) {
+		if (temp->virq == virq) {
+			virt_intr = temp;
+			break;
+		}
+	}
+
+	if (!virt_intr) {
+		pr_err("Failed to look up virtual interrupt info for virq %d\n",
+		       virq);
+		ret = -EINVAL;
+		goto out_fail;
+	}
+
+	/*
+	 * Update the flag here so that we restore the original mapping in
+	 * set_vcpu_affinity.
+	 */
+	virt_intr->direct_inject = false;
+
+	ret = irq_set_vcpu_affinity(virq, virt_intr);
+	if (ret) {
+		pr_err("Failed to restore host interrupt\n");
+		goto out_fail;
+	}
+
+	/*
+	 * In theory the host could see the interrupt again now. Undo this
+	 * again.
+	 */
+	irq_clear_status_flags(virq, IRQ_DISABLE_UNLAZY);
+
+	/* We no longer need this entry; remove it from the list */
+	list_del(&virt_intr->list);
+	kfree(virt_intr);
+
+out_fail:
+	spin_unlock(&virt_intr_lock);
+	return ret;
+}
+#endif /* CONFIG_KVM */
+
 static void gicv5_its_dcache_clean(struct gicv5_its_chip_data *its, void *start,
 				   size_t sz)
 {
@@ -721,6 +822,74 @@ static void gicv5_its_compose_msi_msg(struct irq_data *d, struct msi_msg *msg)
 	msi_msg_set_addr(irq_data_get_msi_desc(d), msg, addr);
 }
 
+#ifdef CONFIG_KVM
+static int gicv5_its_set_vcpu_affinity(struct irq_data *d, void *int_data)
+{
+	int ret = 0;
+	struct virt_intr_data *data = int_data;
+	struct gicv5_its_dev *its_dev = irq_data_get_irq_chip_data(d);
+	struct gicv5_its_chip_data *its = its_dev->its_node;
+	__le64 *itte, tmp;
+	u32 dev_id = FIELD_GET(GICV5_ITS_HWIRQ_DEVICE_ID, d->hwirq);
+	u16 event_id = FIELD_GET(GICV5_ITS_HWIRQ_EVENT_ID, d->hwirq);
+
+	if (IS_ERR(its_dev)) {
+		pr_err("Failed to find ITS entry for DeviceID 0x%x", dev_id);
+		return PTR_ERR(its_dev);
+	}
+
+	itte = gicv5_its_device_get_itte_ref(its_dev, event_id);
+
+	/*
+	 * The host entry should be valid, else something strange is going on!
+	 */
+	if (!FIELD_GET(GICV5_ITTL2E_VALID, *itte)) {
+		pr_err("Host ITTE is not valid; cannot inject into guest\n");
+		return -EINVAL;
+	}
+
+	if (data->direct_inject) {
+		/*
+		* Once we are done direct injecting, it is vital that we restore
+		* the old LPI. If we don't, then the tracking of LPIs will go
+		* awry, and things will fall over quite horribly. Hence, we save
+		* the original LPI here.
+		*/
+		if (data->host_lpi != (u32)-1) {
+			pr_err("Failed to keep track of host LPI\n");
+			return -EINVAL;
+		}
+		data->host_lpi = FIELD_GET(GICV5_ITTL2E_LPI_ID, *itte);
+		data->host_dac = FIELD_GET(GICV5_ITTL2E_DAC, *itte);
+
+		tmp = FIELD_PREP(GICV5_ITTL2E_LPI_ID, data->guest_lpi);
+		tmp |= FIELD_PREP(GICV5_ITTL2E_VM_ID, data->vm_id);
+		tmp |= GICV5_ITTL2E_VIRTUAL;
+		tmp |= GICV5_ITTL2E_VALID;
+
+		its_write_table_entry(its, itte, tmp);
+	} else {
+		/* Restore the original ITTE entry for the host */
+		if (data->host_lpi == (u32)-1) {
+			pr_err("Failed to keep track of host LPI\n");
+			return -EINVAL;
+		}
+
+		tmp = FIELD_PREP(GICV5_ITTL2E_LPI_ID, data->host_lpi);
+		tmp |= FIELD_PREP(GICV5_ITTL2E_DAC, data->host_dac);
+		tmp |= GICV5_ITTL2E_VALID;
+
+		its_write_table_entry(its, itte, tmp);
+	}
+
+	// Make sure that the changes have been sync'd
+	dsb(st);
+	gicv5_its_itt_cache_inv(its, dev_id, event_id);
+
+	return ret;
+}
+#endif /* CONFIG_KVM */
+
 static const struct irq_chip gicv5_its_irq_chip = {
 	.name			= "GICv5-ITS-MSI",
 	.irq_mask		= irq_chip_mask_parent,
@@ -730,6 +899,10 @@ static const struct irq_chip gicv5_its_irq_chip = {
 	.irq_get_irqchip_state	= irq_chip_get_parent_state,
 	.irq_set_irqchip_state	= irq_chip_set_parent_state,
 	.irq_compose_msi_msg	= gicv5_its_compose_msi_msg,
+#ifdef CONFIG_KVM
+	// Required to configure events to be directly injected into a VM
+	.irq_set_vcpu_affinity = gicv5_its_set_vcpu_affinity,
+#endif /* CONFIG_KVM */
 };
 
 static struct gicv5_its_dev *gicv5_its_find_device(struct gicv5_its_chip_data *its,

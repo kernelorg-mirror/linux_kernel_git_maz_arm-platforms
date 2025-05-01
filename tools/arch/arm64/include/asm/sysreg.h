@@ -49,8 +49,6 @@
 #define sys_reg_CRm(id)	(((id) >> CRm_shift) & CRm_mask)
 #define sys_reg_Op2(id)	(((id) >> Op2_shift) & Op2_mask)
 
-#ifndef CONFIG_BROKEN_GAS_INST
-
 #ifdef __ASSEMBLY__
 // The space separator is omitted so that __emit_inst(x) can be parsed as
 // either an assembler directive or an assembler macro argument.
@@ -58,25 +56,6 @@
 #else
 #define __emit_inst(x)			".inst " __stringify((x)) "\n\t"
 #endif
-
-#else  /* CONFIG_BROKEN_GAS_INST */
-
-#ifndef CONFIG_CPU_BIG_ENDIAN
-#define __INSTR_BSWAP(x)		(x)
-#else  /* CONFIG_CPU_BIG_ENDIAN */
-#define __INSTR_BSWAP(x)		((((x) << 24) & 0xff000000)	| \
-					 (((x) <<  8) & 0x00ff0000)	| \
-					 (((x) >>  8) & 0x0000ff00)	| \
-					 (((x) >> 24) & 0x000000ff))
-#endif	/* CONFIG_CPU_BIG_ENDIAN */
-
-#ifdef __ASSEMBLY__
-#define __emit_inst(x)			.long __INSTR_BSWAP(x)
-#else  /* __ASSEMBLY__ */
-#define __emit_inst(x)			".long " __stringify(__INSTR_BSWAP(x)) "\n\t"
-#endif	/* __ASSEMBLY__ */
-
-#endif	/* CONFIG_BROKEN_GAS_INST */
 
 /*
  * Instructions for modifying PSTATE fields.

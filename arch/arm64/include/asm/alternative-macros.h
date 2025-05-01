@@ -40,17 +40,6 @@
 /*
  * alternative assembly primitive:
  *
- * If any of these .org directive fail, it means that insn1 and insn2
- * don't have the same length. This used to be written as
- *
- * .if ((664b-663b) != (662b-661b))
- * 	.error "Alternatives instruction length mismatch"
- * .endif
- *
- * but most assemblers die if insn1 or insn2 have a .inst. This should
- * be fixed in a binutils release posterior to 2.25.51.0.2 (anything
- * containing commit 4e4d08cf7399b606 or c1baaddf8861).
- *
  * Alternatives with callbacks do not generate replacement instructions.
  */
 #define __ALTERNATIVE_CFG(oldinstr, newinstr, cpucap, cfg_enabled)	\
@@ -65,8 +54,9 @@
 	"663:\n\t"							\
 	newinstr "\n"							\
 	"664:\n\t"							\
-	".org	. - (664b-663b) + (662b-661b)\n\t"			\
-	".org	. - (662b-661b) + (664b-663b)\n\t"			\
+	".if ((664b-663b) != (662b-661b))\n"				\
+	".error \"Alternatives instruction length mismatch\"\n"		\
+	".endif\n"							\
 	".previous\n"							\
 	".endif\n"
 
@@ -99,6 +89,12 @@
 	.byte \alt_len
 .endm
 
+.macro check_alternative_sizes
+	.if ((664b-663b) != (662b-661b))
+	.error "Alternatives instruction length mismatch"
+	.endif
+.endm
+
 .macro alternative_insn insn1, insn2, cap, enable = 1
 	.if \enable
 661:	\insn1
@@ -107,8 +103,7 @@
 	.popsection
 	.subsection 1
 663:	\insn2
-664:	.org	. - (664b-663b) + (662b-661b)
-	.org	. - (662b-661b) + (664b-663b)
+664:	check_alternative_sizes
 	.previous
 	.endif
 .endm
@@ -179,8 +174,7 @@
  */
 .macro alternative_endif
 664:
-	.org	. - (664b-663b) + (662b-661b)
-	.org	. - (662b-661b) + (664b-663b)
+	check_alternative_sizes
 	.if .Lasm_alt_mode==0
 	.previous
 	.endif

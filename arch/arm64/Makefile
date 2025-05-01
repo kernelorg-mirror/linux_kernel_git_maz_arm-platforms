@@ -29,10 +29,6 @@ cc_has_k_constraint := $(call try-run,echo				\
 		return 0;						\
 	}' | $(CC) -S -x c -o "$$TMP" -,,-DCONFIG_CC_HAS_K_CONSTRAINT=1)
 
-ifeq ($(CONFIG_BROKEN_GAS_INST),y)
-$(warning Detected assembler with broken .inst; disassembly will be unreliable)
-endif
-
 # The GCC option -ffreestanding is required in order to compile code containing
 # ARM/NEON intrinsics in a non C99-compliant environment (such as the kernel)
 CC_FLAGS_FPU	:= -ffreestanding

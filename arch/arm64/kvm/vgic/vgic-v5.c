@@ -197,8 +197,8 @@ int vgic_v5_finalize_ppi_state(struct kvm *kvm)
 	return 0;
 }
 
-static bool vgic_v5_ppi_set_pending_state(struct kvm_vcpu *vcpu,
-					  struct vgic_irq *irq)
+bool vgic_v5_ppi_set_pending_state(struct kvm_vcpu *vcpu,
+				   struct vgic_irq *irq)
 {
 	struct vgic_v5_cpu_if *cpu_if;
 	const u64 id_bit = BIT_ULL(irq->intid % 64);
@@ -227,8 +227,8 @@ static bool vgic_v5_ppi_set_pending_state(struct kvm_vcpu *vcpu,
  * save/restore, but don't need the PPIs to be queued on a per-VCPU AP
  * list. Therefore, sanity check the state, unlock, and return.
  */
-static bool vgic_v5_ppi_queue_irq_unlock(struct kvm *kvm, struct vgic_irq *irq,
-					 unsigned long flags)
+bool vgic_v5_ppi_queue_irq_unlock(struct kvm *kvm, struct vgic_irq *irq,
+				  unsigned long flags)
 	__releases(&irq->irq_lock)
 {
 	struct kvm_vcpu *vcpu;

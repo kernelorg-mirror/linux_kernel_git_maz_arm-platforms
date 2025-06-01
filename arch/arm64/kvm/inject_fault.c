@@ -167,7 +167,10 @@ int kvm_inject_sea(struct kvm_vcpu *vcpu, bool iabt, u64 addr)
 {
 	lockdep_assert_held(&vcpu->mutex);
 
-	if (is_nested_ctxt(vcpu) && (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_TEA))
+	if (is_nested_ctxt(vcpu) &&
+	    ((__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_TEA) ||
+	     ((*vcpu_cpsr(vcpu) & PSR_A_BIT) &&
+	      __vcpu_sys_reg(vcpu, HCRX_EL2) & HCRX_EL2_TMEA)))
 		return kvm_inject_nested_sea(vcpu, iabt, addr);
 
 	__kvm_inject_sea(vcpu, iabt, addr);

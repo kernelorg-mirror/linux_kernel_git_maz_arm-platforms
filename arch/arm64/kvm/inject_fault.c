@@ -155,7 +155,7 @@ static void inject_abt32(struct kvm_vcpu *vcpu, bool is_pabt, u32 addr)
 	vcpu_write_sys_reg(vcpu, far, FAR_EL1);
 }
 
-void __kvm_inject_sea(struct kvm_vcpu *vcpu, bool iabt, u64 addr)
+static void __kvm_inject_sea(struct kvm_vcpu *vcpu, bool iabt, u64 addr)
 {
 	if (vcpu_el1_is_32bit(vcpu))
 		inject_abt32(vcpu, iabt, addr);
@@ -167,7 +167,7 @@ int kvm_inject_sea(struct kvm_vcpu *vcpu, bool iabt, u64 addr)
 {
 	lockdep_assert_held(&vcpu->mutex);
 
-	if (vcpu_has_nv(vcpu))
+	if (is_nested_ctxt(vcpu) && (__vcpu_sys_reg(vcpu, HCR_EL2) & HCR_TEA))
 		return kvm_inject_nested_sea(vcpu, iabt, addr);
 
 	__kvm_inject_sea(vcpu, iabt, addr);

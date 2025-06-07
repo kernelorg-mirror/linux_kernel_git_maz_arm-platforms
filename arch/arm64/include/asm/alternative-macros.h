@@ -8,12 +8,7 @@
 #include <asm/cpucaps.h>
 #include <asm/insn-def.h>
 
-/*
- * Binutils 2.27.0 can't handle a 'UL' suffix on constants, so for the assembly
- * macros below we must use we must use `(1 << ARM64_CB_SHIFT)`.
- */
-#define ARM64_CB_SHIFT	15
-#define ARM64_CB_BIT	BIT(ARM64_CB_SHIFT)
+#define ARM64_CB_BIT	BIT(15)
 
 #if ARM64_NCAPS >= ARM64_CB_BIT
 #error "cpucaps have overflown ARM64_CB_BIT"
@@ -76,7 +71,7 @@
 	__ALTERNATIVE_CFG(oldinstr, newinstr, cpucap, IS_ENABLED(cfg))
 
 #define ALTERNATIVE_CB(oldinstr, cpucap, cb) \
-	__ALTERNATIVE_CFG_CB(oldinstr, (1 << ARM64_CB_SHIFT) | (cpucap), 1, cb)
+	__ALTERNATIVE_CFG_CB(oldinstr, ARM64_CB_BIT | (cpucap), 1, cb)
 #else
 
 #include <asm/assembler.h>
@@ -151,7 +146,7 @@
 .macro alternative_cb cap, cb
 	.set .Lasm_alt_mode, 0
 	.pushsection .altinstructions, "a"
-	altinstruction_entry 661f, \cb, (1 << ARM64_CB_SHIFT) | \cap, 662f-661f, 0
+	altinstruction_entry 661f, \cb, ARM64_CB_BIT | \cap, 662f-661f, 0
 	.popsection
 661:
 .endm

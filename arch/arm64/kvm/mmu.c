@@ -1829,6 +1829,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		/* Beyond sanitised PARange (which is the IPA limit) */
 		if (fault_ipa >= BIT_ULL(get_kvm_ipa_limit())) {
 			kvm_inject_size_fault(vcpu);
+			kvm_mark_end_tf(vcpu);
 			return 1;
 		}
 
@@ -1840,6 +1841,8 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 				kvm_inject_pabt(vcpu, fault_ipa);
 			else
 				kvm_inject_dabt(vcpu, fault_ipa);
+
+			kvm_mark_end_tf(vcpu);
 			return 1;
 		}
 	}
@@ -1879,6 +1882,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 
 		ret = kvm_walk_nested_s2(vcpu, fault_ipa, &nested_trans);
 		if (ret) {
+			kvm_mark_end_tf(vcpu);
 			esr = kvm_s2_trans_esr(&nested_trans);
 			kvm_inject_s2_fault(vcpu, esr);
 			goto out_unlock;
@@ -1930,7 +1934,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		if (kvm_is_error_hva(hva) && kvm_vcpu_dabt_is_cm(vcpu)) {
 			kvm_incr_pc(vcpu);
 			ret = 1;
-			goto out_unlock;
+			goto out;
 		}
 
 		/*
@@ -1957,7 +1961,9 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 			     esr_fsc_is_permission_fault(esr));
 	if (ret == 0)
 		ret = 1;
+
 out:
+	kvm_mark_end_tf(vcpu);
 	if (ret == -ENOEXEC) {
 		kvm_inject_pabt(vcpu, kvm_vcpu_get_hfar(vcpu));
 		ret = 1;

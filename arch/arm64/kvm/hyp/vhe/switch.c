@@ -453,6 +453,7 @@ static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	int ret = -EINVAL;
 	u32 instr;
 	u64 val;
+	bool tnf;
 
 	/*
 	 * Ideally, we would never trap on EL2 S1 TLB invalidations using
@@ -470,16 +471,24 @@ static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * with the VHE program, we can also handle the nVHE style of EL2
 	 * invalidation.
 	 */
-	if (!(is_hyp_ctxt(vcpu)))
+	tnf = test_bit(KVM_ARCH_FLAG_TLBI_VS_FAULT, &vcpu->kvm->arch.flags);
+	if (!is_hyp_ctxt(vcpu) && !tnf)
 		return false;
 
 	instr = esr_sys64_to_sysreg(kvm_vcpu_get_esr(vcpu));
 	val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
 
+	/* If a fault handling is in progress, replay the TLBI */
+	if (tnf && !atomic_inc_unless_negative(&vcpu->kvm->arch.tlbi_nfault))
+		return true;
+
 	if ((kvm_supported_tlbi_s1e1_op(vcpu, instr) &&
-	     vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)) ||
+	     ((vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)) || tnf)) ||
 	    kvm_supported_tlbi_s1e2_op (vcpu, instr))
 		ret = __kvm_tlbi_s1e2(NULL, val, instr);
+
+	if (tnf)
+		atomic_dec(&vcpu->kvm->arch.tlbi_nfault);
 
 	if (ret)
 		return false;

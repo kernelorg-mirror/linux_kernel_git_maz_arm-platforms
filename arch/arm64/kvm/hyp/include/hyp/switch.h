@@ -758,6 +758,13 @@ static inline bool kvm_hyp_handle_memory_fault(struct kvm_vcpu *vcpu,
 	if (!__populate_fault_info(vcpu))
 		return true;
 
+	if (test_bit(KVM_ARCH_FLAG_TLBI_VS_FAULT, &vcpu->kvm->arch.flags) &&
+	    kvm_vcpu_trap_is_translation_fault(vcpu) &&
+	    !kvm_vcpu_abt_issea(vcpu) &&
+	    !kvm_vcpu_abt_iss1tw(vcpu) &&
+	    !atomic_dec_unless_positive(&vcpu->kvm->arch.tlbi_nfault))
+		return true;
+
 	return false;
 }
 #define kvm_hyp_handle_iabt_low		kvm_hyp_handle_memory_fault

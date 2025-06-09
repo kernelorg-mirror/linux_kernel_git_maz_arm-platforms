@@ -371,6 +371,15 @@ static inline void kvm_fault_unlock(struct kvm *kvm)
 		read_unlock(&kvm->mmu_lock);
 }
 
+static inline void kvm_mark_end_tf(struct kvm_vcpu *vcpu)
+{
+	if (test_bit(KVM_ARCH_FLAG_TLBI_VS_FAULT, &vcpu->kvm->arch.flags) &&
+	    kvm_vcpu_trap_is_translation_fault(vcpu) &&
+	    !kvm_vcpu_abt_issea(vcpu) &&
+	    !kvm_vcpu_abt_iss1tw(vcpu))
+		atomic_inc(&vcpu->kvm->arch.tlbi_nfault);
+}
+
 #ifdef CONFIG_PTDUMP_STAGE2_DEBUGFS
 void kvm_s2_ptdump_create_debugfs(struct kvm *kvm);
 #else

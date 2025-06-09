@@ -6,6 +6,7 @@
 
 #include <linux/kvm_host.h>
 #include <asm/kvm_emulate.h>
+#include <asm/kvm_mmu.h>
 #include <trace/events/kvm.h>
 
 #include "trace.h"
@@ -113,8 +114,11 @@ int kvm_handle_mmio_return(struct kvm_vcpu *vcpu)
 	 * Detect if the MMIO return was already handled or if userspace aborted
 	 * the MMIO access.
 	 */
-	if (unlikely(!vcpu->mmio_needed || kvm_pending_sync_exception(vcpu)))
+	if (unlikely(!vcpu->mmio_needed))
 		return 1;
+
+	if  (kvm_pending_sync_exception(vcpu))
+		goto out;
 
 	vcpu->mmio_needed = 0;
 
@@ -144,6 +148,8 @@ int kvm_handle_mmio_return(struct kvm_vcpu *vcpu)
 	 * in the guest.
 	 */
 	kvm_incr_pc(vcpu);
+out:
+	kvm_mark_end_tf(vcpu);
 
 	return 1;
 }

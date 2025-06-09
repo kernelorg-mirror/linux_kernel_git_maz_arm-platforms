@@ -89,6 +89,9 @@ static inline void vcpu_reset_hcr(struct kvm_vcpu *vcpu)
 	 */
 	if (!cpus_have_final_cap(ARM64_HAS_STAGE2_FWB))
 		vcpu->arch.hcr_el2 |= HCR_TVM;
+
+	if (test_bit(KVM_ARCH_FLAG_TLBI_VS_FAULT, &vcpu->kvm->arch.flags))
+		vcpu->arch.hcr_el2 |= HCR_TTLB;
 }
 
 static inline unsigned long *vcpu_hcr(struct kvm_vcpu *vcpu)

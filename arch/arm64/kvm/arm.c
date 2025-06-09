@@ -6,6 +6,7 @@
 
 #include <linux/bug.h>
 #include <linux/cpu_pm.h>
+#include <linux/debugfs.h>
 #include <linux/entry-kvm.h>
 #include <linux/errno.h>
 #include <linux/err.h>
@@ -195,6 +196,8 @@ int kvm_arch_init_vm(struct kvm *kvm, unsigned long type)
 
 	bitmap_zero(kvm->arch.vcpu_features, KVM_VCPU_MAX_FEATURES);
 
+	set_bit(KVM_ARCH_FLAG_TLBI_VS_FAULT, &kvm->arch.flags);
+
 	return 0;
 
 err_free_cpumask:
@@ -213,6 +216,7 @@ void kvm_arch_create_vm_debugfs(struct kvm *kvm)
 {
 	kvm_sys_regs_create_debugfs(kvm);
 	kvm_s2_ptdump_create_debugfs(kvm);
+	debugfs_create_atomic_t("tnf", 0400, kvm->debugfs_dentry, &kvm->arch.tlbi_nfault);
 }
 
 static void kvm_destroy_mpidr_data(struct kvm *kvm)

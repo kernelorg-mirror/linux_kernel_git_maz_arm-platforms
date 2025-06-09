@@ -349,6 +349,8 @@ struct kvm_arch {
 #define KVM_ARCH_FLAG_GUEST_HAS_SVE			9
 	/* MIDR_EL1, REVIDR_EL1, and AIDR_EL1 are writable from userspace */
 #define KVM_ARCH_FLAG_WRITABLE_IMP_ID_REGS		10
+	/* Mutual exclusion between TLBI and S2 translation faults */
+#define KVM_ARCH_FLAG_TLBI_VS_FAULT			11
 	unsigned long flags;
 
 	/* VM-wide vCPU feature set */
@@ -398,6 +400,9 @@ struct kvm_arch {
 
 	/* Count the number of VNCR_EL2 currently mapped */
 	atomic_t vncr_map_count;
+
+	/* TLBI (positive) vs translation faults (negative) semaphore */
+	atomic_t tlbi_nfault;
 
 	/*
 	 * For an untrusted host VM, 'pkvm.handle' is used to lookup

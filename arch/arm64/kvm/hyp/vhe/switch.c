@@ -487,8 +487,10 @@ static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	    kvm_supported_tlbi_s1e2_op (vcpu, instr))
 		ret = __kvm_tlbi_s1e2(NULL, val, instr);
 
-	if (tnf)
+	if (tnf) {
 		atomic_dec(&vcpu->kvm->arch.tlbi_nfault);
+		dsb(ish);
+	}
 
 	if (ret)
 		return false;

@@ -1289,3 +1289,22 @@ void vgic_irq_handle_resampling(struct vgic_irq *irq,
 			vgic_irq_set_phys_active(irq, false);
 	}
 }
+
+int kvm_vgic_set_forwarding(struct kvm *kvm, int irq,
+			    struct kvm_kernel_irq_routing_entry *irq_entry)
+{
+	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5) {
+		return kvm_vgic_v5_set_forwarding(kvm, irq, irq_entry);
+	} else {
+		return kvm_vgic_v4_set_forwarding(kvm, irq, irq_entry);
+	}
+}
+
+void kvm_vgic_unset_forwarding(struct kvm *kvm, int irq)
+{
+	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5) {
+		kvm_vgic_v5_unset_forwarding(kvm, irq);
+	} else {
+		kvm_vgic_v4_unset_forwarding(kvm, irq);
+	}
+}

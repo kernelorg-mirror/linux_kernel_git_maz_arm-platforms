@@ -1126,6 +1126,29 @@ int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
 				       len, &io_device->dev);
 }
 
+bool vgic_supports_direct_msis(struct kvm *kvm)
+{
+	const struct vgic_dist *dist = &kvm->arch.vgic;
+
+	if (kvm_vgic_global_state.has_gicv4_1) {
+		/*
+		 * Deliberately conflate vLPI and vSGI support on GICv4.1 hardware,
+		 * indirectly allowing userspace to control whether or not vPEs are
+		 * allocated for the VM.
+		 */
+		if (system_supports_direct_sgis() && !vgic_supports_direct_sgis(kvm))
+			return false;
+		return true;
+	}
+	if (kvm_vgic_global_state.has_gicv4 && vgic_has_its(kvm))
+		return true;
+	if (kvm_vgic_global_state.type == VGIC_V5 && vgic_has_its(kvm) &&
+		 dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5)
+		return true;
+
+	return false;
+}
+
 bool vgic_has_its(struct kvm *kvm)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;

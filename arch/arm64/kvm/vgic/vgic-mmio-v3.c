@@ -38,19 +38,6 @@ u64 update_64bit_reg(u64 reg, unsigned int offset, unsigned int len,
 	return reg | ((u64)val << lower);
 }
 
-bool vgic_supports_direct_msis(struct kvm *kvm)
-{
-	/*
-	 * Deliberately conflate vLPI and vSGI support on GICv4.1 hardware,
-	 * indirectly allowing userspace to control whether or not vPEs are
-	 * allocated for the VM.
-	 */
-	if (system_supports_direct_sgis() && !vgic_supports_direct_sgis(kvm))
-		return false;
-
-	return kvm_vgic_global_state.has_gicv4 && vgic_has_its(kvm);
-}
-
 bool system_supports_direct_sgis(void)
 {
 	return kvm_vgic_global_state.has_gicv4_1 && gic_cpuif_has_vsgi();

@@ -1790,3 +1790,58 @@ int vgic_v5_check_msi(struct kvm *kvm, struct kvm_msi *msi, bool its)
 
 	return 0;
 }
+
+static struct vgic_v5_its *
+vgic_v5_get_its(struct kvm *kvm, struct kvm_kernel_irq_routing_entry *irq_entry)
+{
+	struct kvm_msi msi = (struct kvm_msi){
+		.address_lo = irq_entry->msi.address_lo,
+		.address_hi = irq_entry->msi.address_hi,
+		.data = irq_entry->msi.data,
+		.flags = irq_entry->msi.flags,
+		.devid = irq_entry->msi.devid,
+	};
+
+	return vgic_v5_msi_to_its(kvm, &msi);
+}
+
+int kvm_vgic_v5_set_forwarding(struct kvm *kvm, int virq,
+			       struct kvm_kernel_irq_routing_entry *irq_entry)
+{
+	u32 lpi;
+	int ret;
+	struct vgic_v5_its *its_data;
+
+	if (!vgic_has_its(kvm)) {
+		pr_warn_once("A vITS is required to directly inject LPIs\n");
+		return 0;
+	}
+
+	its_data = vgic_v5_get_its(kvm, irq_entry);
+	if (IS_ERR(its_data))
+		return -ENODEV;
+
+	/* This will also cache the translation, if successful */
+	ret = vgic_v5_its_look_up_lpi(kvm, its_data, irq_entry->msi.devid,
+				      irq_entry->msi.data, &lpi);
+	if (ret)
+		return ret;
+
+	return gicv5_its_enable_direct_injection(virq, vgic_v5_vm_id(kvm), lpi);
+}
+
+void kvm_vgic_v5_unset_forwarding(struct kvm *kvm, int virq)
+{
+	if (!vgic_has_its(kvm)) {
+		return;
+	}
+
+	/*
+	 * Note: We don't remove the entry from our translation cache here. It
+	 * is up to the guest to invalidate the old translations, and hence the
+	 * removal path is tied into ITS_INV_DEVICER and ITS_INV_EVENTR, rather
+	 * than being explicitly called here.
+	 */
+
+	gicv5_its_disable_direct_injection(virq);
+}

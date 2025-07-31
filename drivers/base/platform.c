@@ -153,16 +153,17 @@ EXPORT_SYMBOL_GPL(devm_platform_ioremap_resource_byname);
 static const struct cpumask *get_irq_affinity(struct platform_device *dev,
 					      unsigned int num)
 {
+	const struct cpumask *mask = NULL;
 #ifndef CONFIG_SPARC
 	struct fwnode_handle *fwnode = dev_fwnode(&dev->dev);
 
 	if (is_of_node(fwnode))
-		return of_irq_get_affinity(to_of_node(fwnode), num);
+		mask = of_irq_get_affinity(to_of_node(fwnode), num);
 	else if (is_acpi_device_node(fwnode))
-		return acpi_irq_get_affinity(ACPI_HANDLE_FWNODE(fwnode), num);
+		mask = acpi_irq_get_affinity(ACPI_HANDLE_FWNODE(fwnode), num);
 #endif
 
-	return NULL;
+	return mask ?: cpu_possible_mask;
 }
 
 /**

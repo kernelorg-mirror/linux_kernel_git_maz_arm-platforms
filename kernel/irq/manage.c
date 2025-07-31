@@ -2450,6 +2450,60 @@ void free_percpu_nmi(unsigned int irq, void __percpu *dev_id)
 	kfree(__free_percpu_irq(irq, dev_id));
 }
 
+int add_percpu_irq_target(unsigned int irq, void __percpu *dev_id)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+
+	if (!desc || !irq_settings_is_per_cpu_devid(desc))
+		return -EINVAL;
+
+	scoped_guard(raw_spinlock_irqsave, &desc->lock) {
+		struct irq_action *action = NULL;
+
+		if (cpumask_test_cpu(smp_processor_id(), desc->percpu_enabled))
+			return -EINVAL;
+
+		for (struct irq_action *tmp = &desc->action; tmp; tmp = tmp->next) {
+			if (cpumask_test_cpu(smp_processor_id(), tmp->affinity))
+				return -EINVAL;
+
+			if (tmp->percpu_dev_id == dev_id)
+				action = tmp;
+		}
+
+		cpumask_set_cpu(smp_processor_id(), action->affinity);
+
+		/* If we have a full house, indicate we can't share anymore */
+		if (cpumask_weight(action->affinity) == nr_possible_cpus())
+			action->flags &= ~IRQF_SHARED;
+	}
+
+	return 0;
+}
+
+int remove_percpu_irq_target(unsigned int irq)
+{
+	struct irq_desc *desc = irq_to_desc(irq);
+
+	if (!desc || !irq_settings_is_per_cpu_devid(desc))
+		return -EINVAL;
+
+	scoped_guard(raw_spinlock_irqsave, &desc->lock) {
+		if (cpumask_test_cpu(smp_processor_id(), desc->percpu_enabled))
+			return -EINVAL;
+
+		for (struct irq_action *tmp = &desc->action; tmp; tmp = tmp->next)
+			if (cpumask_test_and_clear_cpu(smp_processor_id(), tmp->affinity)) {
+				if (cpumask_weight(action->affinity) < nr_possible_cpus())
+					action->flags |= IRQF_SHARED;
+
+				return 0;
+			}
+	}
+
+	return -ENOENT;
+}
+
 /**
  * setup_percpu_irq - setup a per-cpu interrupt
  * @irq:	Interrupt line to setup

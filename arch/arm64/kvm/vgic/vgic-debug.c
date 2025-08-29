@@ -13,6 +13,15 @@
 #include <asm/kvm_mmu.h>
 #include "vgic.h"
 
+enum iter_state {
+	Start,
+	Next_VCPU,
+	Per_VCPU, /* SGIs and PPIs */
+	SPI,
+	LPI,
+	Done
+};
+
 /*
  * Structure to control looping through the entire vgic state.  We start at
  * zero for each field and move upwards.  So, if dist_id is 0 we print the
@@ -24,41 +33,104 @@
  */
 struct vgic_state_iter {
 	int nr_cpus;
+	int nr_per_vcpu;
 	int nr_spis;
 	int nr_lpis;
 	int dist_id;
 	int vcpu_id;
 	unsigned long intid;
-	int lpi_idx;
+	int idx;
+	enum iter_state state;
+	enum iter_state next_state;
 };
 
 static void iter_next(struct kvm *kvm, struct vgic_state_iter *iter)
 {
 	struct vgic_dist *dist = &kvm->arch.vgic;
+	bool v5 = dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5;
 
-	if (iter->dist_id == 0) {
+	iter->state = iter->next_state;
+
+	/* Build the correct intid */
+	switch(iter->state) {
+	case Next_VCPU:
+		++iter->vcpu_id;
+		fallthrough;
+	case Start:
+		iter->idx = 0;
 		iter->dist_id++;
-		return;
-	}
-
-	/*
-	 * Let the xarray drive the iterator after the last SPI, as the iterator
-	 * has exhausted the sequentially-allocated INTID space.
-	 */
-	if (iter->intid >= (iter->nr_spis + VGIC_NR_PRIVATE_IRQS - 1) &&
-	    iter->nr_lpis) {
-		if (iter->lpi_idx < iter->nr_lpis)
+		fallthrough;
+	case Per_VCPU:
+		if (!v5)
+			iter->intid = iter->idx;
+		else
+			iter->intid = FIELD_PREP(GICV5_HWIRQ_TYPE, GICV5_HWIRQ_TYPE_PPI) |
+				FIELD_PREP(GICV5_HWIRQ_ID, iter->idx);
+		break;
+	case SPI:
+		if (!v5)
+			iter->intid = iter->idx + VGIC_NR_PRIVATE_IRQS;
+		else
+			iter->intid = FIELD_PREP(GICV5_HWIRQ_TYPE, GICV5_HWIRQ_TYPE_SPI) |
+				FIELD_PREP(GICV5_HWIRQ_ID, iter->idx);
+		break;
+	case LPI:
+		if (iter->idx < iter->nr_lpis)
 			xa_find_after(&dist->lpi_xa, &iter->intid,
 				      VGIC_LPI_MAX_INTID,
 				      LPI_XA_MARK_DEBUG_ITER);
-		iter->lpi_idx++;
+		break;
+	case Done:
+		fallthrough;
+	default:
 		return;
 	}
 
-	iter->intid++;
-	if (iter->intid == VGIC_NR_PRIVATE_IRQS &&
-	    ++iter->vcpu_id < iter->nr_cpus)
-		iter->intid = 0;
+	iter->idx++;
+
+	switch(iter->state) {
+	case Start:
+		fallthrough;
+	case Next_VCPU:
+		iter->next_state = Per_VCPU;
+		fallthrough;
+	case Per_VCPU:
+		/* Display all Per_VCPU IRQs per VCPU first */
+		if (iter->idx == iter->nr_per_vcpu && iter->vcpu_id < iter->nr_cpus - 1) {
+			iter->next_state = Next_VCPU;
+			iter->idx = 0;
+			break;
+		}
+
+		/* We're done with all Per_VCPU IRQs */
+		if (iter->idx == iter->nr_per_vcpu) {
+			iter->idx = 0;
+			if (iter->nr_spis)
+				iter->next_state = SPI;
+			else if (iter->nr_lpis)
+				iter->next_state = LPI;
+			else
+				iter->next_state = Done;
+		}
+		break;
+	case SPI:
+		/* We're done with SPIs */
+		if (iter->idx == iter->nr_spis) {
+			iter->idx = 0;
+			if (iter->nr_lpis)
+				iter->next_state = LPI;
+			else
+				iter->next_state = Done;
+		}
+		break;
+	case LPI:
+		/* We're just done */
+		if (iter->idx == iter->nr_lpis)
+			iter->next_state = Done;
+		break;
+	default:
+		iter->next_state = Done;
+	}
 }
 
 static int iter_mark_lpis(struct kvm *kvm)
@@ -106,10 +178,16 @@ static void iter_init(struct kvm *kvm, struct vgic_state_iter *iter,
 
 	memset(iter, 0, sizeof(*iter));
 
+	iter->next_state = Start;
 	iter->nr_cpus = nr_cpus;
 	iter->nr_spis = kvm->arch.vgic.nr_spis;
-	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3)
+	if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3) {
 		iter->nr_lpis = iter_mark_lpis(kvm);
+		iter->nr_per_vcpu = VGIC_NR_PRIVATE_IRQS;
+	} else if (kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5) {
+		iter->nr_lpis = iter_mark_lpis(kvm);
+		iter->nr_per_vcpu = VGIC_V5_NR_PRIVATE_IRQS;
+	}
 
 	/* Fast forward to the right position if needed */
 	while (pos--)
@@ -118,10 +196,13 @@ static void iter_init(struct kvm *kvm, struct vgic_state_iter *iter,
 
 static bool end_of_vgic(struct vgic_state_iter *iter)
 {
-	return iter->dist_id > 0 &&
-		iter->vcpu_id == iter->nr_cpus &&
-		iter->intid >= (iter->nr_spis + VGIC_NR_PRIVATE_IRQS) &&
-		(!iter->nr_lpis || iter->lpi_idx > iter->nr_lpis);
+	/*
+	 * Has printed dist
+	 * Has printed PPIs for all CPUs
+	 * Has printed SPIs
+	 * Has printed LPIs or there are no LPIs to print
+	 */
+	return iter->state == Done;
 }
 
 static void *vgic_debug_start(struct seq_file *s, loff_t *pos)
@@ -188,10 +269,11 @@ static void print_dist_state(struct seq_file *s, struct vgic_dist *dist,
 			     struct vgic_state_iter *iter)
 {
 	bool v3 = dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3;
+	bool v5 = dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5;
 
 	seq_printf(s, "Distributor\n");
 	seq_printf(s, "===========\n");
-	seq_printf(s, "vgic_model:\t%s\n", v3 ? "GICv3" : "GICv2");
+	seq_printf(s, "vgic_model:\t%s\n", v5 ? "GICv5" : v3 ? "GICv3" : "GICv2");
 	seq_printf(s, "nr_spis:\t%d\n", dist->nr_spis);
 	if (v3)
 		seq_printf(s, "nr_lpis:\t%d\n", iter->nr_lpis);
@@ -224,17 +306,23 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 {
 	char *type;
 	bool pending;
+	struct kvm *kvm = s->private;
 
-	if (irq->intid < VGIC_NR_SGIS)
+	if (irq_is_sgi(kvm, irq->intid))
 		type = "SGI";
-	else if (irq->intid < VGIC_NR_PRIVATE_IRQS)
+	else if (irq_is_ppi(kvm, irq->intid))
 		type = "PPI";
-	else if (irq->intid < VGIC_MAX_SPI)
+	else if (irq_is_spi(kvm, irq->intid))
 		type = "SPI";
 	else
 		type = "LPI";
 
-	if (irq->intid ==0 || irq->intid == VGIC_NR_PRIVATE_IRQS)
+	if (!vgic_is_v5(kvm) &&
+	    (irq->intid == 0 || irq->intid == VGIC_NR_PRIVATE_IRQS))
+		print_header(s, irq, vcpu);
+
+	if (vgic_is_v5(kvm) && irq_int_id_v5(irq->intid) == 0 &&
+	    !__irq_is_lpi(KVM_DEV_TYPE_ARM_VGIC_V5, irq->intid))
 		print_header(s, irq, vcpu);
 
 	pending = irq->pending_latch;
@@ -247,7 +335,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 		WARN_ON_ONCE(err);
 	}
 
-	seq_printf(s, "       %s %4d "
+	seq_printf(s, "       %s %4lu "
 		      "    %2d "
 		      "%d%d%d%d%d%d%d "
 		      "%8d "
@@ -256,7 +344,7 @@ static void print_irq_state(struct seq_file *s, struct vgic_irq *irq,
 		      "%3d "
 		      "     %2d "
 		      "\n",
-			type, irq->intid,
+		   type, vgic_is_v5(kvm) ? irq_int_id_v5(irq->intid) : irq->intid,
 			(irq->target_vcpu) ? irq->target_vcpu->vcpu_idx : -1,
 			pending,
 			irq->line_level,
@@ -280,6 +368,8 @@ static int vgic_debug_show(struct seq_file *s, void *v)
 	struct kvm_vcpu *vcpu = NULL;
 	unsigned long flags;
 
+	bool v5 = kvm->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5;
+
 	if (iter->dist_id == 0) {
 		print_dist_state(s, &kvm->arch.vgic, iter);
 		return 0;
@@ -295,7 +385,9 @@ static int vgic_debug_show(struct seq_file *s, void *v)
 	 * Expect this to succeed, as iter_mark_lpis() takes a reference on
 	 * every LPI to be visited.
 	 */
-	if (iter->intid < VGIC_NR_PRIVATE_IRQS)
+	if (!v5 && iter->intid < VGIC_NR_PRIVATE_IRQS)
+		irq = vgic_get_vcpu_irq(vcpu, iter->intid);
+	else if (irq_is_ppi(kvm, iter->intid))
 		irq = vgic_get_vcpu_irq(vcpu, iter->intid);
 	else
 		irq = vgic_get_irq(kvm, iter->intid);

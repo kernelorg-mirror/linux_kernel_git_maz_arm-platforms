@@ -108,6 +108,8 @@
 
 #define irq_is_private(k, i) (irq_is_ppi(k, i) || irq_is_sgi(k, i))
 
+#define irq_int_id_v5(i) (FIELD_GET(GICV5_HWIRQ_ID, i))
+
 #define vgic_is_v5(k) ((k)->arch.vgic.vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5)
 
 enum vgic_type {

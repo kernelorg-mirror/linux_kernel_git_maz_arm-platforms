@@ -1138,6 +1138,127 @@ out:
 	return ret;
 }
 
+static int vgic_v5_its_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr)
+{
+	struct vgic_v5_its *its = dev->private;
+	const struct vgic_register_region *region;
+	gpa_t offset;
+	int align;
+
+	offset = attr->attr;
+
+	if (IS_VGIC_ADDR_UNDEF(its->vgic_v5_its_base)) {
+		return -ENXIO;
+	}
+
+	region = vgic_find_mmio_region(vgic_v5_its_registers,
+				       ARRAY_SIZE(vgic_v5_its_registers),
+				       offset);
+	if (!region) {
+		return -ENXIO;
+	}
+
+	align = region->access_flags & VGIC_ACCESS_64bit ? 0x7 : 0x3;
+	if (offset & align)
+		return -EINVAL;
+
+	return 0;
+}
+
+static int vgic_v5_its_attr_regs_access(struct kvm_device *dev,
+				 struct kvm_device_attr *attr,
+				 u64 *reg, bool is_write)
+{
+	const struct vgic_register_region *region;
+	struct vgic_v5_its *its;
+	gpa_t addr, offset;
+	unsigned int len;
+	int align, ret = 0;
+
+	its = dev->private;
+	offset = attr->attr;
+
+	mutex_lock(&dev->kvm->lock);
+
+	if (kvm_trylock_all_vcpus(dev->kvm)) {
+		mutex_unlock(&dev->kvm->lock);
+		return -EBUSY;
+	}
+
+	mutex_lock(&dev->kvm->arch.config_lock);
+
+	if (IS_VGIC_ADDR_UNDEF(its->vgic_v5_its_base)) {
+		ret = -ENXIO;
+		goto out;
+	}
+
+	region = vgic_find_mmio_region(vgic_v5_its_registers,
+				       ARRAY_SIZE(vgic_v5_its_registers),
+				       offset);
+	if (!region) {
+		ret = -ENXIO;
+		goto out;
+	}
+
+	/*
+	 * Although the spec supports upper/lower 32-bit accesses to
+	 * 64-bit ITS registers, the userspace ABI requires 64-bit
+	 * accesses to all 64-bit wide registers. We therefore only
+	 * support 32-bit accesses to 32-bit-wide registers.
+	 */
+	align = region->access_flags & VGIC_ACCESS_64bit ? 0x7 : 0x3;
+	len = region->access_flags & VGIC_ACCESS_64bit ? 8 : 4;
+
+	if (offset & align)
+		return -EINVAL;
+
+	addr = its->vgic_v5_its_base + offset;
+
+	if (is_write) {
+		region->its_write(dev->kvm, its, addr, len, *reg);
+	} else {
+		*reg = region->its_read(dev->kvm, its, addr, len);
+	}
+out:
+	mutex_unlock(&dev->kvm->arch.config_lock);
+	kvm_unlock_all_vcpus(dev->kvm);
+	mutex_unlock(&dev->kvm->lock);
+
+	return ret;
+}
+
+static int vgic_v5_its_ctrl(struct kvm *kvm, struct vgic_v5_its *its, u64 attr)
+{
+	int ret = 0;
+
+	if (attr == KVM_DEV_ARM_VGIC_CTRL_INIT) /* Nothing to do */
+		return 0;
+
+	mutex_lock(&kvm->lock);
+
+	if (kvm_trylock_all_vcpus(kvm)) {
+		mutex_unlock(&kvm->lock);
+		return -EBUSY;
+	}
+
+	mutex_lock(&kvm->arch.config_lock);
+	//mutex_lock(&its->its_lock); // TODO
+
+	switch (attr) {
+	case KVM_DEV_ARM_VGIC_CTRL_INIT:
+	case KVM_DEV_ARM_ITS_CTRL_RESET:
+	default:
+		ret = -ENXIO;
+		break;
+	}
+
+	//mutex_unlock(&its->its_lock);
+	mutex_unlock(&kvm->arch.config_lock);
+	kvm_unlock_all_vcpus(kvm);
+	mutex_unlock(&kvm->lock);
+	return ret;
+}
+
 static int vgic_v5_its_set_attr(struct kvm_device *dev,
 				struct kvm_device_attr *attr)
 {
@@ -1166,12 +1287,18 @@ static int vgic_v5_its_set_attr(struct kvm_device *dev,
 		return ret;
 	}
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
-		if (attr->attr == KVM_DEV_ARM_VGIC_CTRL_INIT) {
-			// nothing to do
-			return 0;
-		}
+		return vgic_v5_its_ctrl(dev->kvm, its, attr->attr);
 		break;
+	case KVM_DEV_ARM_VGIC_GRP_ITS_REGS:
+		u64 __user *uaddr = (u64 __user *)(long)attr->addr;
+		u64 reg;
+
+		if (get_user(reg, uaddr))
+			return -EFAULT;
+
+		return vgic_v5_its_attr_regs_access(dev, attr, &reg, true);
 	}
+
 	return -ENXIO;
 }
 
@@ -1192,6 +1319,20 @@ static int vgic_v5_its_get_attr(struct kvm_device *dev,
 			return -EFAULT;
 		break;
 	}
+	case KVM_DEV_ARM_VGIC_GRP_ITS_REGS:
+		u64 __user *uaddr = (u64 __user *)(long)attr->addr;
+		u64 reg;
+		int err;
+
+		err = vgic_v5_its_attr_regs_access(dev, attr, &reg, false);
+		if (err)
+			return err;
+
+		if (put_user(reg, uaddr))
+			return -EFAULT;
+
+		return 0;
+
 	default:
 		return -ENXIO;
 	}
@@ -1215,7 +1356,10 @@ static int vgic_v5_its_has_attr(struct kvm_device *dev,
 			return 0;
 		}
 		break;
+	case KVM_DEV_ARM_VGIC_GRP_ITS_REGS:
+		return vgic_v5_its_has_attr_regs(dev, attr);
 	}
+
 	return -ENXIO;
 }
 

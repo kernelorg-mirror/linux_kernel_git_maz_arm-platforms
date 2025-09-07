@@ -27,6 +27,7 @@
 #include <asm/fpsimd.h>
 #include <asm/kvm.h>
 #include <asm/kvm_asm.h>
+#include <asm/kvm_config.h>
 #include <asm/vncr_mapping.h>
 
 #define __KVM_HAVE_ARCH_INTC_INITIALIZED
@@ -1613,89 +1614,6 @@ static inline u64 *__vm_id_reg(struct kvm_arch *ka, u32 reg)
 	({ u64 __val = *__vm_id_reg(&(kvm)->arch, reg); __val; })
 
 void kvm_set_vm_id_reg(struct kvm *kvm, u32 reg, u64 val);
-
-#define __expand_field_sign_unsigned(id, fld, val)			\
-	((u64)SYS_FIELD_VALUE(id, fld, val))
-
-#define __expand_field_sign_signed(id, fld, val)			\
-	({								\
-		u64 __val = SYS_FIELD_VALUE(id, fld, val);		\
-		sign_extend64(__val, id##_##fld##_WIDTH - 1);		\
-	})
-
-#define get_idreg_field_unsigned(kvm, id, fld)				\
-	({								\
-		u64 __val = kvm_read_vm_id_reg((kvm), SYS_##id);	\
-		FIELD_GET(id##_##fld##_MASK, __val);			\
-	})
-
-#define get_idreg_field_signed(kvm, id, fld)				\
-	({								\
-		u64 __val = get_idreg_field_unsigned(kvm, id, fld);	\
-		sign_extend64(__val, id##_##fld##_WIDTH - 1);		\
-	})
-
-#define get_idreg_field_enum(kvm, id, fld)				\
-	get_idreg_field_unsigned(kvm, id, fld)
-
-#define kvm_cmp_feat_signed(kvm, id, fld, op, limit)			\
-	(get_idreg_field_signed((kvm), id, fld) op __expand_field_sign_signed(id, fld, limit))
-
-#define kvm_cmp_feat_unsigned(kvm, id, fld, op, limit)			\
-	(get_idreg_field_unsigned((kvm), id, fld) op __expand_field_sign_unsigned(id, fld, limit))
-
-#define kvm_cmp_feat(kvm, id, fld, op, limit)				\
-	(id##_##fld##_SIGNED ?						\
-	 kvm_cmp_feat_signed(kvm, id, fld, op, limit) :			\
-	 kvm_cmp_feat_unsigned(kvm, id, fld, op, limit))
-
-#define __kvm_has_feat(kvm, id, fld, limit)				\
-	kvm_cmp_feat(kvm, id, fld, >=, limit)
-
-#define kvm_has_feat(kvm, ...) __kvm_has_feat(kvm, __VA_ARGS__)
-
-#define __kvm_has_feat_enum(kvm, id, fld, val)				\
-	kvm_cmp_feat_unsigned(kvm, id, fld, ==, val)
-
-#define kvm_has_feat_enum(kvm, ...) __kvm_has_feat_enum(kvm, __VA_ARGS__)
-
-#define kvm_has_feat_range(kvm, id, fld, min, max)			\
-	(kvm_cmp_feat(kvm, id, fld, >=, min) &&				\
-	kvm_cmp_feat(kvm, id, fld, <=, max))
-
-/* Check for a given level of PAuth support */
-#define kvm_has_pauth(k, l)						\
-	({								\
-		bool pa, pi, pa3;					\
-									\
-		pa  = kvm_has_feat((k), ID_AA64ISAR1_EL1, APA, l);	\
-		pa &= kvm_has_feat((k), ID_AA64ISAR1_EL1, GPA, IMP);	\
-		pi  = kvm_has_feat((k), ID_AA64ISAR1_EL1, API, l);	\
-		pi &= kvm_has_feat((k), ID_AA64ISAR1_EL1, GPI, IMP);	\
-		pa3  = kvm_has_feat((k), ID_AA64ISAR2_EL1, APA3, l);	\
-		pa3 &= kvm_has_feat((k), ID_AA64ISAR2_EL1, GPA3, IMP);	\
-									\
-		(pa + pi + pa3) == 1;					\
-	})
-
-#define kvm_has_fpmr(k)					\
-	(system_supports_fpmr() &&			\
-	 kvm_has_feat((k), ID_AA64PFR2_EL1, FPMR, IMP))
-
-#define kvm_has_tcr2(k)				\
-	(kvm_has_feat((k), ID_AA64MMFR3_EL1, TCRX, IMP))
-
-#define kvm_has_s1pie(k)				\
-	(kvm_has_feat((k), ID_AA64MMFR3_EL1, S1PIE, IMP))
-
-#define kvm_has_s1poe(k)				\
-	(kvm_has_feat((k), ID_AA64MMFR3_EL1, S1POE, IMP))
-
-#define kvm_has_ras(k)					\
-	(kvm_has_feat((k), ID_AA64PFR0_EL1, RAS, IMP))
-
-#define kvm_has_sctlr2(k)				\
-	(kvm_has_feat((k), ID_AA64MMFR3_EL1, SCTLRX, IMP))
 
 static inline bool kvm_arch_has_irq_bypass(void)
 {

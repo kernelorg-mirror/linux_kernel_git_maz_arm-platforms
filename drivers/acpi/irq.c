@@ -306,13 +306,16 @@ const struct cpumask *acpi_irq_get_affinity(acpi_handle handle,
 	struct irq_fwspec_info info;
 	unsigned long flags;
 
-	if (!acpi_irq_parse_one(handle, index, &info.fwspec, &flags)) {
-		if (!irq_populate_fwspec_info(&info) &&
-		    info.flags & IRQ_FWSPEC_INFO_AFFINITY_VALID)
-			return info.affinity;
-	}
+	if (acpi_irq_parse_one(handle, index, &info.fwspec, &flags))
+		return NULL;
 
-	return NULL;
+	if (irq_populate_fwspec_info(&info))
+		return NULL;
+
+	if (!(info.flags & IRQ_FWSPEC_INFO_AFFINITY_VALID))
+		return NULL;
+
+	return info.affinity;
 }
 
 /**

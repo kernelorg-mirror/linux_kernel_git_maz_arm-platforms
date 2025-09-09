@@ -7,6 +7,18 @@
 #include <linux/kvm_host.h>
 #include <asm/sysreg.h>
 
+union feat_desc {
+	struct {
+		u8	regidx;
+		u8	shift;
+		u8	width;
+		bool	sign;
+		s8	lo_lim;
+	};
+	bool	(*match)(struct kvm *);
+	bool	(*fval)(struct kvm *, u64 *);
+};
+
 struct reg_bits_to_feat_map {
 	u64		bits;
 
@@ -15,42 +27,34 @@ struct reg_bits_to_feat_map {
 #define	FIXED_VALUE	BIT(2)	/* RAZ/WI or RAO/WI in KVM */
 	unsigned long	flags;
 
-	union {
-		struct {
-			u8	regidx;
-			u8	shift;
-			u8	width;
-			bool	sign;
-			s8	lo_lim;
-		};
-		bool	(*match)(struct kvm *);
-		bool	(*fval)(struct kvm *, u64 *);
-	};
+	union feat_desc	desc;
 };
 
-#define __NEEDS_FEAT_3(m, f, id, fld, lim)		\
-	{						\
-		.bits	= (m),				\
-		.flags = (f),				\
-		.regidx	= IDREG_IDX(SYS_ ## id),	\
-		.shift	= id ##_## fld ## _SHIFT,	\
-		.width	= id ##_## fld ## _WIDTH,	\
-		.sign	= id ##_## fld ## _SIGNED,	\
-		.lo_lim	= id ##_## fld ##_## lim	\
+#define __NEEDS_FEAT_3(m, f, id, fld, lim)			\
+	{							\
+		.bits	= (m),					\
+		.flags	= (f),					\
+		.desc	= {					\
+			.regidx	= IDREG_IDX(SYS_ ## id),	\
+			.shift	= id ##_## fld ## _SHIFT,	\
+			.width	= id ##_## fld ## _WIDTH,	\
+			.sign	= id ##_## fld ## _SIGNED,	\
+			.lo_lim	= id ##_## fld ##_## lim,	\
+		},						\
 	}
 
 #define __NEEDS_FEAT_2(m, f, fun, dummy)		\
 	{						\
 		.bits	= (m),				\
 		.flags = (f) | CALL_FUNC,		\
-		.fval = (fun),				\
+		.desc.fval = (fun),			\
 	}
 
 #define __NEEDS_FEAT_1(m, f, fun)			\
 	{						\
 		.bits	= (m),				\
 		.flags = (f) | CALL_FUNC,		\
-		.match = (fun),				\
+		.desc.match = (fun),			\
 	}
 
 #define NEEDS_FEAT_FLAG(m, f, ...)			\
@@ -60,7 +64,6 @@ struct reg_bits_to_feat_map {
 	NEEDS_FEAT_FLAG(m, FIXED_VALUE, __VA_ARGS__, 0)
 
 #define NEEDS_FEAT(m, ...)	NEEDS_FEAT_FLAG(m, 0, __VA_ARGS__)
-
 
 static bool not_feat_aa64el3(struct kvm *kvm)
 {
@@ -1000,15 +1003,15 @@ void __init check_feature_map(void)
 
 static bool idreg_feat_match(struct kvm *kvm, const struct reg_bits_to_feat_map *map)
 {
-	u64 regval = kvm->arch.id_regs[map->regidx];
-	u64 regfld = (regval >> map->shift) & GENMASK(map->width - 1, 0);
+	u64 regval = kvm->arch.id_regs[map->desc.regidx];
+	u64 regfld = (regval >> map->desc.shift) & GENMASK(map->desc.width - 1, 0);
 
-	if (map->sign) {
-		s64 sfld = sign_extend64(regfld, map->width - 1);
-		s64 slim = sign_extend64(map->lo_lim, map->width - 1);
+	if (map->desc.sign) {
+		s64 sfld = sign_extend64(regfld, map->desc.width - 1);
+		s64 slim = sign_extend64(map->desc.lo_lim, map->desc.width - 1);
 		return sfld >= slim;
 	} else {
-		return regfld >= map->lo_lim;
+		return regfld >= map->desc.lo_lim;
 	}
 }
 
@@ -1032,8 +1035,8 @@ static u64 __compute_fixed_bits(struct kvm *kvm,
 
 		if (map[i].flags & CALL_FUNC)
 			match = (map[i].flags & FIXED_VALUE) ?
-				map[i].fval(kvm, fixed_bits) :
-				map[i].match(kvm);
+				map[i].desc.fval(kvm, fixed_bits) :
+				map[i].desc.match(kvm);
 		else
 			match = idreg_feat_match(kvm, &map[i]);
 

@@ -6,6 +6,7 @@
 #define __KVM_ARM_VGICV5_TABLES_NEW_H__
 
 #include <linux/irqchip/arm-gic-v5.h>
+#include <linux/list.h>
 
 #define VM_ID_BITS_MIN	8
 #define VM_ID_BITS_MAX	16
@@ -63,6 +64,33 @@ typedef __le64 vpe_entry;
 #define GICV5_VPED_ADDR_SHIFT		3ULL
 #define GICV5_VPED_ADDR			GENMASK_ULL(55, 3)
 
+// L2 IST Entry
+#define GICV5_ISTL2E_PENDING	BIT(0)
+#define GICV5_ISTL2E_ACTIVE	BIT(1)
+#define GICV5_ISTL2E_HM		BIT(2)
+#define GICV5_ISTL2E_ENABLE	BIT(3)
+#define GICV5_ISTL2E_IRM	BIT(4)
+#define GICV5_ISTL2E_HWU	GENMASK(10, 9)
+#define GICV5_ISTL2E_PRIORITY	GENMASK(15, 11)
+#define GICV5_ISTL2E_IAFFID	GENMASK(31, 16)
+
+/*
+ * Save Restore Header Format
+ *
+ * Track what has been saved into the guest's IST. Specifically, we track if the
+ * SPI and LPI ISTs have been stored, and the number of ID bits for each. This
+ * can be used to figure out where these start and end in the guest's memory.
+ */
+#define GICV5_SAVE_TABLES_IRS_IST_HEADER_SPI_IST	BIT(0)
+#define GICV5_SAVE_TABLES_IRS_IST_HEADER_SPI_ID_BITS	GENMASK(5, 1)
+#define GICV5_SAVE_TABLES_IRS_IST_HEADER_LPI_IST	BIT(6)
+#define GICV5_SAVE_TABLES_IRS_IST_HEADER_LPI_ID_BITS	GENMASK(11, 7)
+
+struct pending_irq {
+	u32 irq;
+	struct list_head next;
+};
+
 typedef struct vm_info {
 	void * __iomem vmd_base;
 	vpe_entry * __iomem vpet_base;
@@ -73,6 +101,9 @@ typedef struct vm_info {
 	__le64 *h_lpi_ist;
 	__le64 **h_lpi_l2_ists;
 	__le64 *h_spi_ist;
+
+	/* Tracking of pending interrupts as part of IST restore */
+	struct list_head pending_irqs;
 } gicv5_vm_info;
 
 typedef struct vmt {
@@ -127,6 +158,11 @@ int vgic_v5_spi_ist_allocate(struct kvm *kvm, phys_addr_t *base_addr,
 			     unsigned int id_bits, unsigned int istsz);
 int vgic_v5_lpi_ist_alloc(struct kvm *kvm, gpa_t guest_ist_base, unsigned id_bits);
 int vgic_v5_lpi_ist_free(struct kvm *kvm);
+int vgic_v5_save_spi_ist(struct kvm *kvm, struct kvm_device_attr *attr);
+int vgic_v5_save_lpi_ist(struct kvm *kvm);
+int vgic_v5_restore_spi_ist(struct kvm *kvm, struct kvm_device_attr *attr);
+int vgic_v5_restore_lpi_ist(struct kvm *kvm);
+int vgic_v5_restore_pending_irqs(struct kvm *kvm);
 phys_addr_t vgic_v5_get_vmt_base(void);
 unsigned int vgic_v5_get_vpe_id_bits(void);
 

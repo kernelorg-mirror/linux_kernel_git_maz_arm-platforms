@@ -496,6 +496,8 @@ int vgic_v5_vmte_init(struct kvm *kvm)
 		dsb(ishst);
 	}
 
+	INIT_LIST_HEAD(&vmi->pending_irqs);
+
 	ret = xa_insert(&vm_info, vm_id, vmi, GFP_KERNEL);
 	if (ret)
 		goto out_fail;
@@ -563,6 +565,14 @@ int vgic_v5_vmte_release(struct kvm *kvm)
 	if (vmi->vpet_base) {
 		kfree(vmi->vpet_base);
 		vmi->vpet_base = NULL;
+	}
+
+	if(!list_empty(&vmi->pending_irqs)) {
+		struct pending_irq *pirq, *tmp;
+		list_for_each_entry_safe(pirq, tmp, &vmi->pending_irqs, next) {
+			list_del(&pirq->next);
+			kfree(pirq);
+		}
 	}
 
 	/* If we have an LPI IST, free it */
@@ -1165,6 +1175,429 @@ int vgic_v5_lpi_ist_alloc(struct kvm *kvm, gpa_t guest_ist_base, unsigned id_bit
 
 	return vgic_v5_vmte_assign_ist(kvm, host_phys_addr, host_two_level,
 				       id_bits, 0, 0, false);
+}
+
+int vgic_v5_save_spi_ist(struct kvm *kvm, struct kvm_device_attr *attr)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	u32 __user *uaddr = (u32 __user *)(unsigned long)attr->addr;
+	int ret = 0;
+	__le32 h_iste;
+	unsigned host_id_bits, host_istsz, host_l2sz;
+	volatile void *host_ist_base;
+	struct vmtl2_entry *vmte;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	host_ist_base = vmi->h_spi_ist;
+	if (!host_ist_base && attr)
+		return -ENOENT;
+	else if (host_ist_base && !attr)
+		return -EINVAL;
+
+	host_id_bits = FIELD_GET(GICV5_VMTEL2E_IST_ID_BITS, vmte->val[3]);
+	host_istsz = FIELD_GET(GICV5_VMTEL2E_IST_ISTSZ, vmte->val[3]);
+	host_l2sz = FIELD_GET(GICV5_VMTEL2E_IST_L2SZ, vmte->val[3]);
+
+	for (int i = 0; i < BIT(host_id_bits); ++i) {
+		volatile void *h_iste_addr = host_ist_base + i * BIT(host_istsz + 2);
+		h_iste = *((__le32*)h_iste_addr);
+
+		ret = put_user(h_iste, uaddr);
+		if (ret)
+			return ret;
+
+		uaddr++;
+	}
+
+	return ret;
+}
+
+/*
+ * Save the LPI IST to guest memory
+ *
+ * This requires the guest to have allocated the LPI IST. If it has not, then we
+ * don't have any memory in the guest into which we can serilise the IST.
+ *
+ * We only store the lower 32-bits of each hots ISTE as the upper bits contain
+ * the metadata, which needs to be explcitly zeroed on restore anyhow.
+ */
+int vgic_v5_save_lpi_ist(struct kvm *kvm)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	int ret, h_l1_entries, h_l2_entries;
+	unsigned int host_id_bits, host_istsz, host_l2sz;
+	size_t n, l2bits, h_l1_index, h_l2_index;
+	__le32 h_iste;
+	gpa_t g_entry_addr;
+	struct vmtl2_entry *vmte;
+	void * h_l2_ist_base;
+	volatile void *host_ist_base;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	/* If there is no IST to save, return without error */
+	if (!kvm->arch.vgic.vgic_v5_irs_data->ist_baser.valid &&
+		!FIELD_GET(GICV5_VMTEL2E_VALID, vmte->val[2])) {
+		return 0;
+	}
+
+	if (kvm->arch.vgic.vgic_v5_irs_data->ist_cfgr.structure) {
+		pr_err("Guest has created a two-level IST! Cannot save LPI IST!\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * Assumption: the guest IST is Linear. This gives us a simple way to iterate
+	 * over the guest's memory.
+	 */
+
+	g_entry_addr = kvm->arch.vgic.vgic_v5_irs_data->ist_baser.addr;
+	host_id_bits = FIELD_GET(GICV5_VMTEL2E_IST_ID_BITS, vmte->val[2]);
+	host_istsz = FIELD_GET(GICV5_VMTEL2E_IST_ISTSZ, vmte->val[2]);
+	host_l2sz = FIELD_GET(GICV5_VMTEL2E_IST_L2SZ, vmte->val[2]);
+
+	if (!vmi->h_lpi_ist_structure) {
+		h_l2_entries = BIT(host_id_bits);
+		host_ist_base = vmi->h_lpi_ist;
+
+		for (h_l2_index = 0; h_l2_index < h_l2_entries; ++h_l2_index) {
+			volatile void *h_iste_addr = host_ist_base + h_l2_index * BIT(host_istsz + 2);
+			h_iste = *((__le32*)h_iste_addr);
+
+			ret = vgic_write_guest_lock(kvm, g_entry_addr, &h_iste, sizeof(h_iste));
+			if (ret)
+				return ret;
+
+			/* Advance to the next guest entry */
+			g_entry_addr += sizeof(h_iste);
+		}
+	} else {
+		n = max(2, host_id_bits - ((10 - host_istsz) + (2 * host_l2sz)) + 3 - 1);
+		l2bits = (10 - host_istsz) + (2 * host_l2sz);
+		h_l1_entries = BIT(n + 1) / GICV5_IRS_ISTL1E_SIZE;
+		h_l2_entries = BIT(l2bits);
+
+		for (h_l1_index = 0; h_l1_index < h_l1_entries; ++h_l1_index) {
+			/*
+			 * Write 0s for invalid host ISTs; don't just continue
+			 * but instead zero N entries.
+			 */
+			if (!FIELD_GET(GICV5_ISTL1E_VALID, vmi->h_lpi_ist[h_l1_index])) {
+				h_iste = 0;
+				for (h_l2_index = 0; h_l2_index < h_l2_entries; ++h_l2_index) {
+					ret = vgic_write_guest_lock(kvm, g_entry_addr, &h_iste, sizeof(h_iste));
+					if (ret)
+						return ret;
+
+					/* Advance to the next guest entry */
+					g_entry_addr += sizeof(__le32);
+				}
+				continue;
+			}
+
+			for (h_l2_index = 0; h_l2_index < h_l2_entries; ++h_l2_index) {
+
+				h_l2_ist_base = vmi->h_lpi_l2_ists[h_l1_index];
+				h_iste = *(__le32 *)(h_l2_ist_base + h_l2_index * BIT(2 + host_l2sz));
+
+				ret = vgic_write_guest_lock(kvm, g_entry_addr, &h_iste, sizeof(h_iste));
+				if (ret) {
+					return ret;
+				}
+
+				/* Advance to the next guest entry */
+				g_entry_addr += sizeof(h_iste);
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int vgic_v5_track_pending_irq(struct list_head *pending_irqs, u32 intid,
+				     u32 type)
+{
+	struct pending_irq *pirq;
+
+	pirq = kzalloc(sizeof(*pirq), GFP_KERNEL);
+	if (pirq == NULL)
+		return -ENOMEM;
+
+	pirq->irq = FIELD_PREP(GICV5_HWIRQ_TYPE, type) |
+		    FIELD_PREP(GICV5_HWIRQ_ID, intid);
+	INIT_LIST_HEAD(&pirq->next);
+	list_add_tail(&pirq->next, pending_irqs);
+
+	return 0;
+}
+
+static int vgic_v5_process_iste(__le32 *iste, struct list_head *pending_irqs,
+				u32 intid, u32 type)
+{
+	int ret = 0;
+
+	/* Clean up the ISTE - Zero the HWU field. */
+	*iste &= ~GICV5_ISTL2E_HWU;
+
+	if (FIELD_GET(GICV5_ISTL2E_PENDING, *iste)) {
+		*iste &= ~GICV5_ISTL2E_PENDING;
+
+		ret = vgic_v5_track_pending_irq(pending_irqs, intid, type);
+	}
+
+	return ret;
+}
+
+int vgic_v5_restore_spi_ist(struct kvm *kvm, struct kvm_device_attr *attr)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	u32 __user *uaddr = (u32 __user *)(unsigned long)attr->addr;
+	int ret = 0;
+	__le32 h_iste;
+	unsigned host_id_bits, host_istsz, host_l2sz;
+	volatile void *host_ist_base;
+	struct vmtl2_entry *vmte;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	host_ist_base = vmi->h_spi_ist;
+	if (!host_ist_base && attr)
+		return -ENOENT;
+	else if (host_ist_base && !attr)
+		return -EINVAL;
+
+	host_id_bits = FIELD_GET(GICV5_VMTEL2E_IST_ID_BITS, vmte->val[3]);
+	host_istsz = FIELD_GET(GICV5_VMTEL2E_IST_ISTSZ, vmte->val[3]);
+	host_l2sz = FIELD_GET(GICV5_VMTEL2E_IST_L2SZ, vmte->val[3]);
+
+	for (int i = 0; i < BIT(host_id_bits); ++i) {
+		volatile void *h_iste_addr = host_ist_base + i * BIT(host_istsz + 2);
+
+		ret = get_user(h_iste, uaddr);
+		if (ret)
+			return ret;
+
+		ret = vgic_v5_process_iste(&h_iste, &vmi->pending_irqs,
+					   i, GICV5_HWIRQ_TYPE_SPI);
+		if (ret)
+			return ret;
+
+		/* Finally, write the entry to the host IST */
+		*((__le32*)h_iste_addr) = h_iste;
+
+		if (gicv5_host_ist_caps.irs_non_coherent) {
+			dcache_clean_poc((unsigned long)h_iste_addr,
+					 (unsigned long)h_iste_addr + sizeof(__le32));
+		} else {
+			dsb(ishst);
+		}
+
+		uaddr++;
+	}
+
+ 	return ret;
+}
+
+/*
+ * Restore the LPI IST from guest memory
+ */
+int vgic_v5_restore_lpi_ist(struct kvm *kvm)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	int ret;
+	unsigned int host_id_bits, host_istsz, host_l2sz;
+	size_t n;
+	size_t l2bits;
+	int h_l1_entries, h_l2_entries;
+	size_t h_l1_index, h_l2_index;
+	__le32 h_iste;
+	gpa_t g_entry_addr;
+	struct vmtl2_entry *vmte;
+	void * h_l2_ist_base;
+	void *host_ist_base;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	/* If there is no IST to restore, return without error */
+	if (!kvm->arch.vgic.vgic_v5_irs_data->ist_baser.valid &&
+		!FIELD_GET(GICV5_VMTEL2E_VALID, vmte->val[2])) {
+		return 0;
+	}
+
+	g_entry_addr = kvm->arch.vgic.vgic_v5_irs_data->ist_baser.addr;
+
+	if (kvm->arch.vgic.vgic_v5_irs_data->ist_cfgr.structure) {
+		pr_err("Guest has created a two-level IST! Cannot restore ISTs!\n");
+		return -EINVAL;
+	}
+
+	if (kvm->arch.vgic.vgic_v5_irs_data->ist_cfgr.istsz != 2) {
+		pr_err("Guest has not allocated metadata storage! Cannot restore ISTs!\n");
+		return -EINVAL;
+	}
+
+	if (!FIELD_GET(GICV5_VMTEL2E_IST_VALID, vmte->val[2])) {
+		/*
+		 * Something has gone rather wrong here. We don't have an LPI
+		 * IST on the host. Now sure how we got this far...
+		 */
+		return -ENXIO;
+	}
+
+	host_id_bits = FIELD_GET(GICV5_VMTEL2E_IST_ID_BITS, vmte->val[2]);
+	host_istsz = FIELD_GET(GICV5_VMTEL2E_IST_ISTSZ, vmte->val[2]);
+	host_l2sz = FIELD_GET(GICV5_VMTEL2E_IST_L2SZ, vmte->val[2]);
+
+	if (!vmi->h_lpi_ist_structure) {
+		h_l2_entries = BIT(host_id_bits);
+		host_ist_base = vmi->h_lpi_ist;
+
+		for (h_l2_index = 0; h_l2_index < h_l2_entries; ++h_l2_index) {
+			ret = kvm_read_guest_lock(kvm, g_entry_addr, &h_iste, sizeof(h_iste));
+			if (ret) {
+				return ret;
+			}
+
+			void *h_iste_addr = host_ist_base + h_l2_index * BIT(host_istsz + 2);
+
+			ret = vgic_v5_process_iste(&h_iste, &vmi->pending_irqs,
+						   h_l2_index, GICV5_HWIRQ_TYPE_LPI);
+			if (ret)
+				return ret;
+
+			/* Restore the entry to the host IST */
+			*((__le32*)h_iste_addr) = h_iste;
+
+			if (gicv5_host_ist_caps.irs_non_coherent) {
+				dcache_clean_poc((unsigned long)h_iste_addr,
+						 (unsigned long)h_iste_addr + sizeof(__le32));
+			} else {
+				dsb(ishst);
+			}
+
+			/* Advance to the next guest entry */
+			g_entry_addr += sizeof(h_iste);
+		}
+	} else {
+		n = max(2, host_id_bits - ((10 - host_istsz) + (2 * host_l2sz)) + 3 - 1);
+		l2bits = (10 - host_istsz) + (2 * host_l2sz);
+		h_l1_entries = BIT(n + 1) / GICV5_IRS_ISTL1E_SIZE;
+		h_l2_entries = BIT(l2bits);
+
+		for (h_l1_index = 0; h_l1_index < h_l1_entries; ++h_l1_index) {
+			/*
+			 * If the L1 ISTE is not marked valid, something is
+			 * wrong; we don't do dynamic L2 IST allocation! Give up
+			 * immediately.
+			 */
+			if (!FIELD_GET(GICV5_ISTL1E_VALID, vmi->h_lpi_ist[h_l1_index])) {
+				return -ENXIO;
+			}
+
+			h_l2_ist_base = vmi->h_lpi_l2_ists[h_l1_index];
+
+			for (h_l2_index = 0; h_l2_index < h_l2_entries; ++h_l2_index) {
+				void *h_iste_addr = h_l2_ist_base + h_l2_index * BIT(2 + host_l2sz);
+
+				/* Read the guest's ISTE */
+				ret = kvm_read_guest_lock(kvm, g_entry_addr, &h_iste, sizeof(h_iste));
+				if (ret)
+					return ret;
+
+				ret = vgic_v5_process_iste(&h_iste, &vmi->pending_irqs,
+							   h_l1_index * h_l2_entries + h_l2_index,
+							   GICV5_HWIRQ_TYPE_LPI);
+				if (ret)
+					return ret;
+
+				/* Write the entry to the host's IST */
+				*(__le32 *)(h_iste_addr) = h_iste;
+
+				if (gicv5_host_ist_caps.irs_non_coherent) {
+					dcache_clean_poc((unsigned long)h_iste_addr,
+							 (unsigned long)h_iste_addr + sizeof(__le32));
+				} else {
+					dsb(ishst);
+				}
+
+				/* Advance to the next guest entry */
+				g_entry_addr += sizeof(h_iste);
+			}
+		}
+	}
+
+	return 0;
+}
+
+int vgic_v5_restore_pending_irqs(struct kvm *kvm)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	struct pending_irq *pirq, *tmp;
+	int ret;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	list_for_each_entry_safe(pirq, tmp, &vmi->pending_irqs, next) {
+		kvm_call_hyp(__vgic_v5_vdpend, pirq->irq, 1,
+			     kvm->arch.vgic.gicv5_vm.vm_id);
+
+		list_del(&pirq->next);
+		kfree(pirq);
+	}
+
+	return ret;
 }
 
 /*

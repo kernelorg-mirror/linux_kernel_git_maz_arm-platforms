@@ -580,6 +580,184 @@ static int vgic_v5_db_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 }
 
 /*
+ * Wait for completion a write to IRS_SAVE_VMR.
+ */
+static int vgic_v5_irs_wait_for_save_vm_op(void)
+{
+	int ret;
+	u32 statusr;
+
+	ret = readl_relaxed_poll_timeout_atomic(
+		irs_base + GICV5_IRS_SAVE_VM_STATUSR, statusr,
+		FIELD_GET(GICV5_IRS_SAVE_VM_STATUSR_IDLE, statusr), 1,
+		USEC_PER_SEC);
+
+	if (ret == -ETIMEDOUT) {
+		pr_err_ratelimited("Time out waiting for IRS Save VM Op\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static bool vgic_v5_irs_is_quiesced(u16 vm_id)
+{
+	int err;
+	u64 save_vmr;
+	u32 statusr;
+
+	save_vmr = FIELD_PREP(GICV5_IRS_SAVE_VMR_VM_ID, vm_id);
+	save_vmr |= FIELD_PREP(GICV5_IRS_SAVE_VMR_Q, 1);
+	save_vmr |= FIELD_PREP(GICV5_IRS_SAVE_VMR_S, 0);
+	irs_writeq_relaxed(save_vmr, GICV5_IRS_SAVE_VMR);
+
+	/* Wait for the operation */
+	err = vgic_v5_irs_wait_for_save_vm_op();
+	if (err)
+		return false;
+
+	statusr = irs_readl_relaxed(GICV5_IRS_SAVE_VM_STATUSR);
+
+	return statusr & GICV5_IRS_SAVE_VM_STATUSR_Q;
+}
+
+int vgic_v5_irs_save_ists(struct kvm *kvm, struct kvm_device_attr *attr)
+{
+	int ret = 0;
+	u64 save_vmr;
+	u16 vm_id = vgic_v5_vm_id(kvm);
+
+
+	mutex_lock(&kvm->lock);
+
+	if (kvm_trylock_all_vcpus(kvm)) {
+		mutex_unlock(&kvm->lock);
+		pr_err("Failed to lock VCPUs");
+		return -EBUSY;
+	}
+
+	mutex_lock(&kvm->arch.config_lock);
+
+	save_vmr = FIELD_PREP(GICV5_IRS_SAVE_VMR_VM_ID, vm_id);
+	save_vmr |= FIELD_PREP(GICV5_IRS_SAVE_VMR_Q, 1);
+	save_vmr |= FIELD_PREP(GICV5_IRS_SAVE_VMR_S, 1);
+	irs_writeq_relaxed(save_vmr, GICV5_IRS_SAVE_VMR);
+
+	/* Wait for the operation */
+	ret = vgic_v5_irs_wait_for_save_vm_op();
+	if (ret) {
+		pr_err("Timed out");
+		goto out_unlock;
+	}
+
+	if(!vgic_v5_irs_is_quiesced(vm_id)) {
+		pr_err("Cannot save; VM not quiesced after IRS_VM_SAVER write\n");
+		ret = -EBUSY;
+		goto out_unlock;
+	}
+
+	/*
+	 * Serialise the SPI IST to the userspace-provided memory (address in
+	 * attr).
+	 */
+	ret = vgic_v5_save_spi_ist(kvm, attr);
+	if (ret)
+		pr_err("Failed to save the SPI IST!");
+
+	if(!vgic_v5_irs_is_quiesced(vm_id)) {
+		pr_err("VM is not quiesed; failed to save IST(s)\n");
+		ret = -EBUSY;
+		goto out_unlock;
+	}
+
+	/* Serialise the LPI IST to the guest's IST */
+	ret = vgic_v5_save_lpi_ist(kvm);
+	if (ret) {
+		pr_err("Failed to save the LPI IST!");
+		goto out_unlock;
+	}
+
+	if(!vgic_v5_irs_is_quiesced(vm_id)) {
+		pr_err("VM is not quiesed; failed to save IST(s)\n");
+		ret = -EBUSY;
+		goto out_unlock;
+	}
+
+out_unlock:
+	mutex_unlock(&kvm->arch.config_lock);
+	kvm_unlock_all_vcpus(kvm);
+	mutex_unlock(&kvm->lock);
+
+	return ret;
+}
+
+int vgic_v5_irs_restore_ists(struct kvm *kvm, struct kvm_device_attr *attr)
+{
+	int ret = 0;
+	struct kvm_vcpu *vcpu0 = kvm_get_vcpu(kvm, 0);
+
+	mutex_lock(&kvm->lock);
+
+	if (kvm_trylock_all_vcpus(kvm)) {
+		mutex_unlock(&kvm->lock);
+		return -EBUSY;
+	}
+
+	mutex_lock(&kvm->arch.config_lock);
+
+	/*
+	 * The ISTs should not be written by us while the VM (or IST) is
+	 * valid. In order to safely restore, and make sure that the GIC sees
+	 * the latest and greatest state, make the VM invalid prior to
+	 * restoring.
+	 */
+	ret = vgic_v5_send_command(vcpu0, VMTE_MAKE_INVALID);
+	if (ret) {
+		/*
+		 * If we go wrong here, things are rather broken. VM is likely
+		 * unrunnable.
+		 */
+		goto out_unlock;
+	}
+
+	/*
+	 * Unserialise the SPI IST from the userspace-provided memory (address
+	 * in attr).
+	 */
+	ret = vgic_v5_restore_spi_ist(kvm, attr);
+	if (ret) {
+		pr_err("Failed to restore the SPI IST!");
+		goto out_unlock;
+	}
+
+	/* Unserialise the ISTs from the guest's IST */
+	ret = vgic_v5_restore_lpi_ist(kvm);
+	if (ret) {
+		pr_err("Failed to restore the LPI IST!");
+		goto out_unlock;
+	}
+
+	/* ... and make the VM Valid again */
+	ret = vgic_v5_send_command(vcpu0, VMTE_MAKE_VALID);
+	if (ret)
+		goto out_unlock;
+
+	/*
+	 * As part of restoring the ISTs, and previously pending interrupts have
+	 * been tracked and made non-pending. Now that the ISTs have been
+	 * restored, and the VM is valid again, restore the pending interrupts.
+	 */
+	ret = vgic_v5_restore_pending_irqs(kvm);
+
+out_unlock:
+	mutex_unlock(&kvm->arch.config_lock);
+	kvm_unlock_all_vcpus(kvm);
+	mutex_unlock(&kvm->lock);
+
+	return ret;
+}
+
+/*
  * This set of irq_chip functions is specific for doorbells.
  */
 static struct irq_chip vgic_v5_db_irq_chip = {

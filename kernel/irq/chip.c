@@ -883,6 +883,27 @@ void handle_percpu_irq(struct irq_desc *desc)
 		chip->irq_eoi(&desc->irq_data);
 }
 
+static bool action_handle_by_affinity(struct irq_desc *desc)
+{
+	unsigned int irq = irq_desc_get_irq(desc);
+	unsigned int cpu = smp_processor_id();
+	struct irqaction *action;
+	irqreturn_t res;
+
+	for (action = desc->action; action; action = action->next)
+		if (cpumask_test_cpu(cpu, action->affinity))
+			break;
+
+	if (!action)
+		return false;
+
+	trace_irq_handler_entry(irq, action);
+	res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
+	trace_irq_handler_exit(irq, action, res);
+
+	return true;
+}
+
 /**
  * handle_percpu_devid_irq - Per CPU local irq handler with per cpu dev ids
  * @desc:	the interrupt description structure for this irq
@@ -897,10 +918,6 @@ void handle_percpu_irq(struct irq_desc *desc)
 void handle_percpu_devid_irq(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	unsigned int irq = irq_desc_get_irq(desc);
-	unsigned int cpu = smp_processor_id();
-	struct irqaction *action;
-	irqreturn_t res;
 
 	/*
 	 * PER CPU interrupts are not serialized. Do not touch
@@ -911,16 +928,10 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
 
-	for (action = desc->action; action; action = action->next)
-		if (cpumask_test_cpu(cpu, action->affinity))
-			break;
-
-	if (likely(action)) {
-		trace_irq_handler_entry(irq, action);
-		res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-		trace_irq_handler_exit(irq, action, res);
-	} else {
+	if (unlikely(!action_handle_by_affinity(desc))) {
+		unsigned int cpu = smp_processor_id();
 		bool enabled = cpumask_test_cpu(cpu, desc->percpu_enabled);
+		unsigned int irq = irq_desc_get_irq(desc);
 
 		if (enabled)
 			irq_percpu_disable(desc, cpu);
@@ -944,15 +955,10 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 void handle_percpu_devid_fasteoi_nmi(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irqaction *action = desc->action;
-	unsigned int irq = irq_desc_get_irq(desc);
-	irqreturn_t res;
 
 	__kstat_incr_irqs_this_cpu(desc);
 
-	trace_irq_handler_entry(irq, action);
-	res = action->handler(irq, raw_cpu_ptr(action->percpu_dev_id));
-	trace_irq_handler_exit(irq, action, res);
+	action_handle_by_affinity(desc);
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);

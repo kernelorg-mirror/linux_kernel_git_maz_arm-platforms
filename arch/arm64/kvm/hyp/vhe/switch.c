@@ -633,7 +633,8 @@ int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * Naturally, we want to avoid this.
 	 *
 	 * local_daif_mask() already sets GIC_PRIO_PSR_I_SET, we just need a
-	 * dsb to ensure the redistributor is forwards EL2 IRQs to the CPU.
+	 * dsb to ensure the redistributor forwards physical IRQs to the CPU.
+	 * This also has the happy effect of blocking GICv4 doorbells.
 	 */
 	pmr_sync();
 

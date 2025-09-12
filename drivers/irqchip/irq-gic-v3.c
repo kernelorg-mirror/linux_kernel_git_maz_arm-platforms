@@ -38,6 +38,7 @@
 
 #include "irq-gic-common.h"
 
+static u8 dist_prio_db __ro_after_init = GICV3_PRIO_IRQ;
 static u8 dist_prio_irq __ro_after_init = GICV3_PRIO_IRQ;
 static u8 dist_prio_nmi __ro_after_init = GICV3_PRIO_NMI;
 
@@ -219,6 +220,7 @@ static void __init gic_prio_init(void)
 	 * the distributor to match the PMR values we want.
 	 */
 	if (cpus_have_group0 && !cpus_have_security_disabled) {
+		dist_prio_db = __gicv3_prio_to_ns(dist_prio_db);
 		dist_prio_irq = __gicv3_prio_to_ns(dist_prio_irq);
 		dist_prio_nmi = __gicv3_prio_to_ns(dist_prio_nmi);
 	}
@@ -1313,6 +1315,20 @@ static int __init gicv3_nolpi_cfg(char *buf)
 }
 early_param("irqchip.gicv3_nolpi", gicv3_nolpi_cfg);
 
+static int __init gicv4_lp_db(char *buf)
+{
+	bool lp_db;
+
+	if (kstrtobool(buf, &lp_db))
+		return -EINVAL;
+
+	if (lp_db)
+		dist_prio_db = GICV3_PRIO_DOORBELL;
+
+	return 0;
+}
+early_param("irqchip.gicv4_lp_db", gicv4_lp_db);
+
 static int gic_dist_supports_lpis(void)
 {
 	return (IS_ENABLED(CONFIG_ARM_GIC_V3_ITS) &&
@@ -2134,7 +2150,7 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 	gic_cpu_pm_init();
 
 	if (gic_dist_supports_lpis()) {
-		its_init(handle, &gic_data.rdists, gic_data.domain, dist_prio_irq);
+		its_init(handle, &gic_data.rdists, gic_data.domain, dist_prio_irq, dist_prio_db);
 		its_cpu_init();
 		its_lpi_memreserve_init();
 	} else {

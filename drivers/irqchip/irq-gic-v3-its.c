@@ -66,6 +66,7 @@ static u32 lpi_id_bits;
 #define LPI_PENDBASE_SZ		ALIGN(BIT(LPI_NRBITS) / 8, SZ_64K)
 
 static u8 __ro_after_init lpi_prop_prio;
+static u8 __ro_after_init db_prop_prio;
 static struct its_node *find_4_1_its(void);
 
 /*
@@ -4612,6 +4613,7 @@ static void its_vpe_irq_domain_free(struct irq_domain *domain,
 
 		BUG_ON(vm != vpe->its_vm);
 
+		lpi_write_config(data, 0xff, lpi_prop_prio);
 		clear_bit(data->hwirq, vm->db_bitmap);
 		its_vpe_teardown(vpe);
 		irq_domain_reset_irq_data(data);
@@ -4657,6 +4659,8 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 		irqchip = &its_vpe_4_1_irq_chip;
 
 	for (i = 0; i < nr_irqs; i++) {
+		struct irq_data *d;
+
 		vm->vpes[i]->vpe_db_lpi = base + i;
 		err = its_vpe_init(vm->vpes[i]);
 		if (err)
@@ -4668,7 +4672,10 @@ static int its_vpe_irq_domain_alloc(struct irq_domain *domain, unsigned int virq
 		irq_domain_set_hwirq_and_chip(domain, virq + i, i,
 					      irqchip, vm->vpes[i]);
 		set_bit(i, bitmap);
-		irqd_set_resend_when_in_progress(irq_get_irq_data(virq + i));
+
+		d = irq_get_irq_data(virq + i);
+		irqd_set_resend_when_in_progress(d);
+		lpi_write_config(d, 0xff, db_prop_prio);
 	}
 
 	if (err)
@@ -5809,7 +5816,7 @@ int __init its_lpi_memreserve_init(void)
 }
 
 int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
-		    struct irq_domain *parent_domain, u8 irq_prio)
+		    struct irq_domain *parent_domain, u8 irq_prio, u8 db_prio)
 {
 	struct device_node *of_node;
 	struct its_node *its;
@@ -5824,6 +5831,7 @@ int __init its_init(struct fwnode_handle *handle, struct rdists *rdists,
 	gic_rdists = rdists;
 
 	lpi_prop_prio = irq_prio;
+	db_prop_prio = db_prio;
 	its_parent = parent_domain;
 	of_node = to_of_node(handle);
 	if (of_node)

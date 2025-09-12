@@ -245,7 +245,8 @@ int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * Having IRQs masked via PMR when entering the guest means the GIC
 	 * will not signal the CPU of interrupts of lower priority, and the
 	 * only way to get out will be via guest exceptions.
-	 * Naturally, we want to avoid this.
+	 * Naturally, we want to avoid this. Still, we don't want doorbells
+	 * to kick us out, so make sure they are masked (and only these).
 	 */
 	if (system_uses_irq_prio_masking()) {
 		gic_write_pmr(GIC_PRIO_IRQON | GIC_PRIO_PSR_I_SET);

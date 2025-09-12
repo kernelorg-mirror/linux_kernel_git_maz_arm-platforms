@@ -12,10 +12,14 @@
  * PMR/RPR.
  *
  * GICV3_PRIO_UNMASKED is the PMR view of the priority to use to permit both
- * IRQs and pseudo-NMIs.
+ * doorbells, IRQs and pseudo-NMIs.
+ *
+ * GICV3_PRIO_DOORBELL is the PMR view of the priority of VLPI doorbell
+ * interrupts. This can be written to the PMR to mask these doorbells
+ * while still permitting both regular IRQs and pseudo-NMIs.
  *
  * GICV3_PRIO_IRQ is the PMR view of the priority of regular interrupts. This
- * can be written to the PMR to mask regular IRQs.
+ * can be written to the PMR to mask regular IRQs and doorbells.
  *
  * GICV3_PRIO_NMI is the PMR view of the priority of pseudo-NMIs. This can be
  * written to the PMR to mask pseudo-NMIs.
@@ -26,7 +30,8 @@
  * interrupt disabling temporarily does not rely on IRQ priorities.
  */
 #define GICV3_PRIO_UNMASKED	0xe0
-#define GICV3_PRIO_IRQ		0xc0
+#define GICV3_PRIO_DOORBELL	0xc0
+#define GICV3_PRIO_IRQ		0xa0
 #define GICV3_PRIO_NMI		0x80
 
 #define GICV3_PRIO_PSR_I_SET	(1 << 4)
@@ -41,11 +46,14 @@
 
 static_assert(__gicv3_prio_valid_ns(GICV3_PRIO_NMI));
 static_assert(__gicv3_prio_valid_ns(GICV3_PRIO_IRQ));
+static_assert(__gicv3_prio_valid_ns(GICV3_PRIO_DOORBELL));
 
 static_assert(GICV3_PRIO_NMI < GICV3_PRIO_IRQ);
-static_assert(GICV3_PRIO_IRQ < GICV3_PRIO_UNMASKED);
+static_assert(GICV3_PRIO_IRQ < GICV3_PRIO_DOORBELL);
+static_assert(GICV3_PRIO_DOORBELL < GICV3_PRIO_UNMASKED);
 
 static_assert(GICV3_PRIO_IRQ < (GICV3_PRIO_IRQ | GICV3_PRIO_PSR_I_SET));
+static_assert(GICV3_PRIO_DOORBELL < (GICV3_PRIO_DOORBELL | GICV3_PRIO_PSR_I_SET));
 
 #endif /* __ASSEMBLER */
 

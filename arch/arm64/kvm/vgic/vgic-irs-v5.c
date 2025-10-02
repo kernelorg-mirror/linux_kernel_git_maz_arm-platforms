@@ -500,30 +500,140 @@ static void vgic_v5_mmio_write_irs_unimpl(struct kvm_vcpu *vcpu, gpa_t addr,
 	return;
 }
 
+static int vgic_v5_mmio_uaccess_write_irs(struct kvm_vcpu *vcpu, gpa_t addr,
+					  unsigned int len, unsigned long val)
+{
+	size_t offset = addr & (SZ_64K - 1);
+	struct vgic_dist *vgic = &vcpu->kvm->arch.vgic;
+	struct vgic_v5_irs *irs_data = vgic->vgic_v5_irs_data;
+
+	/*
+	 * The following registers are ONLY settable via uaccesses. The guest
+	 * cannot write them!
+	 */
+
+	switch(offset) {
+	case GICV5_IRS_IDR0:
+		irs_data->idr0.domain = FIELD_GET(GICV5_IRS_IDR0_DOM, val);
+		irs_data->idr0.pa_range = FIELD_GET(GICV5_IRS_IDR0_PA_RANGE, val);
+		irs_data->idr0.virt = FIELD_GET(GICV5_IRS_IDR0_VIRT, val);
+		irs_data->idr0.one_of_n = FIELD_GET(GICV5_IRS_IDR0_ONEOFN, val);
+		irs_data->idr0.virt_one_of_n = FIELD_GET(GICV5_IRS_IDR0_VIRT1OFN, val);
+		irs_data->idr0.setlpi = FIELD_GET(GICV5_IRS_IDR0_SETLPI, val);
+		irs_data->idr0.mec = FIELD_GET(GICV5_IRS_IDR0_MEC, val);
+		irs_data->idr0.mpam = FIELD_GET(GICV5_IRS_IDR0_MPAM, val);
+		irs_data->idr0.swe = FIELD_GET(GICV5_IRS_IDR0_SWE, val);
+		irs_data->idr0.irs_id = FIELD_GET(GICV5_IRS_IDR0_IRSID, val);
+		break;
+	case GICV5_IRS_IDR1:
+		/* Ignore writes to PE_CNT as this is populated from num vcpus */
+
+		/*
+		 * The number of IAFFID bits supported. If userspace tries to
+		 * set something less than what we support, reject the write.
+		 */
+		if (FIELD_GET(GICV5_IRS_IDR1_IAFFID_BITS, val) > vgic_v5_get_vpe_id_bits())
+			return -EINVAL;
+
+		if (FIELD_GET(GICV5_IRS_IDR1_PRIORITY_BITS, val) > 0b100)
+			return -EINVAL;
+
+		irs_data->idr1.priority_bits = FIELD_GET(GICV5_IRS_IDR1_PRIORITY_BITS, val);
+		break;
+	case GICV5_IRS_IDR2:
+		/* We only support Linear guest ISTs for SAVE/RESTORE */
+		if (FIELD_GET(GICV5_IRS_IDR2_IST_LEVELS, val))
+			return -EINVAL;
+
+		/* We always support LPIs */
+		if (!FIELD_GET(GICV5_IRS_IDR2_LPI, val))
+			return -EINVAL;
+
+		irs_data->idr2.istmd_sz = FIELD_GET(GICV5_IRS_IDR2_ISTMD_SZ, val);
+		irs_data->idr2.istmd = FIELD_GET(GICV5_IRS_IDR2_ISTMD, val);
+		irs_data->idr2.ist_l2sz = FIELD_GET(GICV5_IRS_IDR2_IST_L2SZ, val);
+		irs_data->idr2.ist_levels = FIELD_GET(GICV5_IRS_IDR2_IST_LEVELS, val);
+		irs_data->idr2.min_lpi_id_bits = FIELD_GET(GICV5_IRS_IDR2_MIN_LPI_ID_BITS, val);
+		irs_data->idr2.id_bits = FIELD_GET(GICV5_IRS_IDR2_ID_BITS, val);
+		break;
+	case GICV5_IRS_IDR3:
+		irs_data->idr3.vmt_levels = FIELD_GET(GICV5_IRS_IDR3_VMT_LEVELS, val);
+		irs_data->idr3.vm_id_bits = FIELD_GET(GICV5_IRS_IDR3_VM_ID_BITS, val);
+		irs_data->idr3.vmd_size = FIELD_GET(GICV5_IRS_IDR3_VMD_SZ, val);
+		irs_data->idr3.vmd = FIELD_GET(GICV5_IRS_IDR3_VMD, val);
+		break;
+	case GICV5_IRS_IDR4:
+		irs_data->idr4.vpe_id_bits = FIELD_GET(GICV5_IRS_IDR4_VPE_ID_BITS, val);
+		irs_data->idr4.vped_size = FIELD_GET(GICV5_IRS_IDR4_VPED_SZ, val);
+		break;
+	case GICV5_IRS_IDR5:
+		if (FIELD_GET(GICV5_IRS_IDR5_SPI_RANGE, val) != irs_data->idr5.spi_range)
+			return -EINVAL;
+		break;
+	case GICV5_IRS_IDR6:
+		if (FIELD_GET(GICV5_IRS_IDR6_SPI_IRS_RANGE, val) != irs_data->idr6.spi_irs_range)
+			return -EINVAL;
+		break;
+	case GICV5_IRS_IDR7:
+		if (FIELD_GET(GICV5_IRS_IDR7_SPI_BASE, val) != irs_data->idr7.spi_base)
+			return -EINVAL;
+		break;
+	case GICV5_IRS_IIDR: fallthrough;
+	case GICV5_IRS_AIDR: fallthrough;
+	case GICV5_IRS_MAP_L2_ISTR:
+		/* Ignore the write */
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static const struct vgic_register_region vgic_v5_irs_registers[] = {
 	/*
 	 * This is the IRS_CONFIG_FRAME.
 	 */
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR0, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR1, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR2, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR3, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR4, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR5, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR6, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IDR7, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IIDR, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_AIDR, vgic_v5_mmio_read_irs_misc,
-				  vgic_mmio_write_wi, 4, VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR0, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR1, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR2, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR3, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR4, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR5, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR6, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IDR7, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_IIDR, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
+	REGISTER_DESC_WITH_LENGTH_UACCESS(GICV5_IRS_AIDR, vgic_v5_mmio_read_irs_misc,
+					  vgic_mmio_write_wi, NULL,
+					  vgic_v5_mmio_uaccess_write_irs, 4,
+					  VGIC_ACCESS_32bit),
 	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_CR0, vgic_v5_mmio_read_irs_misc,
 				  vgic_v5_mmio_write_irs_misc, 4,
 				  VGIC_ACCESS_32bit),
@@ -572,9 +682,10 @@ static const struct vgic_register_region vgic_v5_irs_registers[] = {
 	REGISTER_DESC_WITH_LENGTH(GICV5_IRS_IST_STATUSR,
 				  vgic_v5_mmio_read_irs_ist, vgic_mmio_write_wi,
 				  4, VGIC_ACCESS_32bit),
-	REGISTER_DESC_WITH_LENGTH(
+	REGISTER_DESC_WITH_LENGTH_UACCESS(
 		GICV5_IRS_MAP_L2_ISTR, vgic_v5_mmio_read_irs_ist,
-		vgic_v5_mmio_write_irs_ist, 4, VGIC_ACCESS_32bit),
+		vgic_v5_mmio_write_irs_ist,  NULL,
+		vgic_v5_mmio_uaccess_write_irs, 4, VGIC_ACCESS_32bit),
 
 	/*
 	 * All of the registers (EXCEPT SETLPI!) from this point onwards are
@@ -865,6 +976,96 @@ int kvm_vgic_v5_irs_init(struct kvm *kvm, unsigned int nr_spis)
 	irs->inv_istr.vm_id = 0;
 	irs->inv_istr.virt = 0;
 	irs->inv_istr.v = 0;
+
+	return ret;
+}
+
+int vgic_v5_has_attr_regs(struct kvm_device *dev, struct kvm_device_attr *attr)
+{
+	const struct vgic_register_region *region;
+	struct vgic_reg_attr reg_attr;
+	struct kvm_vcpu *vcpu;
+	gpa_t addr, offset;
+	int ret, align;
+
+	ret = vgic_v5_parse_attr(dev, attr, &reg_attr);
+	if (ret)
+		return ret;
+
+	vcpu = reg_attr.vcpu;
+	addr = reg_attr.addr;
+
+	if (attr->group == KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS)
+		return vgic_v5_has_cpu_sysregs_attr(vcpu, attr);
+
+	offset = attr->attr;
+
+	if (IS_VGIC_ADDR_UNDEF(dev->kvm->arch.vgic.vgic_v5_irs_base)) {
+		return -ENXIO;
+	}
+
+	region = vgic_find_mmio_region(vgic_v5_irs_registers,
+				       ARRAY_SIZE(vgic_v5_irs_registers),
+				       offset);
+	if (!region) {
+		return -ENXIO;
+	}
+
+	align = region->access_flags & VGIC_ACCESS_64bit ? 0x7 : 0x3;
+	if (offset & align)
+		return -EINVAL;
+
+	return 0;
+}
+
+/*
+ * Access the IRS MMIO Regs. Relevant locks have been taken by the calling code.
+ */
+int vgic_v5_irs_attr_regs_access(struct kvm_device *dev,
+				 struct kvm_device_attr *attr,
+				 u64 *reg, bool is_write)
+{
+	const struct vgic_register_region *region;
+	gpa_t addr, offset;
+	unsigned int len;
+	int align, ret = 0;
+
+	offset = attr->attr;
+
+	if (IS_VGIC_ADDR_UNDEF(dev->kvm->arch.vgic.vgic_v5_irs_base)) {
+		return -ENXIO;
+	}
+
+	region = vgic_find_mmio_region(vgic_v5_irs_registers,
+				       ARRAY_SIZE(vgic_v5_irs_registers),
+				       offset);
+	if (!region) {
+		return -ENXIO;
+	}
+
+	/*
+	 * Although the spec supports upper/lower 32-bit accesses to
+	 * 64-bit IRS registers, the userspace ABI requires 64-bit
+	 * accesses to all 64-bit wide registers. We therefore only
+	 * support 32-bit accesses to 32-bit-wide registers.
+	 */
+	align = region->access_flags & VGIC_ACCESS_64bit ? 0x7 : 0x3;
+	len = region->access_flags & VGIC_ACCESS_64bit ? 8 : 4;
+
+	if (offset & align)
+		return -EINVAL;
+
+	addr = dev->kvm->arch.vgic.vgic_v5_irs_base + offset;
+
+	if (is_write) {
+		if (region->uaccess_write)
+			ret = region->uaccess_write(kvm_get_vcpu(dev->kvm, 0),
+						    addr, len, *reg);
+		else
+			region->write(kvm_get_vcpu(dev->kvm, 0), addr, len, *reg);
+	} else {
+		*reg = region->read(kvm_get_vcpu(dev->kvm, 0), addr, len);
+	}
 
 	return ret;
 }

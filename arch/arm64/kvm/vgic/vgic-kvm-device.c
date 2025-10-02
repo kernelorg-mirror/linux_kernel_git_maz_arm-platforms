@@ -540,7 +540,7 @@ int vgic_v3_parse_attr(struct kvm_device *dev, struct kvm_device_attr *attr,
  * Allow access to certain ID-like registers prior to VGIC initialization,
  * thereby allowing the VMM to provision the features / sizing of the VGIC.
  */
-static bool reg_allowed_pre_init(struct kvm_device_attr *attr)
+static bool v3_reg_allowed_pre_init(struct kvm_device_attr *attr)
 {
 	if (attr->group != KVM_DEV_ARM_VGIC_GRP_DIST_REGS)
 		return false;
@@ -603,7 +603,7 @@ static int vgic_v3_attr_regs_access(struct kvm_device *dev,
 
 	mutex_lock(&dev->kvm->arch.config_lock);
 
-	if (!(vgic_initialized(dev->kvm) || reg_allowed_pre_init(attr))) {
+	if (!(vgic_initialized(dev->kvm) || v3_reg_allowed_pre_init(attr))) {
 		ret = -EBUSY;
 		goto out;
 	}
@@ -767,13 +767,128 @@ static int vgic_v5_get_userspace_ppis(struct kvm_device *dev,
 	return 0;
 }
 
+int vgic_v5_parse_attr(struct kvm_device *dev,
+			struct kvm_device_attr *attr,
+			struct vgic_reg_attr *reg_attr)
+{
+	unsigned long vgic_mpidr, mpidr_reg;
+
+	if (attr->group == KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS) {
+		vgic_mpidr = (attr->attr & KVM_DEV_ARM_VGIC_V3_MPIDR_MASK) >>
+			KVM_DEV_ARM_VGIC_V3_MPIDR_SHIFT;
+
+		mpidr_reg = VGIC_TO_MPIDR(vgic_mpidr);
+		reg_attr->vcpu = kvm_mpidr_to_vcpu(dev->kvm, mpidr_reg);
+	} else {
+		reg_attr->vcpu = kvm_get_vcpu(dev->kvm, 0);
+	}
+
+	if (!reg_attr->vcpu)
+		return -EINVAL;
+
+	reg_attr->addr = attr->attr & KVM_DEV_ARM_VGIC_OFFSET_MASK;
+
+	return 0;
+}
+
+static bool v5_reg_allowed_pre_init(struct kvm_device_attr *attr)
+{
+	// TODO
+	pr_warn("%s not yet implemented\n", __func__);
+
+	return true;
+}
+
+/*
+ * vgic_v5_attr_regs_access - allows user space to access VGIC v5 state
+ *
+ * @dev:      kvm device handle
+ * @attr:     kvm device attribute
+ * @is_write: true if userspace is writing a register
+ */
+static int vgic_v5_attr_regs_access(struct kvm_device *dev,
+				    struct kvm_device_attr *attr,
+				    bool is_write)
+{
+	struct vgic_reg_attr reg_attr;
+	gpa_t addr;
+	struct kvm_vcpu *vcpu;
+	bool uaccess;
+	u64 val;
+	int ret;
+
+	ret = vgic_v5_parse_attr(dev, attr, &reg_attr);
+	if (ret)
+		return ret;
+
+	vcpu = reg_attr.vcpu;
+	addr = reg_attr.addr;
+
+	switch (attr->group) {
+	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
+		/* Sysregs uaccess is performed by the sysreg handling code */
+		uaccess = false;
+		break;
+	case KVM_DEV_ARM_VGIC_GRP_IRS_REGS: fallthrough;
+	default:
+		uaccess = true;
+	}
+
+	if (uaccess && is_write) {
+		u64 __user *uaddr = (u64 __user *)(unsigned long)attr->addr;
+		if (get_user(val, uaddr))
+			return -EFAULT;
+	}
+
+	mutex_lock(&dev->kvm->lock);
+
+	if (kvm_trylock_all_vcpus(dev->kvm)) {
+		mutex_unlock(&dev->kvm->lock);
+		return -EBUSY;
+	}
+
+	mutex_lock(&dev->kvm->arch.config_lock);
+
+	if (!(vgic_initialized(dev->kvm) || v5_reg_allowed_pre_init(attr))) {
+		ret = -EBUSY;
+		goto out;
+	}
+
+	switch (attr->group) {
+	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
+		ret = vgic_v5_cpu_sysregs_uaccess(vcpu, attr, is_write);
+		break;
+	case KVM_DEV_ARM_VGIC_GRP_IRS_REGS:
+		ret = vgic_v5_irs_attr_regs_access(dev, attr, &val, is_write);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+out:
+	mutex_unlock(&dev->kvm->arch.config_lock);
+	kvm_unlock_all_vcpus(dev->kvm);
+	mutex_unlock(&dev->kvm->lock);
+
+	if (!ret && uaccess && !is_write) {
+		u64 __user *uaddr = (u64 __user *)(unsigned long)attr->addr;
+		ret = put_user(val, uaddr);
+	}
+
+	return ret;
+}
+
 static int vgic_v5_set_attr(struct kvm_device *dev,
 			    struct kvm_device_attr *attr)
 {
 	switch (attr->group) {
-	case KVM_DEV_ARM_VGIC_GRP_ADDR:
+	case KVM_DEV_ARM_VGIC_GRP_IST:
+		return vgic_v5_irs_restore_ists(dev->kvm, attr);
+	case KVM_DEV_ARM_VGIC_GRP_IRS_REGS: fallthrough;
 	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
-	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+		return vgic_v5_attr_regs_access(dev, attr, true);
+	default:
 		break;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
 		switch (attr->attr) {
@@ -786,16 +901,19 @@ static int vgic_v5_set_attr(struct kvm_device *dev,
 		}
 	}
 
-	return -ENXIO;
+	return vgic_set_common_attr(dev, attr);
 }
 
 static int vgic_v5_get_attr(struct kvm_device *dev,
 			    struct kvm_device_attr *attr)
 {
 	switch (attr->group) {
-	case KVM_DEV_ARM_VGIC_GRP_ADDR:
+	case KVM_DEV_ARM_VGIC_GRP_IST:
+		return vgic_v5_irs_save_ists(dev->kvm, attr);
+	case KVM_DEV_ARM_VGIC_GRP_IRS_REGS: fallthrough;
 	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
-	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+		return vgic_v5_attr_regs_access(dev, attr, false);
+	default:
 		break;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
 		switch (attr->attr) {
@@ -808,7 +926,7 @@ static int vgic_v5_get_attr(struct kvm_device *dev,
 		}
 	}
 
-	return -ENXIO;
+	return vgic_get_common_attr(dev, attr);
 }
 
 static int vgic_v5_has_attr(struct kvm_device *dev,
@@ -821,8 +939,9 @@ static int vgic_v5_has_attr(struct kvm_device *dev,
 			return 0;
 		}
 		break;
+	case KVM_DEV_ARM_VGIC_GRP_IRS_REGS: fallthrough;
 	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
-		break;
+		return vgic_v5_has_attr_regs(dev, attr);
 	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
 		return 0;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
@@ -835,6 +954,9 @@ static int vgic_v5_has_attr(struct kvm_device *dev,
 		default:
 			break;
 		}
+		break;
+	case KVM_DEV_ARM_VGIC_GRP_IST:
+		return 0;
 	}
 
 	return -ENXIO;

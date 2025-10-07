@@ -108,6 +108,8 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 	case PSR_MODE_EL2h:
 		vbar = __vcpu_read_sys_reg(vcpu, VBAR_EL2);
 		sctlr = __vcpu_read_sys_reg(vcpu, SCTLR_EL2);
+		if (!(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
+			sctlr |= SCTLR_EL1_SPAN;
 		__vcpu_write_sys_reg(vcpu, *vcpu_pc(vcpu), ELR_EL2);
 		break;
 	default:

@@ -8,6 +8,7 @@
 #include <linux/irqdomain.h>
 
 #include "vgic.h"
+#include "vgic-v5-tables.h"
 
 static struct vgic_v5_ppi_caps *ppi_caps;
 
@@ -88,11 +89,6 @@ static irqreturn_t db_handler(int irq, void *data)
 	kvm_vcpu_kick(vcpu);
 
 	return IRQ_HANDLED;
-}
-
-static int vgic_v5_vpe_db(struct kvm_vcpu *vcpu)
-{
-	return vcpu->arch.vgic_cpu.vgic_v5.gicv5_vpe.db;
 }
 
 static int vgic_v5_send_command(struct kvm_vcpu *vcpu,

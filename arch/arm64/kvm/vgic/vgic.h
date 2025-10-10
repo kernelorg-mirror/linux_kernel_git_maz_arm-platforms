@@ -389,6 +389,7 @@ void vgic_v5_get_implemented_ppis(void);
 void vgic_v5_reset(struct kvm_vcpu *vcpu);
 int vgic_v5_map_resources(struct kvm *kvm);
 int vgic_v5_init(struct kvm *kvm);
+int kvm_vgic_v5_irs_init(struct kvm *kvm, unsigned int nr_spis);
 void vgic_v5_teardown(struct kvm *kvm);
 void vgic_v5_set_ppi_ops(struct vgic_irq *irq);
 void vgic_v5_set_spi_ops(struct vgic_irq *irq);

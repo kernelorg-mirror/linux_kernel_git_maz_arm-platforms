@@ -414,6 +414,38 @@ struct vgic_v3_cpu_if {
 	unsigned int used_lrs;
 };
 
+struct vgic_v5_cpu_if {
+	u64	vgic_apr;
+	u64	vgic_vmcr;
+
+	/* PPI register state */
+	u64	vgic_ppi_hmr[2];
+	u64	vgic_ppi_dvir[2];
+	u64	vgic_ppi_priorityr[16];
+
+	/* The pending state of the guest. This is merged with the exit state */
+	u64	vgic_ppi_pendr[2];
+
+	/* The state flushed to the regs when entering the guest */
+	u64	vgic_ppi_activer_entry[2];
+	u64	vgic_ich_ppi_enabler_entry[2];
+	u64	vgic_ppi_pendr_entry[2];
+
+	/* The saved state of the regs when leaving the guest */
+	u64	vgic_ppi_activer_exit[2];
+	u64	vgic_ich_ppi_enabler_exit[2];
+	u64	vgic_ppi_pendr_exit[2];
+
+	/*
+	 * The ICSR is re-used across host and guest, and hence it needs to be
+	 * saved/restored. Only one copy is required as the host should block
+	 * preemption between executing GIC CDRCFG and acccessing the
+	 * ICC_ICSR_EL1. A guest, of course, can never guarantee this, and hence
+	 * it is the hyp's responsibility to keep the state constistent.
+	 */
+	u64	vgic_icsr;
+};
+
 /* What PPI capabilities does a GICv5 host have */
 struct vgic_v5_ppi_caps {
 	u64	impl_ppi_mask[2];
@@ -424,6 +456,7 @@ struct vgic_cpu {
 	union {
 		struct vgic_v2_cpu_if	vgic_v2;
 		struct vgic_v3_cpu_if	vgic_v3;
+		struct vgic_v5_cpu_if	vgic_v5;
 	};
 
 	struct vgic_irq *private_irqs;

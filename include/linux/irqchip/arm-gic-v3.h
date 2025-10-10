@@ -80,6 +80,7 @@
 #define GICD_CTLR_ENABLE_SS_G0		(1U << 0)
 
 #define GICD_TYPER_RSS			(1U << 26)
+#define GICD_TYPER_No1N			(1U << 25)
 #define GICD_TYPER_LPIS			(1U << 17)
 #define GICD_TYPER_MBIS			(1U << 16)
 #define GICD_TYPER_ESPI			(1U << 8)
@@ -130,6 +131,9 @@
 #define GICR_CTLR_CES			(1UL << 1)
 #define GICR_CTLR_IR			(1UL << 2)
 #define GICR_CTLR_RWP			(1UL << 3)
+#define GICR_CTLR_DPG0			(1UL << 24)
+#define GICR_CTLR_DPG1NS		(1UL << 25)
+#define GICR_CTLR_DPG1S			(1UL << 26)
 
 #define GICR_TYPER_CPU_NUMBER(r)	(((r) >> 8) & 0xffff)
 

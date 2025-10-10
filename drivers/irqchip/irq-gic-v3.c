@@ -67,6 +67,7 @@ struct gic_chip_data {
 	u32			nr_redist_regions;
 	u64			flags;
 	bool			has_rss;
+	bool			has_oon;
 	unsigned int		ppi_nr;
 	struct partition_desc	**ppi_descs;
 };
@@ -1122,6 +1123,11 @@ static int __gic_update_rdist_properties(struct redist_region *region,
 	u64 typer = gic_read_typer(ptr + GICR_TYPER);
 	u32 ctlr = readl_relaxed(ptr + GICR_CTLR);
 
+	/* Allow 1:N on this CPU */
+	ctlr &= ~GICR_CTLR_DPG1NS;
+	writel_relaxed(ctlr, ptr + GICR_CTLR);
+	gic_do_wait_for_rwp(ptr, GICR_CTLR_RWP);
+
 	/* Boot-time cleanup */
 	if ((typer & GICR_TYPER_VLPIS) && (typer & GICR_TYPER_RVPEID)) {
 		u64 val;
@@ -1173,9 +1179,10 @@ static void gic_update_rdist_properties(void)
 	gic_iterate_rdists(__gic_update_rdist_properties);
 	if (WARN_ON(gic_data.ppi_nr == UINT_MAX))
 		gic_data.ppi_nr = 0;
-	pr_info("GICv3 features: %d PPIs%s%s\n",
+	pr_info("GICv3 features: %d PPIs%s%s%s\n",
 		gic_data.ppi_nr,
 		gic_data.has_rss ? ", RSS" : "",
+		gic_data.has_oon ? ", 1:N" : "",
 		gic_data.rdists.has_direct_lpi ? ", DirectLPI" : "");
 
 	if (gic_data.rdists.has_vlpis)
@@ -1481,12 +1488,15 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	u32 offset, index;
 	void __iomem *reg;
 	int enabled;
+	bool oon;
 	u64 val;
 
 	if (force)
 		cpu = cpumask_first(mask_val);
 	else
 		cpu = cpumask_any_and(mask_val, cpu_online_mask);
+
+	oon = gic_data.has_oon && cpumask_equal(mask_val, cpu_possible_mask);
 
 	if (cpu >= nr_cpu_ids)
 		return -EINVAL;
@@ -1501,7 +1511,7 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 
 	offset = convert_offset_index(d, GICD_IROUTER, &index);
 	reg = gic_dist_base(d) + offset + (index * 8);
-	val = gic_cpu_to_affinity(cpu);
+	val = oon ? GICD_IROUTER_SPI_MODE_ANY : gic_cpu_to_affinity(cpu);
 
 	gic_write_irouter(val, reg);
 
@@ -1512,7 +1522,7 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 	if (enabled)
 		gic_unmask_irq(d);
 
-	irq_data_update_effective_affinity(d, cpumask_of(cpu));
+	irq_data_update_effective_affinity(d, oon ? cpu_possible_mask : cpumask_of(cpu));
 
 	return IRQ_SET_MASK_OK_DONE;
 }
@@ -2114,6 +2124,7 @@ static int __init gic_init_bases(phys_addr_t dist_phys_base,
 	irq_domain_update_bus_token(gic_data.domain, DOMAIN_BUS_WIRED);
 
 	gic_data.has_rss = !!(typer & GICD_TYPER_RSS);
+	gic_data.has_oon = !(typer & GICD_TYPER_No1N);
 
 	if (typer & GICD_TYPER_MBIS) {
 		err = mbi_init(handle, gic_data.domain);

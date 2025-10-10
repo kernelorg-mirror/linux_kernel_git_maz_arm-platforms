@@ -272,7 +272,8 @@ enum iodev_type {
 	IODEV_DIST,
 	IODEV_REDIST,
 	IODEV_ITS,
-	IODEV_GICV5_IRS
+	IODEV_GICV5_IRS,
+	IODEV_GICV5_ITS
 };
 
 struct vgic_io_device {
@@ -280,6 +281,7 @@ struct vgic_io_device {
 	union {
 		struct kvm_vcpu *redist_vcpu;
 		struct vgic_its *its;
+		struct vgic_v5_its *v5its;
 	};
 	const struct vgic_register_region *regions;
 	enum iodev_type iodev_type;

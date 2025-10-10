@@ -406,6 +406,8 @@ void vgic_v5_restore_state(struct kvm_vcpu *vcpu);
 void vgic_v5_save_state(struct kvm_vcpu *vcpu);
 int vgic_v5_register_irs_iodev(struct kvm *kvm, gpa_t irs_base_address);
 int kvm_vgic_v5_register_its_device(void);
+int vgic_v5_check_msi(struct kvm *kvm, struct kvm_msi *msi, bool its);
+struct vgic_v5_its *vgic_v5_msi_to_its(struct kvm *kvm, struct kvm_msi *msi);
 
 static inline int vgic_v3_max_apr_idx(struct kvm_vcpu *vcpu)
 {

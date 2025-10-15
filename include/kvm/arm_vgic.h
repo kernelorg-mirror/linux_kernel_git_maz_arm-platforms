@@ -17,6 +17,7 @@
 #include <kvm/iodev.h>
 #include <linux/list.h>
 #include <linux/jump_label.h>
+#include <linux/hashtable.h>
 
 #include <linux/irqchip/arm-gic-v4.h>
 #include <linux/irqchip/arm-gic-v5.h>
@@ -438,6 +439,110 @@ struct vgic_v5_irs {
 	} inv_istr;
 };
 
+/*** GICv5 ***/
+struct vgic_v5_its {
+	/* base addresses in guest physical address space: */
+	gpa_t vgic_v5_its_base;
+
+	bool enabled;
+	struct vgic_io_device iodev;
+	struct kvm_device *dev;
+
+	/* ITS state - used for registers etc */
+	struct its_idr0 {
+		u8 domain;
+		u8 pa_range;
+		bool mec;
+		bool mpam;
+		bool swe;
+		u16 its_id;
+	} idr0;
+
+	struct its_idr1 {
+		u8 device_id_bits;
+		u8 dt_levels;
+		u8 itt_levels;
+		u8 l2sz;
+	} idr1;
+
+	struct its_idr2 {
+		u8 event_id_bits;
+		u8 xdmn_events;
+	} idr2;
+
+	struct its_iidr {
+		u16 implementer;
+		u8 revision;
+		u8 variant;
+		u16 product_id;
+	} iidr;
+
+	/* CR0 skipped */
+
+	struct its_cr1 {
+		u8 sh;
+		u8 oc;
+		u8 ic;
+		bool dt_ra;
+		bool itt_ra;
+	} cr1;
+
+	struct its_dt_cfgr {
+		u8 device_id_bits;
+		u8 l2sz;
+		bool structure;
+	} dt_cfgr;
+
+	struct its_dt_baser {
+		u64 addr;
+	} dt_baser;
+
+	struct its_inv_devicer {
+		bool l1;
+		u8 event_id_bits;
+		bool i;
+	} inv_devicer;
+
+	struct its_didr {
+		u32 device_id;
+	} didr;
+
+	struct its_eidr {
+		u16 event_id;
+	} eidr;
+
+	struct its_inv_eventr {
+		bool l1;
+		u8 itt_l2sz;
+		bool i;
+	} inv_eventr;
+
+	/* STATUSR skipped */
+	/* SYNCR skipped */
+	/* SYNC_STATUSR skipped */
+	/* READ_EVENTR skipped */
+
+	struct its_read_event_datar {
+		u32 lpi_id;
+		bool valid;
+		u16 vm_id;
+		bool virt;
+	} read_event_datar;
+
+	struct its_gen_event_eidr {
+		u16 event_id;
+	} gen_event_eidr;
+
+	struct its_gen_event_didr {
+		u32 device_id;
+	} gen_event_didr;
+
+	/* GEN_EVENTR skipped */
+	/* GEN_EVENT_STATUSR skipped */
+
+	/* A hash table with 2^3 buckets */
+	DECLARE_HASHTABLE(translation_cache, 3);
+};
 
 struct vgic_dist {
 	bool			in_kernel;

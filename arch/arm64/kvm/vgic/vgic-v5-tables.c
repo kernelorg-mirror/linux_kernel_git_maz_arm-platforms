@@ -355,6 +355,11 @@ int vgic_v5_allocate_vm_id(struct kvm *kvm)
 	return 0;
 }
 
+void vgic_v5_release_vm_id(struct kvm *kvm)
+{
+	ida_free(&vmt_info->vm_id_ida, kvm->arch.vgic.gicv5_vm.vm_id);
+}
+
 /*
  * Initialise an entry in the VMT based on the index of the VM. We
  * make the assumption that our VM ID is zero based, and that we can
@@ -592,11 +597,6 @@ no_vmi:
 	ret = vgic_v5_reset_vmte(vm_id);
 	if (ret)
 		return ret;
-
-	/*
-	 * Finally, release the vm_id in the ida.
-	 */
-	ida_free(&vmt_info->vm_id_ida, vm_id);
 
 	return 0;
 }

@@ -712,20 +712,49 @@ static void vgic_v5_disable_vcpu(struct kvm_vcpu *vcpu)
 	irq_domain_free_irqs(vgic_v5_vpe_db(vcpu), 1);
 }
 
+int vgic_v5_map_resources(struct kvm *kvm)
+{
+	if (!vgic_initialized(kvm))
+		return -EBUSY;
+
+	return 0;
+}
+
+/*
+ * Claim and populate a VMTE (optionally making a new L2 VMT valid), create VPE
+ * doorbells, allocate VPET and populate for each VPE. Finally, we also init the
+ * vIRS, which means allocating and making the virtual SPI IST valid.
+ *
+ * Note: We do need to put the cart before the horse here. The VPE doorbells are
+ * our conduit for communication with the IRS, which means we need to have those
+ * before making the VMTE valid.
+ */
 int vgic_v5_init(struct kvm *kvm)
 {
-	struct kvm_vcpu *vcpu;
-	unsigned long idx;
+	int nr_vcpus, ret = 0;
+	struct kvm_vcpu *vcpu, *vcpu0;
+	unsigned long i;
+	struct irq_data *d;
+	unsigned int db_virq;
 
-	if (vgic_initialized(kvm))
-		return 0;
+	if (!vgic_v5_vmt_allocated()) {
+		pr_err("No VM tables allocated; something is horribly wrong\n");
+		return -ENODEV;
+	}
 
-	kvm_for_each_vcpu(idx, vcpu, kvm) {
+	kvm_for_each_vcpu(i, vcpu, kvm) {
 		if (vcpu_has_nv(vcpu)) {
 			kvm_err("Nested GICv5 VMs are currently unsupported\n");
 			return -EINVAL;
 		}
 	}
+	nr_vcpus = atomic_read(&kvm->online_vcpus);
+	if (WARN_ON(nr_vcpus == 0)) {
+		ret = -ENODEV;
+		goto fail;
+
+	}
+	kvm->arch.vgic.gicv5_vm.nr_vpes = nr_vcpus;
 
 	/*
 	 * We only allow userspace to drive the SW_PPI, if it is
@@ -735,15 +764,129 @@ int vgic_v5_init(struct kvm *kvm)
 	kvm->arch.vgic.gicv5_vm.userspace_ppis[0] &= ppi_caps->impl_ppi_mask[0];
 	kvm->arch.vgic.gicv5_vm.userspace_ppis[1] = 0;
 
-	return 0;
+	ret = vgic_v5_allocate_vm_id(kvm);
+	if (ret)
+		goto fail;
+
+	if (vgic_v5_create_per_vm_domain(&kvm->arch.vgic.gicv5_vm))
+		goto fail_cleanup_id;
+
+	/*
+	 * Allocate VPE doorbells first - these are our conduit for
+	 * communicating with the host irqchip driver. Can't do any earlier as
+	 * we wouldn't know the VM ID.
+	 */
+	db_virq = irq_domain_alloc_irqs(kvm->arch.vgic.gicv5_vm.domain,
+					nr_vcpus, NUMA_NO_NODE,
+					&kvm->arch.vgic.gicv5_vm);
+	if (db_virq < 0) {
+		ret = db_virq;
+		goto fail_cleanup_domain;
+	}
+	kvm->arch.vgic.gicv5_vm.vpe_db_base = db_virq;
+
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		d = irq_domain_get_irq_data(kvm->arch.vgic.gicv5_vm.domain,
+					    db_virq + i);
+		irq_set_status_flags(db_virq + i, IRQ_NOAUTOEN);
+
+		ret = request_irq(db_virq + i, db_handler, 0, "vcpu", vcpu);
+		if (ret)
+			goto fail_cleanup_partial_dbs;
+
+		/* Stash it with the VCPU for easy retrieval */
+		vcpu->arch.vgic_cpu.vgic_v5.gicv5_vpe.db = db_virq + i;
+	}
+
+	/* Populate VMTE (with VPET and VM descriptor) */
+	ret = vgic_v5_vmte_init(kvm);
+	if (ret)
+		goto fail_cleanup_dbs;
+
+	/* We pick the first vcpu to make the VMTE valid - any would do */
+	vcpu0 = kvm_get_vcpu(kvm, 0);
+	ret = vgic_v5_send_command(vcpu0, VMTE_MAKE_VALID);
+	if (ret)
+		goto fail_cleanup_vmte;
+
+	/* Loop over all VPEs, allocate/populate their data structures */
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		ret = vgic_v5_vmte_alloc_vpe(vcpu);
+		if (ret)
+			goto fail_cleanup_vpes;
+	}
+
+	return ret;
+
+fail_cleanup_vpes:
+	/* i contains the first vCPU that failed */
+	if (i == 0)
+		goto fail_cleanup_vmte;
+
+	do {
+		vcpu = kvm_get_vcpu(kvm, --i);
+		vgic_v5_vmte_free_vpe(vcpu);
+	} while (i != 0);
+
+fail_cleanup_vmte:
+	vgic_v5_vmte_release(kvm);
+
+fail_cleanup_dbs:
+	i = nr_vcpus;
+fail_cleanup_partial_dbs:
+	/* i contains the first vCPU that failed */
+	if (i == 0)
+		goto fail_cleanup_domain;
+
+	do {
+		vcpu = kvm_get_vcpu(kvm, --i);
+		vgic_v5_disable_vcpu(vcpu);
+	} while (i != 0);
+
+fail_cleanup_domain:
+	vgic_v5_teardown_per_vm_domain(&kvm->arch.vgic.gicv5_vm);
+
+fail_cleanup_id:
+	vgic_v5_release_vm_id(kvm);
+
+fail:
+	return ret;
 }
 
-int vgic_v5_map_resources(struct kvm *kvm)
+void vgic_v5_teardown(struct kvm *kvm)
 {
-	if (!vgic_initialized(kvm))
-		return -EBUSY;
+	struct kvm_vcpu *vcpu, *vcpu0;
+	struct vgic_dist *dist = &kvm->arch.vgic;
+	unsigned long i;
+	int rc;
 
-	return 0;
+	/*
+	 * There's a chance we don't have CPUs yet, in which case we've also not
+	 * initialised the tables.
+	 */
+	if (!atomic_read(&kvm->online_vcpus))
+		return;
+
+	/* Make the VM invalid  */
+	vcpu0 = kvm_get_vcpu(kvm, 0);
+	rc = vgic_v5_send_command(vcpu0, VMTE_MAKE_INVALID);
+	if (rc)
+		kvm_err("could not make VMTE invalid\n");
+
+	kvm_for_each_vcpu(i, vcpu, kvm) {
+		/* Goodbye doorbell */
+		vgic_v5_disable_vcpu(vcpu);
+
+		if (vgic_v5_vmte_free_vpe(vcpu))
+			kvm_err("Failed to free VPE\n");
+	}
+
+	vgic_v5_teardown_per_vm_domain(&kvm->arch.vgic.gicv5_vm);
+
+	if (vgic_v5_vmte_release(kvm))
+		kvm_err("Failed to release VM 0x%x\n", dist->gicv5_vm.vm_id);
+
+	vgic_v5_release_vm_id(kvm);
 }
 
 static u32 vgic_v5_get_effective_priority_mask(struct kvm_vcpu *vcpu)

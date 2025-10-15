@@ -115,6 +115,7 @@ int vgic_v5_vmt_allocate(bool two_level, unsigned int num_entries,
 			 unsigned int vpe_id_bits);
 int vgic_v5_vmt_free(void);
 int vgic_v5_allocate_vm_id(struct kvm *kvm);
+void vgic_v5_release_vm_id(struct kvm *kvm);
 int vgic_v5_vmte_init(struct kvm *kvm);
 int vgic_v5_vmte_release(struct kvm *kvm);
 int vgic_v5_vmte_alloc_vpe(struct kvm_vcpu *vcpu);

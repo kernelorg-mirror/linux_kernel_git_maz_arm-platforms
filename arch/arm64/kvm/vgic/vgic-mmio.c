@@ -1125,3 +1125,15 @@ int vgic_register_dist_iodev(struct kvm *kvm, gpa_t dist_base_address,
 	return kvm_io_bus_register_dev(kvm, KVM_MMIO_BUS, dist_base_address,
 				       len, &io_device->dev);
 }
+
+bool vgic_has_its(struct kvm *kvm)
+{
+	struct vgic_dist *dist = &kvm->arch.vgic;
+
+	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3 && dist->has_its)
+		return true;
+	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5 && dist->has_its)
+		return true;
+
+	return false;
+}

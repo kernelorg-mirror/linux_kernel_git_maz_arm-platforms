@@ -218,6 +218,7 @@ unsigned int vgic_v2_init_cpuif_iodev(struct vgic_io_device *dev);
 unsigned int vgic_v3_init_dist_iodev(struct vgic_io_device *dev);
 
 unsigned int vgic_v5_init_irs_iodev(struct vgic_io_device *dev);
+unsigned int vgic_v5_init_its_iodev(struct vgic_io_device *dev);
 
 u64 vgic_sanitise_outer_cacheability(u64 reg);
 u64 vgic_sanitise_inner_cacheability(u64 reg);

@@ -328,6 +328,116 @@ struct vgic_redist_region {
 	struct list_head list;
 };
 
+/*** GICv5 ***/
+struct vgic_v5_irs {
+	/* base addresses in guest physical address space: */
+	gpa_t vgic_v5_irs_base;
+
+	bool enabled;
+	struct vgic_io_device iodev;
+	struct kvm_device *dev;
+
+	/* IRS state - used for registers etc */
+	struct irs_idr0 {
+		u8 domain;
+		u8 pa_range;
+		bool virt;
+		bool one_of_n;
+		bool virt_one_of_n;
+		bool setlpi;
+		bool mec;
+		bool mpam;
+		bool swe;
+		u16 irs_id;
+	} idr0;
+
+	struct irs_idr1 {
+		u16 num_pes;
+		u8 priority_bits;
+	} idr1;
+
+	struct irs_idr2 {
+		u8 id_bits;
+		u8 min_lpi_id_bits;
+		bool ist_levels;
+		u8 ist_l2sz;
+		bool istmd;
+		u8 istmd_sz;
+	} idr2;
+
+	struct irs_idr3 {
+		bool vmd;
+		u8 vmd_size;
+		u8 vm_id_bits;
+		u8 vmt_levels;
+	} idr3;
+
+	struct irs_idr4 {
+		u8 vped_size;
+		u8 vpe_id_bits;
+	} idr4;
+
+	struct irs_idr5 {
+		u32 spi_range;
+	} idr5;
+
+	struct irs_idr6 {
+		u32 spi_irs_range;
+	} idr6;
+
+	struct irs_idr7 {
+		u32 spi_base;
+	} idr7;
+
+	struct irs_cr1 {
+		u8 sh;
+		u8 oc;
+		u8 ic;
+		bool ist_ra;
+		bool ist_wa;
+		bool vmt_ra;
+		bool vpet_ra;
+		bool vmd_ra;
+		bool vmd_wa;
+		bool vped_ra;
+		bool vped_wa;
+	} cr1;
+
+	struct irs_spi_selr {
+		u32 id;
+	} spi_selr;
+
+	struct irs_spi_statusr {
+		bool fault;
+	} spi_statusr;
+
+	struct irs_pe_selr {
+		u32 iaffid;
+	} pe_selr;
+
+	struct irs_ist_cfgr {
+		u8 lpi_id_bits;
+		u8 l2sz;
+		u8 istsz;
+		bool structure;
+	} ist_cfgr;
+
+	struct irs_ist_baser {
+		bool valid;
+		u64 addr;
+	} ist_baser;
+
+	/* Might not be needed? */
+	struct irs_inv_istr {
+		u32 id;
+		u8 type;
+		u16 vm_id;
+		bool virt;
+		bool v;
+	} inv_istr;
+};
+
+
 struct vgic_dist {
 	bool			in_kernel;
 	bool			ready;
@@ -409,6 +519,9 @@ struct vgic_dist {
 	 * GICv5 per-VM data.
 	 */
 	struct gicv5_vm		gicv5_vm;
+
+        gpa_t vgic_v5_irs_base;
+        struct vgic_v5_irs *vgic_v5_irs_data;
 
 	raw_spinlock_t vgic_v5_spi_ap_list_lock;
 

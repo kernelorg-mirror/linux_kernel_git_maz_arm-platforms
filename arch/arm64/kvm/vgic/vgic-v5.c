@@ -152,6 +152,24 @@ static int vgic_v5_irs_wait_for_vm_op(void)
 	return 0;
 }
 
+/* Wait for completion of an VPE_STATUSR change */
+static int vgic_v5_irs_wait_for_vpe_op(void)
+{
+	int ret;
+	u32 statusr;
+
+	ret = readl_relaxed_poll_timeout_atomic(
+		irs_base + GICV5_IRS_VPE_STATUSR, statusr,
+		FIELD_GET(GICV5_IRS_VPE_STATUSR_IDLE, statusr), 1,
+		USEC_PER_SEC);
+
+	if (ret == -ETIMEDOUT) {
+		pr_err_ratelimited("Time out waiting for IRS VPE Op\n");
+		return ret;
+	}
+
+	return 0;
+}
 
 static int vgic_v5_irs_assign_vmt(bool two_level, u8 vm_id_bits, phys_addr_t vmt_base)
 {
@@ -307,10 +325,182 @@ static int vgic_v5_irs_set_vist_invalid(int vm_id, bool spi_ist)
 	return __vgic_v5_irs_update_vist_validity(vm_id, spi_ist, true);
 }
 
+static int vgic_v5_irs_set_up_vpe(int vm_id, int vpe_id, irq_hw_number_t db_hwirq)
+{
+	u64 vmap_vper, dbr, selr;
+	u32 statusr, cr0;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	/* Make sure that we are idle to begin with */
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+	/* Mark the VPE as valid */
+	vmap_vper = FIELD_PREP(GICV5_IRS_VMAP_VPER_VPE_ID, vpe_id) |
+		    FIELD_PREP(GICV5_IRS_VMAP_VPER_VM_ID, vm_id) |
+		    FIELD_PREP(GICV5_IRS_VMAP_VPER_M, true);
+	irs_writeq_relaxed(vmap_vper, GICV5_IRS_VMAP_VPER);
+
+	/* Wait for the VPE to be marked valid in the VPET */
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+	selr = FIELD_PREP(GICV5_IRS_VPE_SELR_VPE_ID, vpe_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_VM_ID, vm_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_S, true);
+	irs_writeq_relaxed(selr, GICV5_IRS_VPE_SELR);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed( GICV5_IRS_VPE_STATUSR);
+	if (!FIELD_GET(GICV5_IRS_VPE_STATUSR_V, statusr)) {
+		pr_err("Write to IRS_VPE_SELR did not successfully select a valid VPE\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+	/* Set targetted only routing (disable 1ofN vPE selection) */
+	cr0 = FIELD_PREP(GICV5_IRS_VPE_CR0_DPS, true);
+	irs_writel_relaxed( cr0, GICV5_IRS_VPE_CR0);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed(GICV5_IRS_VPE_STATUSR);
+	if (FIELD_GET(GICV5_IRS_VPE_STATUSR_F, statusr)) {
+		pr_err("Write to IRS_VPE_CR0 did not succesfully update the VPE configuration\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+	/*
+	 * The VPE has not yet run. Therefore, make sure that all interrupts
+	 * will generate a doorbell.
+	 */
+	dbr = FIELD_PREP(GICV5_IRS_VPE_DBR_LPI_ID, db_hwirq) |
+	      FIELD_PREP(GICV5_IRS_VPE_DBR_DBPM, 0b11111) |
+	      FIELD_PREP(GICV5_IRS_VPE_DBR_REQ_DB, false) |
+	      FIELD_PREP(GICV5_IRS_VPE_DBR_DBV, true);
+	irs_writeq_relaxed(dbr, GICV5_IRS_VPE_DBR);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed(GICV5_IRS_VPE_STATUSR);
+	if (FIELD_GET(GICV5_IRS_VPE_STATUSR_F, statusr)) {
+		pr_err("Write to IRS_VPE_DBR did not succesfully update the VPE configuration\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+	return rc;
+}
+
+static int vgic_v5_irs_vpe_cr0_read(int vm_id, int vpe_id, u64 *cr0)
+{
+	u64 selr;
+	u32 statusr;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	selr = FIELD_PREP(GICV5_IRS_VPE_SELR_VPE_ID, vpe_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_VM_ID, vm_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_S, true);
+	irs_writeq_relaxed(selr, GICV5_IRS_VPE_SELR);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed(GICV5_IRS_VPE_STATUSR);
+	if (!FIELD_GET(GICV5_IRS_VPE_STATUSR_V, statusr)) {
+		pr_err("Write to IRS_VPE_SELR did not successfully select a valid VPE\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+	*cr0 = irs_readl_relaxed(GICV5_IRS_VPE_CR0);
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+	return rc;
+}
+
+static int vgic_v5_irs_vpe_cr0_update(int vm_id, int vpe_id, u32 cr0)
+{
+	u64 selr;
+	u32 statusr;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	selr = FIELD_PREP(GICV5_IRS_VPE_SELR_VPE_ID, vpe_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_VM_ID, vm_id) |
+	       FIELD_PREP(GICV5_IRS_VPE_SELR_S, true);
+	irs_writeq_relaxed(selr, GICV5_IRS_VPE_SELR);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed(GICV5_IRS_VPE_STATUSR);
+	if (!FIELD_GET(GICV5_IRS_VPE_STATUSR_V, statusr)) {
+		pr_err("Write to IRS_VPE_SELR did not successfully select a valid VPE\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+	irs_writel_relaxed(cr0, GICV5_IRS_VPE_CR0);
+
+	rc = vgic_v5_irs_wait_for_vpe_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VPE stable state not reached\n");
+		goto out_fail;
+	}
+
+	statusr = irs_readl_relaxed(GICV5_IRS_VPE_STATUSR);
+	if (FIELD_GET(GICV5_IRS_VPE_STATUSR_F, statusr)) {
+		pr_err("Write to IRS_VPE_DBR did not succesfully update the VPE configuration\n");
+		rc = -EINVAL;
+		goto out_fail;
+	}
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+	return rc;
+}
+
 static int vgic_v5_db_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 {
 	struct gicv5_cmd_info *cmd_info = vcpu_info;
 	struct gicv5_vm *vm = data->domain->host_data;
+	/* Our VPE ID is the index within the doorbell domain */
+	u16 vpe_id = data->hwirq;
 
 	switch(cmd_info->cmd_type) {
 	case VMT_L2_MAP:
@@ -319,6 +509,19 @@ static int vgic_v5_db_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 		return vgic_v5_irs_set_vm_valid(vm->vm_id);
 	case VMTE_MAKE_INVALID:
 		return vgic_v5_irs_set_vm_invalid(vm->vm_id);
+	case VPE_MAKE_VALID:
+		/*
+		 * We need the actual LPI ID which lives in the top-most parent
+		 * domain. This hwirq won't include the type (LPI) but that's
+		 * not required for the IRS_VPE_DBR.
+		 */
+		while (data->parent_data != NULL)
+			data = data->parent_data;
+		return vgic_v5_irs_set_up_vpe(vm->vm_id, vpe_id, data->hwirq);
+	case VPE_CR0_READ:
+		return vgic_v5_irs_vpe_cr0_read(vm->vm_id, vpe_id, &cmd_info->data);
+	case VPE_CR0_WRITE:
+		return vgic_v5_irs_vpe_cr0_update(vm->vm_id, vpe_id, cmd_info->data);
 	case SPI_VIST_MAKE_VALID:
 		return vgic_v5_irs_set_vist_valid(vm->vm_id, true);
 	case LPI_VIST_MAKE_VALID:

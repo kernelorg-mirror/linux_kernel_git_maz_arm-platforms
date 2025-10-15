@@ -11,6 +11,7 @@
 #include "vgic-v5-tables.h"
 
 static struct vgic_v5_ppi_caps *ppi_caps;
+static void __iomem *irs_base;
 
 /*
  * Probe for a vGICv5 compatible interrupt controller, returning 0 on success.
@@ -103,11 +104,227 @@ static int vgic_v5_send_command(struct kvm_vcpu *vcpu,
 	return irq_set_vcpu_affinity(vgic_v5_vpe_db(vcpu), &cmd_info);
 }
 
+/*
+ * The IRS MMIO interface is shared between all VMs, so make sure we don't do
+ * anything stupid!
+ */
+static DEFINE_RAW_SPINLOCK(vm_config_lock);
+
+static u32 irs_readl_relaxed(const u32 reg_offset)
+{
+	return readl_relaxed(irs_base + reg_offset);
+}
+
+static void irs_writel_relaxed(const u32 val, const u32 reg_offset)
+{
+	writel_relaxed(val, irs_base + reg_offset);
+}
+
+static u64 irs_readq_relaxed(const u32 reg_offset)
+{
+	return readq_relaxed(irs_base + reg_offset);
+}
+
+static void irs_writeq_relaxed(const u64 val, const u32 reg_offset)
+{
+	writeq_relaxed(val, irs_base + reg_offset);
+}
+
+/*
+ * Wait for completion of a change in any of IRS_VMT_BASER, IRS_VMAP_L2_VMTR,
+ * IRS_VMAP_VMR, IRS_VMAP_VPER, IRS_VMAP_VISTR, IRS_VMAP_L2_VISTR.
+ */
+static int vgic_v5_irs_wait_for_vm_op(void)
+{
+	int ret;
+	u32 statusr;
+
+	ret = readl_relaxed_poll_timeout_atomic(
+		irs_base + GICV5_IRS_VMT_STATUSR, statusr,
+		FIELD_GET(GICV5_IRS_VMT_STATUSR_IDLE, statusr), 1,
+		USEC_PER_SEC);
+
+	if (ret == -ETIMEDOUT) {
+		pr_err_ratelimited("Time out waiting for IRS VM Op\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+
+static int vgic_v5_irs_assign_vmt(bool two_level, u8 vm_id_bits, phys_addr_t vmt_base)
+{
+	int rc;
+	u64 vmt_baser;
+	u32 vmt_cfgr;
+
+	vmt_baser = irs_readq_relaxed(GICV5_IRS_VMT_BASER);
+	if (!!FIELD_GET(GICV5_IRS_VMT_BASER_VALID, vmt_baser)) {
+		pr_err("VMT is already valid; can't assign a new VMT!\n");
+		return -EBUSY;
+	}
+
+	vmt_cfgr = FIELD_PREP(GICV5_IRS_VMT_CFGR_VM_ID_BITS, vm_id_bits);
+	if (!two_level)
+		vmt_cfgr |= FIELD_PREP(GICV5_IRS_VMT_CFGR_STRUCTURE,
+				       GICV5_IRS_VMT_CFGR_STRUCTURE_LINEAR);
+	else
+		vmt_cfgr |= FIELD_PREP(GICV5_IRS_VMT_CFGR_STRUCTURE,
+				       GICV5_IRS_VMT_CFGR_STRUCTURE_TWO_LEVEL);
+
+	irs_writel_relaxed(vmt_cfgr, GICV5_IRS_VMT_CFGR);
+
+	vmt_baser = FIELD_PREP(GICV5_IRS_VMT_BASER_VALID, true) |
+		    FIELD_PREP(GICV5_IRS_VMT_BASER_ADDR,
+			       vmt_base >> GICV5_IRS_VMT_BASER_ADDR_SHIFT);
+	irs_writeq_relaxed(vmt_baser, GICV5_IRS_VMT_BASER);
+
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc)
+		pr_err("Failed to initialise VMT\n");
+	else
+		pr_debug("GICv5-IRS: initialised VMT correctly\n");
+
+	return rc;
+}
+
+static int vgic_v5_irs_vmap_l2_vmt(int vm_id)
+{
+	u64 vmap_l2_vmtr;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	/* Make sure that we are idle to begin with */
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+	/* Mark the VM as valid */
+	vmap_l2_vmtr = FIELD_PREP(GICV5_IRS_VMAP_L2_VMTR_VM_ID, vm_id) |
+		   FIELD_PREP(GICV5_IRS_VMAP_L2_VMTR_M, true);
+	irs_writeq_relaxed(vmap_l2_vmtr, GICV5_IRS_VMAP_L2_VMTR);
+
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+
+	return rc;
+}
+
+static int __vgic_v5_irs_vmap_vm(int vm_id, bool unmap)
+{
+	u64 vmap_vmr;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	/* Make sure that we are idle to begin with */
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+	/* Mark the VM as valid */
+	vmap_vmr = FIELD_PREP(GICV5_IRS_VMAP_VMR_VM_ID, vm_id) |
+		   FIELD_PREP(GICV5_IRS_VMAP_VMR_U, unmap) |
+		   FIELD_PREP(GICV5_IRS_VMAP_VMR_M, true);
+	irs_writeq_relaxed(vmap_vmr, GICV5_IRS_VMAP_VMR);
+
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+
+	return rc;
+}
+
+static int vgic_v5_irs_set_vm_valid(int vm_id)
+{
+	return __vgic_v5_irs_vmap_vm(vm_id, false);
+}
+
+static int vgic_v5_irs_set_vm_invalid(int vm_id)
+{
+	return __vgic_v5_irs_vmap_vm(vm_id, true);
+}
+
+static int __vgic_v5_irs_update_vist_validity(int vm_id, bool spi_ist, bool unmap)
+{
+	u64 vmap_vistr;
+	u8 type = spi_ist ? 0b011 : 0b010;
+	int rc = 0;
+
+	raw_spin_lock(&vm_config_lock);
+
+	/* Make sure that we are idle to begin with */
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+	/* Mark the IST as valid */
+	vmap_vistr = FIELD_PREP(GICV5_IRS_VMAP_VISTR_TYPE, type) |
+		     FIELD_PREP(GICV5_IRS_VMAP_VISTR_VM_ID, vm_id) |
+		     FIELD_PREP(GICV5_IRS_VMAP_VISTR_U, unmap) |
+		     FIELD_PREP(GICV5_IRS_VMAP_VISTR_M, true);
+	irs_writeq_relaxed(vmap_vistr, GICV5_IRS_VMAP_VISTR);
+
+	rc = vgic_v5_irs_wait_for_vm_op();
+	if (rc) {
+		pr_err("GICv5 IRS_VMT_STATUSR stable state not reached\n");
+		goto out_fail;
+	}
+
+out_fail:
+	raw_spin_unlock(&vm_config_lock);
+
+	return rc;
+}
+
+static int vgic_v5_irs_set_vist_valid(int vm_id, bool spi_ist)
+{
+	return __vgic_v5_irs_update_vist_validity(vm_id, spi_ist, false);
+}
+
+/* Note: We currently do not use this as we rely on the VM becoming invalid. */
+static int vgic_v5_irs_set_vist_invalid(int vm_id, bool spi_ist)
+{
+	return __vgic_v5_irs_update_vist_validity(vm_id, spi_ist, true);
+}
+
 static int vgic_v5_db_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
 {
 	struct gicv5_cmd_info *cmd_info = vcpu_info;
+	struct gicv5_vm *vm = data->domain->host_data;
 
 	switch(cmd_info->cmd_type) {
+	case VMT_L2_MAP:
+		return vgic_v5_irs_vmap_l2_vmt(vm->vm_id);
+	case VMTE_MAKE_VALID:
+		return vgic_v5_irs_set_vm_valid(vm->vm_id);
+	case VMTE_MAKE_INVALID:
+		return vgic_v5_irs_set_vm_invalid(vm->vm_id);
+	case SPI_VIST_MAKE_VALID:
+		return vgic_v5_irs_set_vist_valid(vm->vm_id, true);
+	case LPI_VIST_MAKE_VALID:
+		return vgic_v5_irs_set_vist_valid(vm->vm_id, false);
+	case LPI_VIST_MAKE_INVALID:
+		return vgic_v5_irs_set_vist_invalid(vm->vm_id, false);
 	default:
 		return -EINVAL;
 	}

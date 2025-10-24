@@ -1545,3 +1545,24 @@ void vgic_v5_save_state(struct kvm_vcpu *vcpu)
 	kvm_call_hyp(__vgic_v5_save_ppi_state, cpu_if);
 	dsb(sy);
 }
+
+int vgic_v5_check_msi(struct kvm *kvm, struct kvm_msi *msi, bool its)
+{
+	u64 address;
+	struct kvm_io_device *kvm_io_dev;
+	struct vgic_io_device *iodev;
+
+	address = (u64)msi->address_hi << 32 | msi->address_lo;
+
+	kvm_io_dev = kvm_io_bus_get_dev(kvm, KVM_MMIO_BUS, address);
+	if (!kvm_io_dev)
+		return -EINVAL;
+
+	iodev = container_of(kvm_io_dev, struct vgic_io_device, dev);
+	if (!its && iodev->iodev_type != IODEV_GICV5_IRS)
+		return -EINVAL;
+	else if (its && iodev->iodev_type != IODEV_GICV5_ITS)
+		return -EINVAL;
+
+	return 0;
+}

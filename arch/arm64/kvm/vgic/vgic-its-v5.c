@@ -560,6 +560,72 @@ int vgic_v5_its_look_up_lpi(struct kvm *kvm, struct vgic_v5_its *its,
 	return its_cache_add_translation(its, device_id, event_id, *lpi);
 }
 
+int vgic_v5_its_inject_msi(struct kvm *kvm, struct kvm_msi *msi)
+{
+	struct vgic_v5_its *its;
+	int ret;
+	u32 lpi;
+
+	/*
+	 * Make sure that the addr in the MSI maps to something
+	 * we'd expect.
+	 */
+	ret = vgic_v5_check_msi(kvm, msi, vgic_has_its(kvm));
+	if (ret)
+		return ret;
+
+	its = vgic_v5_msi_to_its(kvm, msi);
+	if (IS_ERR(its))
+		return PTR_ERR(its);
+
+	ret = vgic_v5_its_look_up_lpi(kvm, its, msi->devid, msi->data,
+				      &lpi);
+	if (ret)
+		return ret;
+
+	/* Make it into a proper GICv5 IntID */
+	lpi &= GICV5_HWIRQ_ID;
+	lpi |= FIELD_PREP(GICV5_HWIRQ_TYPE, GICV5_HWIRQ_TYPE_LPI);
+
+	/*
+	 * And inject it in to the guest. We do no tracking of LPI state, and
+	 * instead rely on the hardware to manage the LPIS. As this is driven
+	 * from the MSI path, all of the LPIs we inject are Edge, which makes
+	 * this a fire-and-forget situation.
+	 */
+	kvm_call_hyp(__vgic_v5_vdpend, lpi, true, kvm->arch.vgic.gicv5_vm.vm_id);
+
+	return 1;
+}
+
+int vgic_v5_its_inject_cached_translation(struct kvm *kvm, struct kvm_msi *msi)
+{
+	struct vgic_v5_its *its;
+	int ret;
+	u32 lpi;
+
+	ret = vgic_v5_check_msi(kvm, msi, vgic_has_its(kvm));
+	if (ret)
+		return ret;
+
+	its = vgic_v5_msi_to_its(kvm, msi);
+	if (IS_ERR(its))
+		return PTR_ERR(its);
+
+	/* Check if we have it cached */
+	ret = its_cache_look_up_translation(its, msi->devid, msi->data, &lpi);
+	if (ret)
+		return -EWOULDBLOCK;
+
+	/* Make it into a proper GICv5 IntID */
+	lpi &= GICV5_HWIRQ_ID;
+	lpi |= FIELD_PREP(GICV5_HWIRQ_TYPE, GICV5_HWIRQ_TYPE_LPI);
+
+	kvm_call_hyp(__vgic_v5_vdpend, lpi, true, kvm->arch.vgic.gicv5_vm.vm_id);
+
+	return 0;
+}
+
 /******************************************************************************/
 
 static unsigned long vgic_v5_mmio_read_its_misc(struct kvm *kvm, void *dev,

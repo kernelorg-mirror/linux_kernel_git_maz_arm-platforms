@@ -364,6 +364,10 @@ int kvm_register_vgic_device(unsigned long type)
 	case KVM_DEV_TYPE_ARM_VGIC_V5:
 		ret = kvm_register_device_ops(&kvm_arm_vgic_v5_ops,
 					      KVM_DEV_TYPE_ARM_VGIC_V5);
+
+		if (ret)
+			break;
+		ret = kvm_vgic_v5_register_its_device();
 	}
 
 	return ret;

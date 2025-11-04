@@ -178,6 +178,10 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 	} else {
 		aa64pfr2 |= SYS_FIELD_PREP_ENUM(ID_AA64PFR2_EL1, GCIE, IMP);
 
+		/* Allocate a vIRS for GICv5 systems */
+		kvm->arch.vgic.vgic_v5_irs_data =
+			kzalloc(sizeof(struct vgic_v5_irs), GFP_KERNEL_ACCOUNT);
+
 		/*
 		 * We now know that we have a GICv5. The Arch Timer PPI
 		 * interrupts may have been initialised at this stage, but will

@@ -816,6 +816,9 @@ int vgic_v5_init(struct kvm *kvm)
 			goto fail_cleanup_vpes;
 	}
 
+	/* Init IRS (and alloc SPI IST) */
+	ret = kvm_vgic_v5_irs_init(kvm, kvm->arch.vgic.nr_spis);
+
 	return ret;
 
 fail_cleanup_vpes:
@@ -865,7 +868,7 @@ void vgic_v5_teardown(struct kvm *kvm)
 	 * initialised the tables.
 	 */
 	if (!atomic_read(&kvm->online_vcpus))
-		return;
+		goto out_no_vcpus;
 
 	/* Make the VM invalid  */
 	vcpu0 = kvm_get_vcpu(kvm, 0);
@@ -887,6 +890,11 @@ void vgic_v5_teardown(struct kvm *kvm)
 		kvm_err("Failed to release VM 0x%x\n", dist->gicv5_vm.vm_id);
 
 	vgic_v5_release_vm_id(kvm);
+
+out_no_vcpus:
+	if (dist->vgic_v5_irs_data)
+		kfree(dist->vgic_v5_irs_data);
+	dist->vgic_v5_irs_data = NULL;
 }
 
 static u32 vgic_v5_get_effective_priority_mask(struct kvm_vcpu *vcpu)

@@ -803,6 +803,10 @@ static int vgic_v5_has_attr(struct kvm_device *dev,
 {
 	switch (attr->group) {
 	case KVM_DEV_ARM_VGIC_GRP_ADDR:
+		switch (attr->attr) {
+		case KVM_VGIC_V5_ADDR_TYPE_IRS:
+			return 0;
+		}
 		break;
 	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
 		break;

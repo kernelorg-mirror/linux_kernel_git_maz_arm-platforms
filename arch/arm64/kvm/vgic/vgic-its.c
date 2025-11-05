@@ -430,10 +430,10 @@ static int its_sync_lpi_pending_table(struct kvm_vcpu *vcpu)
 	return ret;
 }
 
-static unsigned long vgic_mmio_read_its_typer(struct kvm *kvm,
-					      struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_typer(struct kvm *kvm, void *dev,
 					      gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	const struct vgic_its_abi *abi = vgic_its_get_abi(its);
 	u64 reg = GITS_TYPER_PLPIS;
 
@@ -452,10 +452,10 @@ static unsigned long vgic_mmio_read_its_typer(struct kvm *kvm,
 	return extract_bytes(reg, addr & 7, len);
 }
 
-static unsigned long vgic_mmio_read_its_iidr(struct kvm *kvm,
-					     struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_iidr(struct kvm *kvm, void *dev,
 					     gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	u32 val;
 
 	val = (its->abi_rev << GITS_IIDR_REV_SHIFT) & GITS_IIDR_REV_MASK;
@@ -463,11 +463,11 @@ static unsigned long vgic_mmio_read_its_iidr(struct kvm *kvm,
 	return val;
 }
 
-static int vgic_mmio_uaccess_write_its_iidr(struct kvm *kvm,
-					    struct vgic_its *its,
+static int vgic_mmio_uaccess_write_its_iidr(struct kvm *kvm, void *dev,
 					    gpa_t addr, unsigned int len,
 					    unsigned long val)
 {
+	struct vgic_its *its = dev;
 	u32 rev = GITS_IIDR_REV(val);
 
 	if (rev >= NR_ITS_ABIS)
@@ -476,7 +476,7 @@ static int vgic_mmio_uaccess_write_its_iidr(struct kvm *kvm,
 }
 
 static unsigned long vgic_mmio_read_its_idregs(struct kvm *kvm,
-					       struct vgic_its *its,
+					       void *dev,
 					       gpa_t addr, unsigned int len)
 {
 	switch (addr & 0xffff) {
@@ -1482,17 +1482,18 @@ static u64 vgic_sanitise_its_cbaser(u64 reg)
 	return reg;
 }
 
-static unsigned long vgic_mmio_read_its_cbaser(struct kvm *kvm,
-					       struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_cbaser(struct kvm *kvm, void *dev,
 					       gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	return extract_bytes(its->cbaser, addr & 7, len);
 }
 
-static void vgic_mmio_write_its_cbaser(struct kvm *kvm, struct vgic_its *its,
+static void vgic_mmio_write_its_cbaser(struct kvm *kvm, void *dev,
 				       gpa_t addr, unsigned int len,
 				       unsigned long val)
 {
+	struct vgic_its *its = dev;
 	/* When GITS_CTLR.Enable is 1, this register is RO. */
 	if (its->enabled)
 		return;
@@ -1550,10 +1551,11 @@ static void vgic_its_process_commands(struct kvm *kvm, struct vgic_its *its)
  * protects our ring buffer variables, so that there is only one user
  * per ITS handling commands at a given time.
  */
-static void vgic_mmio_write_its_cwriter(struct kvm *kvm, struct vgic_its *its,
+static void vgic_mmio_write_its_cwriter(struct kvm *kvm, void *dev,
 					gpa_t addr, unsigned int len,
 					unsigned long val)
 {
+	struct vgic_its *its = dev;
 	u64 reg;
 
 	if (!its)
@@ -1574,25 +1576,25 @@ static void vgic_mmio_write_its_cwriter(struct kvm *kvm, struct vgic_its *its,
 	mutex_unlock(&its->cmd_lock);
 }
 
-static unsigned long vgic_mmio_read_its_cwriter(struct kvm *kvm,
-						struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_cwriter(struct kvm *kvm, void *dev,
 						gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	return extract_bytes(its->cwriter, addr & 0x7, len);
 }
 
-static unsigned long vgic_mmio_read_its_creadr(struct kvm *kvm,
-					       struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_creadr(struct kvm *kvm, void *dev,
 					       gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	return extract_bytes(its->creadr, addr & 0x7, len);
 }
 
-static int vgic_mmio_uaccess_write_its_creadr(struct kvm *kvm,
-					      struct vgic_its *its,
+static int vgic_mmio_uaccess_write_its_creadr(struct kvm *kvm, void *dev,
 					      gpa_t addr, unsigned int len,
 					      unsigned long val)
 {
+	struct vgic_its *its = dev;
 	u32 cmd_offset;
 	int ret = 0;
 
@@ -1616,10 +1618,10 @@ out:
 }
 
 #define BASER_INDEX(addr) (((addr) / sizeof(u64)) & 0x7)
-static unsigned long vgic_mmio_read_its_baser(struct kvm *kvm,
-					      struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_baser(struct kvm *kvm, void *dev,
 					      gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	u64 reg;
 
 	switch (BASER_INDEX(addr)) {
@@ -1638,11 +1640,11 @@ static unsigned long vgic_mmio_read_its_baser(struct kvm *kvm,
 }
 
 #define GITS_BASER_RO_MASK	(GENMASK_ULL(52, 48) | GENMASK_ULL(58, 56))
-static void vgic_mmio_write_its_baser(struct kvm *kvm,
-				      struct vgic_its *its,
+static void vgic_mmio_write_its_baser(struct kvm *kvm, void *dev,
 				      gpa_t addr, unsigned int len,
 				      unsigned long val)
 {
+	struct vgic_its *its = dev;
 	const struct vgic_its_abi *abi = vgic_its_get_abi(its);
 	u64 entry_size, table_type;
 	u64 reg, *regptr, clearbits = 0;
@@ -1692,10 +1694,10 @@ static void vgic_mmio_write_its_baser(struct kvm *kvm,
 	}
 }
 
-static unsigned long vgic_mmio_read_its_ctlr(struct kvm *vcpu,
-					     struct vgic_its *its,
+static unsigned long vgic_mmio_read_its_ctlr(struct kvm *vcpu, void *dev,
 					     gpa_t addr, unsigned int len)
 {
+	struct vgic_its *its = dev;
 	u32 reg = 0;
 
 	mutex_lock(&its->cmd_lock);
@@ -1708,10 +1710,11 @@ static unsigned long vgic_mmio_read_its_ctlr(struct kvm *vcpu,
 	return reg;
 }
 
-static void vgic_mmio_write_its_ctlr(struct kvm *kvm, struct vgic_its *its,
+static void vgic_mmio_write_its_ctlr(struct kvm *kvm, void *dev,
 				     gpa_t addr, unsigned int len,
 				     unsigned long val)
 {
+	struct vgic_its *its = dev;
 	mutex_lock(&its->cmd_lock);
 
 	/*
@@ -1757,8 +1760,8 @@ out:
 	.uaccess_its_write = uwr,				\
 }
 
-static void its_mmio_write_wi(struct kvm *kvm, struct vgic_its *its,
-			      gpa_t addr, unsigned int len, unsigned long val)
+static void its_mmio_write_wi(struct kvm *kvm, void *dev, gpa_t addr,
+			      unsigned int len, unsigned long val)
 {
 	/* Ignore */
 }

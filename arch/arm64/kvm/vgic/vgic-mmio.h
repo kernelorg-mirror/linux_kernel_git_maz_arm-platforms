@@ -13,13 +13,13 @@ struct vgic_register_region {
 	union {
 		unsigned long (*read)(struct kvm_vcpu *vcpu, gpa_t addr,
 				      unsigned int len);
-		unsigned long (*its_read)(struct kvm *kvm, struct vgic_its *its,
+		unsigned long (*its_read)(struct kvm *kvm, void *dev,
 					  gpa_t addr, unsigned int len);
 	};
 	union {
 		void (*write)(struct kvm_vcpu *vcpu, gpa_t addr,
 			      unsigned int len, unsigned long val);
-		void (*its_write)(struct kvm *kvm, struct vgic_its *its,
+		void (*its_write)(struct kvm *kvm, void *dev,
 				  gpa_t addr, unsigned int len,
 				  unsigned long val);
 	};
@@ -28,7 +28,7 @@ struct vgic_register_region {
 	union {
 		int (*uaccess_write)(struct kvm_vcpu *vcpu, gpa_t addr,
 				     unsigned int len, unsigned long val);
-		int (*uaccess_its_write)(struct kvm *kvm, struct vgic_its *its,
+		int (*uaccess_its_write)(struct kvm *kvm, void *dev,
 					 gpa_t addr, unsigned int len,
 					 unsigned long val);
 	};

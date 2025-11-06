@@ -224,31 +224,41 @@ static int vgic_set_common_attr(struct kvm_device *dev,
 		if (get_user(val, uaddr))
 			return -EFAULT;
 
-		/*
-		 * We require:
-		 * - at least 32 SPIs on top of the 16 SGIs and 16 PPIs
-		 * - at most 1024 interrupts
-		 * - a multiple of 32 interrupts
-		 */
-		if (val < (VGIC_NR_PRIVATE_IRQS + 32) ||
-		    val > VGIC_MAX_RESERVED ||
-		    (val & 31))
-			return -EINVAL;
+		/* Older GICs */
+		if (dev->kvm->arch.vgic.vgic_model !=
+		    KVM_DEV_TYPE_ARM_VGIC_V5) {
+			/*
+			* We require:
+			* - at least 32 SPIs on top of the 16 SGIs and 16 PPIs
+			* - at most 1024 interrupts
+			* - a multiple of 32 interrupts
+			*/
+			if (val < (VGIC_NR_PRIVATE_IRQS + 32) ||
+			    val > VGIC_MAX_RESERVED || (val & 31))
+				return -EINVAL;
 
-		mutex_lock(&dev->kvm->arch.config_lock);
+			mutex_lock(&dev->kvm->arch.config_lock);
 
-		/*
-		 * Either userspace has already configured NR_IRQS or
-		 * the vgic has already been initialized and vgic_init()
-		 * supplied a default amount of SPIs.
-		 */
-		if (dev->kvm->arch.vgic.nr_spis)
-			ret = -EBUSY;
-		else
-			dev->kvm->arch.vgic.nr_spis =
-				val - VGIC_NR_PRIVATE_IRQS;
+			/*
+			* Either userspace has already configured NR_IRQS or
+			* the vgic has already been initialized and vgic_init()
+			* supplied a default amount of SPIs.
+			*/
+			if (dev->kvm->arch.vgic.nr_spis)
+				ret = -EBUSY;
+			else
+				dev->kvm->arch.vgic.nr_spis =
+					val - VGIC_NR_PRIVATE_IRQS;
 
-		mutex_unlock(&dev->kvm->arch.config_lock);
+			mutex_unlock(&dev->kvm->arch.config_lock);
+		} else {
+			mutex_lock(&dev->kvm->arch.config_lock);
+			if (vgic_initialized(dev->kvm) || dev->kvm->arch.vgic.nr_spis)
+				ret = -EBUSY;
+			else
+				dev->kvm->arch.vgic.nr_spis = val;
+			mutex_unlock(&dev->kvm->arch.config_lock);
+		}
 
 		return ret;
 	}
@@ -299,9 +309,15 @@ static int vgic_get_common_attr(struct kvm_device *dev,
 		return (r == -ENODEV) ? -ENXIO : r;
 	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS: {
 		u32 __user *uaddr = (u32 __user *)(long)attr->addr;
-
-		r = put_user(dev->kvm->arch.vgic.nr_spis +
-			     VGIC_NR_PRIVATE_IRQS, uaddr);
+		/* Older GICs */
+		if (dev->kvm->arch.vgic.vgic_model !=
+		    KVM_DEV_TYPE_ARM_VGIC_V5) {
+			r = put_user(dev->kvm->arch.vgic.nr_spis +
+					     VGIC_NR_PRIVATE_IRQS,
+				     uaddr);
+		} else {
+			r = put_user(dev->kvm->arch.vgic.nr_spis, uaddr);
+		}
 		break;
 	}
 	}
@@ -787,15 +803,18 @@ static int vgic_v5_has_attr(struct kvm_device *dev,
 {
 	switch (attr->group) {
 	case KVM_DEV_ARM_VGIC_GRP_ADDR:
-	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
-	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
 		break;
+	case KVM_DEV_ARM_VGIC_GRP_CPU_SYSREGS:
+		break;
+	case KVM_DEV_ARM_VGIC_GRP_NR_IRQS:
+		return 0;
 	case KVM_DEV_ARM_VGIC_GRP_CTRL:
 		switch (attr->attr) {
 		case KVM_DEV_ARM_VGIC_CTRL_INIT:
 			return 0;
 		case KVM_DEV_ARM_VGIC_USERSPACE_PPIS:
 			return 0;
+		case KVM_DEV_ARM_VGIC_SAVE_PENDING_TABLES:
 		default:
 			break;
 		}

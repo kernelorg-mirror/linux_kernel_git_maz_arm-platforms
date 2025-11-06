@@ -498,8 +498,10 @@ static void kvm_vgic_dist_destroy(struct kvm *kvm)
 		dist->vgic_cpu_base = VGIC_ADDR_UNDEF;
 	}
 
-	if (vgic_supports_direct_irqs(kvm))
+	if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V3 && vgic_supports_direct_irqs(kvm))
 		vgic_v4_teardown(kvm);
+	else if (dist->vgic_model == KVM_DEV_TYPE_ARM_VGIC_V5)
+		vgic_v5_teardown(kvm);
 
 	xa_destroy(&dist->lpi_xa);
 }

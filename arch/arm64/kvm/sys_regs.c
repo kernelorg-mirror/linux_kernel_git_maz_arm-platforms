@@ -696,6 +696,111 @@ static bool access_gicv5_iaffid(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
 	return true;
 }
 
+static bool access_gicv5_ppi_hmr(struct kvm_vcpu *vcpu, struct sys_reg_params *p,
+				 const struct sys_reg_desc *r)
+{
+	if (p->is_write)
+		return ignore_write(vcpu, p);
+
+	if (p->Op2 == 0) {	/* ICC_PPI_HMR0_EL1 */
+		p->regval = vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_hmr[0];
+	} else {		/* ICC_PPI_HMR1_EL1 */
+		p->regval = vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_hmr[1];
+	}
+
+	return true;
+}
+
+static bool access_gicv5_ppi_enabler(struct kvm_vcpu *vcpu,
+				     struct sys_reg_params *p,
+				     const struct sys_reg_desc *r)
+{
+	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	u64 masked_write;
+
+	/* We never expect to get here with a read! */
+	if (WARN_ON_ONCE(!p->is_write))
+		return undef_access(vcpu, p, r);
+
+	masked_write = p->regval & cpu_if->vgic_ppi_mask[p->Op2 % 2];
+	cpu_if->vgic_ich_ppi_enabler_entry[p->Op2 % 2] = masked_write;
+
+	return true;
+}
+
+static bool access_gicv5_ppi_pendr(struct kvm_vcpu *vcpu,
+				   struct sys_reg_params *p,
+				   const struct sys_reg_desc *r)
+{
+	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	u64 masked_write;
+
+	/* We never expect to get here with a read! */
+	if (WARN_ON_ONCE(!p->is_write))
+		return undef_access(vcpu, p, r);
+
+	masked_write = p->regval & cpu_if->vgic_ppi_mask[p->Op2 % 2];
+
+	if (p->Op2 & 0x2) {	/* SPENDRx */
+		cpu_if->vgic_ppi_pendr_entry[p->Op2 % 2] |= masked_write;
+	} else {		/* CPENDRx */
+		cpu_if->vgic_ppi_pendr_entry[p->Op2 % 2] &= ~masked_write;
+	}
+
+	return true;
+}
+
+static bool access_gicv5_ppi_activer(struct kvm_vcpu *vcpu,
+				     struct sys_reg_params *p,
+				     const struct sys_reg_desc *r)
+{
+	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	u64 masked_write;
+
+	/* We never expect to get here with a read! */
+	if (WARN_ON_ONCE(!p->is_write))
+		return undef_access(vcpu, p, r);
+
+	masked_write = p->regval & cpu_if->vgic_ppi_mask[p->Op2 % 2];
+
+	if (p->Op2 & 0x2) {	/* SACTIVERx */
+		cpu_if->vgic_ppi_activer_entry[p->Op2 % 2] |= masked_write;
+	} else {		/* CACTIVERx */
+		cpu_if->vgic_ppi_activer_entry[p->Op2 % 2] &= ~masked_write;
+	}
+
+	return true;
+}
+
+static bool access_gicv5_ppi_priorityr(struct kvm_vcpu *vcpu,
+				     struct sys_reg_params *p,
+				     const struct sys_reg_desc *r)
+{
+	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	u64 mask, masked_write;
+	unsigned long mask_slice;
+	int i;
+	int reg_idx = ((p->CRm & 0x1) << 3) | p->Op2;
+	int mask_idx = reg_idx >= 8;
+
+	/* We never expect to get here with a read! */
+	if (WARN_ON_ONCE(!p->is_write))
+		return undef_access(vcpu, p, r);
+
+	/* Get the 8 bits of the mask that we care about */
+	mask_slice = (cpu_if->vgic_ppi_mask[mask_idx] >> (reg_idx % 8) * 8) & 0xff;
+
+	/* Generate our mask for the PRIORITYR */
+	mask = 0;
+	for_each_set_bit(i, &mask_slice, 8)
+		mask |= 0x1f << i * 8;
+
+	masked_write = p->regval & mask;
+	vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_priorityr[reg_idx] = masked_write;
+
+	return true;
+}
+
 static bool trap_raz_wi(struct kvm_vcpu *vcpu,
 			struct sys_reg_params *p,
 			const struct sys_reg_desc *r)
@@ -3426,7 +3531,11 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_ICC_AP1R1_EL1), undef_access },
 	{ SYS_DESC(SYS_ICC_AP1R2_EL1), undef_access },
 	{ SYS_DESC(SYS_ICC_AP1R3_EL1), undef_access },
+	{ SYS_DESC(SYS_ICC_PPI_HMR0_EL1), access_gicv5_ppi_hmr },
+	{ SYS_DESC(SYS_ICC_PPI_HMR1_EL1), access_gicv5_ppi_hmr },
 	{ SYS_DESC(SYS_ICC_IAFFIDR_EL1), access_gicv5_iaffid },
+	{ SYS_DESC(SYS_ICC_PPI_ENABLER0_EL1), access_gicv5_ppi_enabler },
+	{ SYS_DESC(SYS_ICC_PPI_ENABLER1_EL1), access_gicv5_ppi_enabler },
 	{ SYS_DESC(SYS_ICC_DIR_EL1), access_gic_dir },
 	{ SYS_DESC(SYS_ICC_RPR_EL1), undef_access },
 	{ SYS_DESC(SYS_ICC_SGI1R_EL1), access_gic_sgi },
@@ -3440,6 +3549,30 @@ static const struct sys_reg_desc sys_reg_descs[] = {
 	{ SYS_DESC(SYS_ICC_SRE_EL1), access_gic_sre },
 	{ SYS_DESC(SYS_ICC_IGRPEN0_EL1), undef_access },
 	{ SYS_DESC(SYS_ICC_IGRPEN1_EL1), undef_access },
+	{ SYS_DESC(SYS_ICC_PPI_CACTIVER0_EL1), access_gicv5_ppi_activer },
+	{ SYS_DESC(SYS_ICC_PPI_CACTIVER1_EL1), access_gicv5_ppi_activer },
+	{ SYS_DESC(SYS_ICC_PPI_SACTIVER0_EL1), access_gicv5_ppi_activer },
+	{ SYS_DESC(SYS_ICC_PPI_SACTIVER1_EL1), access_gicv5_ppi_activer },
+	{ SYS_DESC(SYS_ICC_PPI_CPENDR0_EL1), access_gicv5_ppi_pendr },
+	{ SYS_DESC(SYS_ICC_PPI_CPENDR1_EL1), access_gicv5_ppi_pendr },
+	{ SYS_DESC(SYS_ICC_PPI_SPENDR0_EL1), access_gicv5_ppi_pendr },
+	{ SYS_DESC(SYS_ICC_PPI_SPENDR1_EL1), access_gicv5_ppi_pendr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR0_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR1_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR2_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR3_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR4_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR5_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR6_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR7_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR8_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR9_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR10_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR11_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR12_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR13_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR14_EL1), access_gicv5_ppi_priorityr },
+	{ SYS_DESC(SYS_ICC_PPI_PRIORITYR15_EL1), access_gicv5_ppi_priorityr },
 
 	{ SYS_DESC(SYS_CONTEXTIDR_EL1), access_vm_reg, reset_val, CONTEXTIDR_EL1, 0 },
 	{ SYS_DESC(SYS_TPIDR_EL1), NULL, reset_unknown, TPIDR_EL1 },

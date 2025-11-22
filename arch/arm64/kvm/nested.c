@@ -220,11 +220,10 @@ static int read_guest_s2_desc(struct kvm_vcpu *vcpu,
 	return 0;
 }
 
-static int swap_guest_s2_desc(phys_addr_t pa, u64 old, u64 new,
+static int swap_guest_s2_desc(struct kvm_vcpu *vcpu,
+			      phys_addr_t pa, u64 old, u64 new,
 			      struct s2_walk_info *wi)
 {
-	struct kvm_vcpu *vcpu = wi->data;
-
 	if (wi->be) {
 		old = cpu_to_be64(old);
 		new = cpu_to_be64(new);
@@ -348,7 +347,7 @@ static int walk_nested_s2_pgd(struct kvm_vcpu *vcpu, phys_addr_t ipa,
 		new_desc |= KVM_PTE_LEAF_ATTR_LO_S2_AF;
 
 	if (new_desc != desc) {
-		ret = swap_guest_s2_desc(paddr, desc, new_desc, wi);
+		ret = swap_guest_s2_desc(vcpu, paddr, desc, new_desc, wi);
 		if (ret)
 			return ret;
 

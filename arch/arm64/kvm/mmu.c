@@ -1946,7 +1946,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 	unsigned long hva;
 	bool is_iabt, write_fault, writable;
 	gfn_t gfn;
-	int ret, idx;
+	int ret;
 
 	if (kvm_vcpu_abt_issea(vcpu))
 		return kvm_handle_guest_sea(vcpu);
@@ -1992,7 +1992,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		return -EFAULT;
 	}
 
-	idx = srcu_read_lock(&vcpu->kvm->srcu);
+	guard(srcu)(&vcpu->kvm->srcu);
 
 	/*
 	 * We may have faulted on a shadow stage 2 page table if we are
@@ -2012,22 +2012,20 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		u32 esr;
 
 		ret = kvm_walk_nested_s2(vcpu, fault_ipa, &nested_trans);
-		if (ret == -EAGAIN) {
-			ret = 1;
-			goto out_unlock;
-		}
+		if (ret == -EAGAIN)
+			return 1;
 
 		if (ret) {
 			esr = kvm_s2_trans_esr(&nested_trans);
 			kvm_inject_s2_fault(vcpu, esr);
-			goto out_unlock;
+			return ret;
 		}
 
 		ret = kvm_s2_handle_perm_fault(vcpu, &nested_trans);
 		if (ret) {
 			esr = kvm_s2_trans_esr(&nested_trans);
 			kvm_inject_s2_fault(vcpu, esr);
-			goto out_unlock;
+			return ret;
 		}
 
 		ipa = kvm_s2_trans_output(&nested_trans);
@@ -2050,10 +2048,8 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 			goto out;
 		}
 
-		if (kvm_vcpu_abt_iss1tw(vcpu)) {
-			ret = kvm_inject_sea_dabt(vcpu, kvm_vcpu_get_hfar(vcpu));
-			goto out_unlock;
-		}
+		if (kvm_vcpu_abt_iss1tw(vcpu))
+			return kvm_inject_sea_dabt(vcpu, kvm_vcpu_get_hfar(vcpu));
 
 		/*
 		 * Check for a cache maintenance operation. Since we
@@ -2067,8 +2063,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		 */
 		if (kvm_is_error_hva(hva) && kvm_vcpu_dabt_is_cm(vcpu)) {
 			kvm_incr_pc(vcpu);
-			ret = 1;
-			goto out_unlock;
+			return 1;
 		}
 
 		/*
@@ -2078,8 +2073,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		 * of the page size.
 		 */
 		ipa |= kvm_vcpu_get_hfar(vcpu) & GENMASK(11, 0);
-		ret = io_mem_abort(vcpu, ipa);
-		goto out_unlock;
+		return io_mem_abort(vcpu, ipa);
 	}
 
 	/* Userspace should not be able to register out-of-bounds IPAs */
@@ -2087,8 +2081,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 
 	if (esr_fsc_is_access_flag_fault(esr)) {
 		handle_access_fault(vcpu, fault_ipa);
-		ret = 1;
-		goto out_unlock;
+		return 1;
 	}
 
 	VM_WARN_ON_ONCE(kvm_vcpu_trap_is_permission_fault(vcpu) &&
@@ -2105,8 +2098,7 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 out:
 	if (ret == -ENOEXEC)
 		ret = kvm_inject_sea_iabt(vcpu, kvm_vcpu_get_hfar(vcpu));
-out_unlock:
-	srcu_read_unlock(&vcpu->kvm->srcu, idx);
+
 	return ret;
 }
 

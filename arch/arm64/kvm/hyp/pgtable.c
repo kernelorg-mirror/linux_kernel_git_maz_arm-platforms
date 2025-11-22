@@ -681,6 +681,7 @@ static int stage2_set_xn_attr(enum kvm_pgtable_prot prot, kvm_pte_t *attr)
 	else
 		xn = 0b11;
 
+	*attr &= ~KVM_PTE_LEAF_ATTR_HI_S2_XN;
 	*attr |= FIELD_PREP(KVM_PTE_LEAF_ATTR_HI_S2_XN, xn);
 	return 0;
 }
@@ -1329,8 +1330,7 @@ int kvm_pgtable_stage2_relax_perms(struct kvm_pgtable *pgt, u64 addr,
 {
 	int ret;
 	s8 level;
-	kvm_pte_t set = 0, clr = 0;
-	kvm_pte_t xn;
+	kvm_pte_t xn = 0, set = 0, clr = 0;
 
 	if (prot & KVM_PTE_LEAF_ATTR_HI_SW)
 		return -EINVAL;

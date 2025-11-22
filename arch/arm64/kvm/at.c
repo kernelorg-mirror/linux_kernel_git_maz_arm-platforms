@@ -1724,8 +1724,8 @@ static int __lse_swap_desc(u64 __user *ptep, u64 old, u64 new)
 
 static int __llsc_swap_desc(u64 __user *ptep, u64 old, u64 new)
 {
+	int ret = 0;
 	u64 tmp;
-	int ret;
 
 	uaccess_enable_privileged();
 
@@ -1743,8 +1743,11 @@ static int __llsc_swap_desc(u64 __user *ptep, u64 old, u64 new)
 
 	uaccess_disable_privileged();
 
-	/* STLXR didn't update the descriptor */
-	if (ret == 1)
+	if (ret < 0)
+		return ret;
+
+	/* STLXR didn't update the descriptor, or the compare failed */
+	if (tmp || ret == 1)
 		return -EAGAIN;
 
 	return ret;

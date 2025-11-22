@@ -2012,8 +2012,10 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 		u32 esr;
 
 		ret = kvm_walk_nested_s2(vcpu, fault_ipa, &nested_trans);
-		if (ret == -EAGAIN)
-			return 1;
+		if (ret == -EAGAIN) {
+			ret = 1;
+			goto out_unlock;
+		}
 
 		if (ret) {
 			esr = kvm_s2_trans_esr(&nested_trans);

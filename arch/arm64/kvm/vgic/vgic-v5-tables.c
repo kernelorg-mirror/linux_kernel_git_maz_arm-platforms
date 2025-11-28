@@ -512,6 +512,20 @@ out_fail:
 	return ret;
 }
 
+static int vgic_v5_allocate_linear_ist(struct kvm *kvm, bool spi_ist,
+				       unsigned int id_bits,
+				       unsigned int istsz);
+static int vgic_v5_allocate_l1_ist(struct kvm *kvm, unsigned int id_bits,
+				   unsigned int istsz, unsigned int l2_split);
+static int vgic_v5_allocate_l2_ists(struct kvm *kvm, unsigned int id_bits,
+				    unsigned int istsz, unsigned int l2_split);
+static int vgic_v5_allocate_two_level_ist(struct kvm *kvm, unsigned int id_bits,
+					  unsigned int istsz,
+					  unsigned int l2_split);
+static int vgic_v5_linear_ist_free(struct kvm *kvm, bool spi);
+static int vgic_v5_two_level_ist_free(struct kvm *kvm, bool spi);
+static int vgic_v5_spi_ist_free(struct kvm *kvm);
+
 int vgic_v5_vmte_release(struct kvm *kvm)
 {
 	u16 vm_id = vgic_v5_vm_id(kvm);
@@ -544,6 +558,32 @@ int vgic_v5_vmte_release(struct kvm *kvm)
 	if (vmi->vpet_base) {
 		kfree(vmi->vpet_base);
 		vmi->vpet_base = NULL;
+	}
+
+	/* If we have an LPI IST, free it */
+	if (FIELD_GET(GICV5_VMTEL2E_IST_VALID, vmte->val[2])) {
+		if (ret) {
+			kvm_err("Failed to make the LPI IST for VM %u invalid\n",
+				vm_id);
+			return ret;
+		}
+
+		ret = vgic_v5_lpi_ist_free(kvm);
+		if (ret)
+			return ret;
+	}
+
+	/* If we have an SPI IST, free it */
+	if (FIELD_GET(GICV5_VMTEL2E_IST_VALID, vmte->val[3])) {
+		if (ret) {
+			kvm_err("Failed to make the SPI IST for VM %u invalid\n",
+				vm_id);
+			return ret;
+		}
+
+		ret = vgic_v5_spi_ist_free(kvm);
+		if (ret)
+			return ret;
 	}
 
 	vmi = xa_erase(&vm_info, vm_id);
@@ -668,6 +708,495 @@ int vgic_v5_vmte_free_vpe(struct kvm_vcpu *vcpu)
 	vped = vmi->vped_ptrs[vpe_id];
 	vmi->vped_ptrs[vpe_id] = NULL;
 	kfree(vped);
+
+	return 0;
+}
+
+/*
+ * Assign an already allocated IST to the VM by populating the fields
+ * in the corresponding VMTE. We re-use this code for both an SPI IST
+ * and LPI IST, even if the paths to reach it might be vastly
+ * different.
+ */
+int vgic_v5_vmte_assign_ist(struct kvm *kvm, phys_addr_t ist_base,
+			    bool two_level, unsigned int id_bits,
+			    unsigned int l2sz, unsigned int istsz,
+			    bool spi_ist)
+{
+	struct vmtl2_entry *vmte;
+	unsigned int section;
+	u64 tmp;
+	int ret;
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	struct kvm_vcpu *vcpu0 = kvm_get_vcpu(kvm, 0);
+	struct gicv5_cmd_info cmd_info;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	if (ist_base & ~GICV5_VMTEL2E_IST_ADDR) {
+		kvm_err("IST alignment issue! Address: 0x%llx, Mask 0x%llx\n",
+			ist_base, GICV5_VMTEL2E_IST_ADDR);
+		return -EINVAL;
+	}
+
+	/*
+	 * In order to allow this code to be reused, we use section to pick
+	 * either the fields for the LPI IST or the SPI IST
+	 */
+	if (spi_ist)
+		section = GICV5_VMTEL2_SPI_SECTION;
+	else
+		section = GICV5_VMTEL2_LPI_SECTION;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	/* Bail if already allocated */
+	if (FIELD_GET(GICV5_VMTEL2E_IST_VALID, vmte->val[section])) {
+		kvm_err("IST already assigned and marked valid\n");
+		return -EINVAL;
+	}
+
+	tmp = 0ULL;
+
+	/* L2 Size */
+	tmp |= FIELD_PREP(GICV5_VMTEL2E_IST_L2SZ, l2sz);
+
+	/* IST Addr */
+	tmp |= FIELD_PREP(GICV5_VMTEL2E_IST_ADDR,
+			ist_base >> GICV5_VMTEL2E_IST_ADDR_SHIFT);
+
+	/* The ISTE size used by the IST  */
+	tmp |= FIELD_PREP(GICV5_VMTEL2E_IST_ISTSZ, istsz);
+
+	/* IST Structure - either clear or set the bit */
+	if (!two_level) {
+		tmp &= ~FIELD_PREP(GICV5_VMTEL2E_IST_STRUCTURE, 1);
+	} else {
+		tmp |= FIELD_PREP(GICV5_VMTEL2E_IST_STRUCTURE, 1);
+	}
+
+	/* ID Bits */
+	tmp |= FIELD_PREP(GICV5_VMTEL2E_IST_ID_BITS, id_bits);
+
+	WRITE_ONCE(vmte->val[section], cpu_to_le64(tmp));
+
+	if (gicv5_host_ist_caps.irs_non_coherent) {
+		dcache_clean_poc((unsigned long)vmte,
+				 (unsigned long)vmte + sizeof(*vmte));
+	} else {
+		dsb(ishst);
+	}
+
+	/* Finally, mark the entry as valid */
+	cmd_info.cmd_type = spi_ist? SPI_VIST_MAKE_VALID : LPI_VIST_MAKE_VALID;
+	return irq_set_vcpu_affinity(vgic_v5_vpe_db(vcpu0), &cmd_info);
+}
+
+static int vgic_v5_allocate_linear_ist(struct kvm *kvm, bool spi_ist,
+				       unsigned int id_bits, unsigned int istsz)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	__le64 *ist;
+	u32 l1sz;
+	const size_t n = id_bits + 1 + istsz;
+	gicv5_vm_info *vmi;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	/*
+	 * Allocate the IST. We only have one level, so we just use the L2 ISTE.
+	 */
+	l1sz = BIT(n + 1);
+	ist = kzalloc(l1sz, GFP_KERNEL);
+	if (!ist)
+		return -ENOMEM;
+
+	if (gicv5_host_ist_caps.irs_non_coherent) {
+		dcache_clean_inval_poc((unsigned long)ist,
+				       (unsigned long)ist + l1sz);
+	} else {
+		dsb(ishst);
+	}
+
+	if (spi_ist) {
+		vmi->h_spi_ist = ist;
+	} else {
+		vmi->h_lpi_ist_structure = false;
+		vmi->h_lpi_ist = ist;
+	}
+
+	return 0;
+}
+
+static int vgic_v5_allocate_l1_ist(struct kvm *kvm, unsigned int id_bits,
+				   unsigned int istsz, unsigned int l2sz)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	__le64 *ist;
+	u32 l1sz;
+	const size_t n =  max(5, id_bits - ((10 - istsz) + (2 * l2sz)) + 3 - 1);
+	gicv5_vm_info *vmi;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	l1sz = BIT(n + 1);
+
+	ist = kzalloc(l1sz, GFP_KERNEL);
+	if (!ist)
+		return -ENOMEM;
+
+	if (gicv5_host_ist_caps.irs_non_coherent) {
+		dcache_clean_inval_poc((unsigned long)ist,
+				       (unsigned long)ist + l1sz);
+	} else {
+		dsb(ishst);
+	}
+
+	vmi->h_lpi_ist_structure = true;
+	vmi->h_lpi_ist = ist;
+
+	return 0;
+}
+
+static int vgic_v5_allocate_l2_ists(struct kvm *kvm, unsigned int id_bits,
+				    unsigned int istsz, unsigned int l2sz)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	u32 index;
+	__le64 *l2ist;
+	const size_t n =  max(5, id_bits - ((10 - istsz) + (2 * l2sz)) + 3 - 1);
+	const int l1_entries = BIT(n + 1) / GICV5_IRS_ISTL1E_SIZE;
+	const size_t l2size = BIT(11 + (2 * l2sz) + 1);
+	__le64 *l1ist;
+	gicv5_vm_info *vmi;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	l1ist = vmi->h_lpi_ist;
+
+	// Allocate the storage for the pointers to the L2 ISTs (for freeing later)
+	vmi->h_lpi_l2_ists = kzalloc(
+		l1_entries * sizeof(vmi->h_lpi_l2_ists),
+		GFP_KERNEL);
+	if (!vmi->h_lpi_l2_ists)
+		return -ENOMEM;
+
+	// for each L1 entry:
+	for (index = 0; index < l1_entries; ++index) {
+		l2ist = kzalloc(l2size, GFP_KERNEL);
+		if (!l2ist)
+			return -ENOMEM;
+
+		l1ist[index] = cpu_to_le64(
+			virt_to_phys(l2ist) & GICV5_ISTL1E_L2_ADDR_MASK) |
+			GICV5_ISTL1E_VALID;
+
+		if (gicv5_host_ist_caps.irs_non_coherent) {
+			dcache_clean_inval_poc((unsigned long)l2ist,
+					       (unsigned long)l2ist + l2size);
+			dcache_clean_poc((unsigned long)(l1ist + index),
+					 (unsigned long)(l1ist + index) + sizeof(*l1ist));
+		} else {
+			dsb(ishst);
+		}
+
+		vmi->h_lpi_l2_ists[index] = l2ist;
+	}
+
+	return 0;
+}
+
+static int vgic_v5_allocate_two_level_ist(struct kvm *kvm, unsigned int id_bits,
+					  unsigned int istsz, unsigned int l2sz)
+{
+	int ret;
+
+	// Allocate the L1 IST first
+	ret = vgic_v5_allocate_l1_ist(kvm, id_bits, istsz, l2sz);
+	if (ret)
+		return ret;
+
+	return vgic_v5_allocate_l2_ists(kvm, id_bits, istsz, l2sz);
+}
+
+/*
+ * Free a Linear IST. Should only happen once the VM is dead.
+ */
+static int vgic_v5_linear_ist_free(struct kvm *kvm, bool spi)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	void *base_addr;
+	int section;
+	struct vmtl2_entry *vmte;
+	gicv5_vm_info *vmi;
+	int ret;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	if (spi) {
+		section = GICV5_VMTEL2_SPI_SECTION;
+		base_addr = vmi->h_spi_ist;
+		vmi->h_spi_ist = NULL;
+	} else {
+		section = GICV5_VMTEL2_LPI_SECTION;
+		base_addr = vmi->h_lpi_ist;
+		vmi->h_lpi_ist = NULL;
+	}
+
+	kfree(base_addr);
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	/* The VM should be dead here, so we can just zero the VMT section */
+	WRITE_ONCE(vmte->val[section], cpu_to_le64(0ULL));
+
+	if (gicv5_host_ist_caps.irs_non_coherent) {
+		dcache_clean_poc((unsigned long)vmte,
+				 (unsigned long)vmte + sizeof(*vmte));
+	} else {
+		dsb(ishst);
+	}
+
+	return 0;
+}
+
+/*
+ * Free a Two-Level IST. Should only happen once the VM is dead.
+ */
+static int vgic_v5_two_level_ist_free(struct kvm *kvm, bool spi)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	unsigned int id_bits, istsz, l2sz;
+	bool structure;
+	size_t n;
+	int section, l1_entries;
+	__le64 *l1ist, *l2ist;
+	u32 index;
+	struct vmtl2_entry *vmte;
+	gicv5_vm_info *vmi;
+	int ret;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	/*
+	 * We don't ever create two level SPI ISTs, so freeing is a bad idea!
+	 */
+	if (spi)
+		return -EINVAL;
+
+	section = GICV5_VMTEL2_LPI_SECTION;
+	l1ist = vmi->h_lpi_ist;
+	vmi->h_lpi_ist = NULL;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	structure = FIELD_GET(GICV5_VMTEL2E_IST_STRUCTURE, vmte->val[section]);
+	if (!structure) {
+		kvm_err("Expected a two-level IST; got linear\n");
+		return -EINVAL;
+	}
+
+	id_bits = FIELD_GET(GICV5_VMTEL2E_IST_ID_BITS, vmte->val[section]);
+	istsz = FIELD_GET(GICV5_VMTEL2E_IST_ISTSZ, vmte->val[section]);
+	l2sz = FIELD_GET(GICV5_VMTEL2E_IST_L2SZ, vmte->val[section]);
+
+	n =  max(2, id_bits - ((10 - istsz) + (2 * l2sz)) + 3 - 1);
+	l1_entries = BIT(n + 1) / GICV5_IRS_ISTL1E_SIZE;
+
+	// for each L1 entry free the L2 IST it points to
+	for (index = 0; index < l1_entries; ++index) {
+		l2ist = vmi->h_lpi_l2_ists[index];
+		if (l2ist == NULL)
+			continue;
+
+		kfree(l2ist);
+	}
+
+	// Free the L2 pointers
+	kfree(vmi->h_lpi_l2_ists);
+	vmi->h_lpi_l2_ists = NULL;
+
+	// Free the L1 IST itself
+	kfree(l1ist);
+
+	/* The VM should be dead here, so we can just zero the VMT section */
+	WRITE_ONCE(vmte->val[section], cpu_to_le64(0ULL));
+
+	if (gicv5_host_ist_caps.irs_non_coherent) {
+		dcache_clean_poc((unsigned long)vmte,
+				 (unsigned long)vmte + sizeof(*vmte));
+	} else {
+		dsb(ishst);
+	}
+
+	return 0;
+}
+
+/*
+ * Allocate an IST for SPIs.
+ *
+ * We don't anticipate a large number of SPIs being allocated. Therefore, we
+ * always allocate a Linear IST for SPIs. This will need to be revisited should
+ * that assumption no longer hold.
+ */
+int vgic_v5_spi_ist_allocate(struct kvm *kvm, phys_addr_t *base_addr,
+			     unsigned int id_bits, unsigned int istsz)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	int ret;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	ret = vgic_v5_allocate_linear_ist(kvm, true, id_bits, istsz);
+	if (ret)
+		return ret;
+
+	*base_addr = virt_to_phys(vmi->h_spi_ist);
+	return 0;
+}
+
+/*
+ * Free the IST for SPIs. Should only happen once the VM is dead.
+ */
+static int vgic_v5_spi_ist_free(struct kvm *kvm)
+{
+	return vgic_v5_linear_ist_free(kvm, true);
+}
+
+static unsigned vgic_v5_ist_l2sz(void)
+{
+	switch (PAGE_SIZE) {
+	case SZ_64K:
+		if (gicv5_host_ist_caps.ist_l2sz & 0x4)
+			return GICV5_IRS_IST_CFGR_L2SZ_64K;
+		fallthrough;
+	case SZ_4K:
+		if (gicv5_host_ist_caps.ist_l2sz & 0x1)
+			return GICV5_IRS_IST_CFGR_L2SZ_4K;
+		fallthrough;
+	case SZ_16K:
+		if (gicv5_host_ist_caps.ist_l2sz & 0x2)
+			return GICV5_IRS_IST_CFGR_L2SZ_16K;
+		break;
+	}
+
+	if (gicv5_host_ist_caps.ist_l2sz & 0x1)
+		return GICV5_IRS_IST_CFGR_L2SZ_4K;
+
+	return GICV5_IRS_IST_CFGR_L2SZ_64K;
+}
+
+static unsigned vgic_v5_ist_istsz(unsigned id_bits)
+{
+	if (!gicv5_host_ist_caps.istmd)
+		return GICV5_IRS_IST_CFGR_ISTSZ_4;
+
+	if (id_bits >= gicv5_host_ist_caps.istmd_sz)
+		return GICV5_IRS_IST_CFGR_ISTSZ_16;
+
+	return GICV5_IRS_IST_CFGR_ISTSZ_8;
+}
+
+int vgic_v5_lpi_ist_alloc(struct kvm *kvm, gpa_t guest_ist_base, unsigned id_bits)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	int ret;
+	phys_addr_t host_phys_addr;
+	bool host_two_level;
+	unsigned host_istsz, host_l2sz;
+	gicv5_vm_info *vmi;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	vmi = xa_load(&vm_info, vm_id);
+	if (WARN_ON_ONCE(!vmi))
+		return -EINVAL;
+
+	host_istsz = vgic_v5_ist_istsz(id_bits);
+	/* Go for two level if we need more than one page for the IST */
+	host_two_level = gicv5_host_ist_caps.ist_levels && id_bits > PAGE_SIZE / host_istsz;
+	host_l2sz = vgic_v5_ist_l2sz();
+
+	if (!host_two_level)
+		ret = vgic_v5_allocate_linear_ist(kvm, false, id_bits, host_istsz);
+	else
+		ret = vgic_v5_allocate_two_level_ist(kvm, id_bits, host_istsz, host_l2sz);
+	if (ret) {
+		kvm_err("Failed to allocate LPI IST\n");
+		return ret;
+	}
+
+	host_phys_addr = virt_to_phys(vmi->h_lpi_ist);
+
+	return vgic_v5_vmte_assign_ist(kvm, host_phys_addr, host_two_level,
+				       id_bits, 0, 0, false);
+}
+
+/*
+ * Free the shim layer that we have allocated over the guest's IST if it has
+ * been allocated. Else, do nothing.
+ */
+int vgic_v5_lpi_ist_free(struct kvm *kvm)
+{
+	u16 vm_id = vgic_v5_vm_id(kvm);
+	bool two_level;
+	int ret;
+	struct vmtl2_entry *vmte;
+
+	ret = vgic_v5_check_vm_id(vm_id);
+	if (ret)
+		return ret;
+
+	ret = vgic_v5_get_l2_vmte(vm_id, &vmte);
+	if (ret)
+		return ret;
+
+	/* If we have nothing to clean up, return immediately. */
+	if (!FIELD_GET(GICV5_VMTEL2E_IST_VALID, vmte->val[2]))
+		return 0;
+
+	two_level = FIELD_GET(GICV5_VMTEL2E_IST_STRUCTURE,
+			vmte->val[2]);
+
+	if (!two_level)
+		return vgic_v5_linear_ist_free(kvm, false);
+	else
+		return vgic_v5_two_level_ist_free(kvm, false);
 
 	return 0;
 }

@@ -53,6 +53,9 @@ struct vmtl2_entry {
 #define GICV5_VMTEL2E_IST_STRUCTURE	BIT_ULL(58)
 #define GICV5_VMTEL2E_IST_ID_BITS	GENMASK_ULL(63, 59)
 
+#define GICV5_VMTEL2_LPI_SECTION	2
+#define GICV5_VMTEL2_SPI_SECTION	3
+
 // Virtual PE Table Entry
 typedef __le64 vpe_entry;
 #define GICV5_VPE_VALID			BIT_ULL(0)
@@ -64,6 +67,12 @@ typedef struct vm_info {
 	void * __iomem vmd_base;
 	vpe_entry * __iomem vpet_base;
 	void ** __iomem vped_ptrs;
+
+	/* Tracking for the hyp-owned ISTs */
+	bool h_lpi_ist_structure;
+	__le64 *h_lpi_ist;
+	__le64 **h_lpi_l2_ists;
+	__le64 *h_spi_ist;
 } gicv5_vm_info;
 
 typedef struct vmt {
@@ -110,6 +119,13 @@ int vgic_v5_vmte_init(struct kvm *kvm);
 int vgic_v5_vmte_release(struct kvm *kvm);
 int vgic_v5_vmte_alloc_vpe(struct kvm_vcpu *vcpu);
 int vgic_v5_vmte_free_vpe(struct kvm_vcpu *vcpu);
+int vgic_v5_vmte_assign_ist(struct kvm *kvm, phys_addr_t ist_base,
+			    bool two_level, unsigned int id_bits,
+			    unsigned int l2sz, unsigned int istsz, bool spi_ist);
+int vgic_v5_spi_ist_allocate(struct kvm *kvm, phys_addr_t *base_addr,
+			     unsigned int id_bits, unsigned int istsz);
+int vgic_v5_lpi_ist_alloc(struct kvm *kvm, gpa_t guest_ist_base, unsigned id_bits);
+int vgic_v5_lpi_ist_free(struct kvm *kvm);
 phys_addr_t vgic_v5_get_vmt_base(void);
 unsigned int vgic_v5_get_vpe_id_bits(void);
 

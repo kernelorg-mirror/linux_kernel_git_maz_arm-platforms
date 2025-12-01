@@ -26,6 +26,31 @@ void __vgic_v5_detect_ppis(u64 *impl_ppi_mask)
 	write_sysreg_s(0, SYS_ICH_PPI_ENABLER1_EL2);
 }
 
+void __vgic_v5_make_resident(struct vgic_v5_cpu_if *cpu_if)
+{
+	write_sysreg_s(cpu_if->vgic_contextr, SYS_ICH_CONTEXTR_EL2);
+	isb();
+
+	cpu_if->vgic_contextr = read_sysreg_s(SYS_ICH_CONTEXTR_EL2);
+	WARN_ON(FIELD_GET(ICH_CONTEXTR_EL2_F, cpu_if->vgic_contextr));
+
+	WRITE_ONCE(cpu_if->gicv5_vpe.resident, true);
+}
+
+void __vgic_v5_make_non_resident(struct vgic_v5_cpu_if *cpu_if)
+{
+	WRITE_ONCE(cpu_if->gicv5_vpe.db_fired, false);
+
+	/*
+	 * Make as non-resident before actually making non-resident. Avoids race
+	 * with doorbell arriving.
+	 */
+	WRITE_ONCE(cpu_if->gicv5_vpe.resident, false);
+
+	write_sysreg_s(cpu_if->vgic_contextr, SYS_ICH_CONTEXTR_EL2);
+	isb();
+}
+
 void __vgic_v5_save_apr(struct vgic_v5_cpu_if *cpu_if)
 {
 	cpu_if->vgic_apr = read_sysreg_s(SYS_ICH_APR_EL2);
@@ -143,4 +168,24 @@ void __vgic_v5_save_state(struct vgic_v5_cpu_if *cpu_if)
 void __vgic_v5_restore_state(struct vgic_v5_cpu_if *cpu_if)
 {
 	write_sysreg_s(cpu_if->vgic_icsr, SYS_ICC_ICSR_EL1);
+}
+
+void __vgic_v5_vdpend(u32 intid, bool pending, u16 vm)
+{
+	u64 value;
+
+	value = intid & (GICV5_GIC_VDPEND_ID_MASK | GICV5_GIC_VDPEND_TYPE_MASK);
+	value |= FIELD_PREP(GICV5_GIC_VDPEND_PENDING_MASK, pending);
+	value |= FIELD_PREP(GICV5_GIC_VDPEND_VM_MASK, vm);
+	gic_insn(value, VDPEND);
+}
+
+u64 __vgic_v5_vdrcfg(u32 intid)
+{
+	u64 value;
+
+	value = intid & (GICV5_GIC_VDRCFG_ID_MASK | GICV5_GIC_VDRCFG_TYPE_MASK);
+	gic_insn(value, VDRCFG);
+	isb();
+	return read_sysreg_s(SYS_ICC_ICSR_EL1);
 }

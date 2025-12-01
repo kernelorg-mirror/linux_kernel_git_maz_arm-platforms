@@ -596,6 +596,19 @@ static void handle___vgic_v5_detect_ppis(struct kvm_cpu_context *host_ctxt)
 	cpu_reg(host_ctxt, 2) = ppi[1];
 }
 
+static void handle___vgic_v5_make_resident(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(struct vgic_v5_cpu_if *, cpu_if, host_ctxt, 1);
+
+	__vgic_v5_make_resident(kern_hyp_va(cpu_if));
+}
+static void handle___vgic_v5_make_non_resident(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(struct vgic_v5_cpu_if *, cpu_if, host_ctxt, 1);
+
+	__vgic_v5_make_non_resident(kern_hyp_va(cpu_if));
+}
+
 static void handle___vgic_v5_save_apr(struct kvm_cpu_context *host_ctxt)
 {
 	DECLARE_REG(struct vgic_v5_cpu_if *, cpu_if, host_ctxt, 1);
@@ -622,6 +635,22 @@ static void handle___vgic_v5_restore_ppi_state(struct kvm_cpu_context *host_ctxt
 	DECLARE_REG(struct vgic_v5_cpu_if *, cpu_if, host_ctxt, 1);
 
 	__vgic_v5_restore_ppi_state(kern_hyp_va(cpu_if));
+}
+
+static void handle___vgic_v5_vdpend(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(u32, intid, host_ctxt, 1);
+	DECLARE_REG(bool, pending, host_ctxt, 2);
+	DECLARE_REG(u16, vm, host_ctxt, 3);
+
+	__vgic_v5_vdpend(intid, pending, vm);
+}
+
+static void handle___vgic_v5_vdrcfg(struct kvm_cpu_context *host_ctxt)
+{
+	DECLARE_REG(u32, intid, host_ctxt, 1);
+
+	cpu_reg(host_ctxt, 1) = __vgic_v5_vdrcfg(intid);
 }
 
 typedef void (*hcall_t)(struct kvm_cpu_context *);
@@ -666,10 +695,14 @@ static const hcall_t host_hcall[] = {
 	HANDLE_FUNC(__pkvm_vcpu_put),
 	HANDLE_FUNC(__pkvm_tlb_flush_vmid),
 	HANDLE_FUNC(__vgic_v5_detect_ppis),
+	HANDLE_FUNC(__vgic_v5_make_resident),
+	HANDLE_FUNC(__vgic_v5_make_non_resident),
 	HANDLE_FUNC(__vgic_v5_save_apr),
 	HANDLE_FUNC(__vgic_v5_restore_vmcr_apr),
 	HANDLE_FUNC(__vgic_v5_save_ppi_state),
 	HANDLE_FUNC(__vgic_v5_restore_ppi_state),
+	HANDLE_FUNC(__vgic_v5_vdpend),
+	HANDLE_FUNC(__vgic_v5_vdrcfg),
 };
 
 static void handle_host_hcall(struct kvm_cpu_context *host_ctxt)

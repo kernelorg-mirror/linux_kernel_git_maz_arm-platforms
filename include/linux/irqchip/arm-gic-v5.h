@@ -363,6 +363,7 @@ void gicv5_irs_syncr(void);
 /* Embedded in kvm.arch */
 struct gicv5_vpe {
 	bool			resident;
+	bool			db_fired;
 };
 
 struct gicv5_vm {

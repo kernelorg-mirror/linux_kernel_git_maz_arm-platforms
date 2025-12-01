@@ -90,10 +90,14 @@ enum __kvm_host_smccc_func {
 	__KVM_HOST_SMCCC_FUNC___pkvm_vcpu_put,
 	__KVM_HOST_SMCCC_FUNC___pkvm_tlb_flush_vmid,
 	__KVM_HOST_SMCCC_FUNC___vgic_v5_detect_ppis,
+	__KVM_HOST_SMCCC_FUNC___vgic_v5_make_resident,
+	__KVM_HOST_SMCCC_FUNC___vgic_v5_make_non_resident,
 	__KVM_HOST_SMCCC_FUNC___vgic_v5_save_apr,
 	__KVM_HOST_SMCCC_FUNC___vgic_v5_restore_vmcr_apr,
 	__KVM_HOST_SMCCC_FUNC___vgic_v5_save_ppi_state,
 	__KVM_HOST_SMCCC_FUNC___vgic_v5_restore_ppi_state,
+	__KVM_HOST_SMCCC_FUNC___vgic_v5_vdpend,
+	__KVM_HOST_SMCCC_FUNC___vgic_v5_vdrcfg,
 };
 
 #define DECLARE_KVM_VHE_SYM(sym)	extern char sym[]

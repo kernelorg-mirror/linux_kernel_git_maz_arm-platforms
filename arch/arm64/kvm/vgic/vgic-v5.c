@@ -658,6 +658,7 @@ static void vgic_v5_teardown_per_vm_domain(struct gicv5_vm *vm)
 
 void vgic_v5_reset(struct kvm_vcpu *vcpu)
 {
+	int rc;
 	u64 idr0;
 
 	idr0 = read_sysreg_s(SYS_ICC_IDR0_EL1);
@@ -684,6 +685,31 @@ void vgic_v5_reset(struct kvm_vcpu *vcpu)
 		pr_warn("unknown value for priority_bits");
 		vcpu->arch.vgic_cpu.num_pri_bits = 4;
 	}
+
+	/* Make the VPE valid in the VPET */
+	rc = vgic_v5_send_command(vcpu, VPE_MAKE_VALID);
+	if (WARN_ON(rc)) {
+		pr_warn("could not map VPE to IRS");
+		kvm_vm_dead(vcpu->kvm);
+		return;
+	}
+
+	enable_irq(vgic_v5_vpe_db(vcpu));
+}
+
+static void vgic_v5_disable_vcpu(struct kvm_vcpu *vcpu)
+{
+	/*
+	 * We are called in the vgic_v5_teardown path. We no longer need the
+	 * doorbell virqs.
+	 */
+	disable_irq(vgic_v5_vpe_db(vcpu));
+
+	/* Free the doorbell irq (counter-part to request_irq)*/
+	free_irq(vgic_v5_vpe_db(vcpu), vcpu);
+
+	/* Remove the irq from the domain too */
+	irq_domain_free_irqs(vgic_v5_vpe_db(vcpu), 1);
 }
 
 int vgic_v5_init(struct kvm *kvm)

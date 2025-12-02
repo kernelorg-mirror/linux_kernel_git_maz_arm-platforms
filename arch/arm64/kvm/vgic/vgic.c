@@ -854,7 +854,7 @@ retry:
 static void vgic_fold_state(struct kvm_vcpu *vcpu)
 {
 	if (vgic_is_v5(vcpu->kvm))
-		vgic_v5_fold_ppi_state(vcpu);
+		vgic_v5_fold_irq_state(vcpu);
 	else if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_fold_lr_state(vcpu);
 	else

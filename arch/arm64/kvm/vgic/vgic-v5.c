@@ -1112,6 +1112,8 @@ int vgic_v5_set_ppi_dvi(struct kvm_vcpu *vcpu, u32 irq, bool dvi)
 void vgic_v5_load(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	u16 vm = vgic_v5_vm_id(vcpu->kvm);
+	u16 vpe = vgic_v5_vpe_id(vcpu);
 
 	/*
 	 * On the WFI path, vgic_load is called a second time. The first is when
@@ -1124,12 +1126,18 @@ void vgic_v5_load(struct kvm_vcpu *vcpu)
 
 	kvm_call_hyp(__vgic_v5_restore_vmcr_apr, cpu_if);
 
-	WRITE_ONCE(cpu_if->gicv5_vpe.resident, true);
+	cpu_if->vgic_contextr = FIELD_PREP(ICH_CONTEXTR_EL2_V, true) |
+				FIELD_PREP(ICH_CONTEXTR_EL2_VPE, vpe) |
+				FIELD_PREP(ICH_CONTEXTR_EL2_VM, vm);
+
+	kvm_call_hyp(__vgic_v5_make_resident, cpu_if);
 }
 
 void vgic_v5_put(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;
+	bool req_db = !!vcpu_get_flag(vcpu, IN_WFI);
+	int dbpm;
 
 	/*
 	 * Do nothing if we're not resident. This can happen in the WFI path
@@ -1142,7 +1150,33 @@ void vgic_v5_put(struct kvm_vcpu *vcpu)
 
 	kvm_call_hyp(__vgic_v5_save_apr, cpu_if);
 
-	WRITE_ONCE(cpu_if->gicv5_vpe.resident, false);
+	cpu_if->vgic_contextr = 0;
+
+	if (req_db) {
+		/*
+		* Find the virual running priority and use this to calculate the
+		* doorbell priority mask. We combine the highest active priority
+		* and the CPU's priority mask. The guest can't handle interrupts
+		* with priorities less than or equal to the virtual running
+		* priority, so there's literally no point in waking the guest
+		* for these.
+		*
+		* The priority needs to be higher than the mask to signal, so
+		* pick the next higher priority (subtract 1).
+		*/
+		dbpm = vgic_v5_get_effective_priority_mask(vcpu) - 1;
+
+		/* Don't request a doorbell if the max priority is masked */
+		if (dbpm > 0)
+			cpu_if->vgic_contextr = FIELD_PREP(ICH_CONTEXTR_EL2_DB, 1) |
+						FIELD_PREP(ICH_CONTEXTR_EL2_DBPM, dbpm);
+
+		/* Make the doorbell affine to this CPU */
+		WARN_ON(irq_set_affinity(vgic_v5_vpe_db(vcpu),
+					 cpumask_of(smp_processor_id())));
+	}
+
+	kvm_call_hyp(__vgic_v5_make_non_resident, cpu_if);
 }
 
 void vgic_v5_get_vmcr(struct kvm_vcpu *vcpu, struct vgic_vmcr *vmcrp)

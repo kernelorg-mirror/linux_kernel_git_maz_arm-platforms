@@ -391,6 +391,8 @@ int vgic_v5_map_resources(struct kvm *kvm);
 int vgic_v5_init(struct kvm *kvm);
 void vgic_v5_teardown(struct kvm *kvm);
 void vgic_v5_set_ppi_ops(struct vgic_irq *irq);
+void vgic_v5_set_spi_ops(struct vgic_irq *irq);
+void vgic_v5_set_irq_pend(struct kvm_vcpu *vcpu, struct vgic_irq *irq);
 int vgic_v5_set_ppi_dvi(struct kvm_vcpu *vcpu, u32 irq, bool dvi);
 bool vgic_v5_has_pending_ppi(struct kvm_vcpu *vcpu);
 void vgic_v5_flush_ppi_state(struct kvm_vcpu *vcpu);

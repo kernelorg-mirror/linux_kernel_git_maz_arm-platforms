@@ -1278,6 +1278,103 @@ int vgic_v5_set_ppi_dvi(struct kvm_vcpu *vcpu, u32 irq, bool dvi)
 	return 0;
 }
 
+static bool vgic_v5_set_spi_pending_state(struct kvm_vcpu *vcpu,
+					  struct vgic_irq *irq)
+{
+	vgic_v5_set_irq_pend(irq->target_vcpu, irq);
+	return true;
+}
+
+/*
+ * Put the SPI on the SPI AP list. No need to kick the VCPU. If it is running,
+ * the interrupt will signal at some point, and if not, then a VPE doorbell will
+ * fire (based on the IAFFID the guest has configured).
+ */
+static bool vgic_v5_spi_queue_irq_unlock(struct kvm *kvm,
+					struct vgic_irq *irq,
+					unsigned long flags)
+	__releases(&irq->irq_lock)
+{
+	struct vgic_dist *vgic_dist = &kvm->arch.vgic;
+
+	lockdep_assert_held(&irq->irq_lock);
+
+	if (WARN_ON(!__irq_is_spi(KVM_DEV_TYPE_ARM_VGIC_V5, irq->intid)))
+		return false;
+
+retry:
+	/*
+	 * We're already on the AP list or don't need to be on
+	 * one; nothing more to do.
+	 */
+	if (irq->vcpu) {
+		raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+		return true;
+	}
+
+	raw_spin_unlock_irqrestore(&irq->irq_lock, flags);
+
+	/* someone can do stuff here, which we re-check below */
+	raw_spin_lock_irqsave(&vgic_dist->vgic_v5_spi_ap_list_lock, flags);
+	raw_spin_lock(&irq->irq_lock);
+
+	/*
+	 * We've lost the race; and have already been queued. Unlock
+	 * global AP list, relock IRQ, and retry.
+	 */
+	if (unlikely(irq->vcpu)) {
+		raw_spin_unlock(&irq->irq_lock);
+		raw_spin_unlock_irqrestore(&vgic_dist->vgic_v5_spi_ap_list_lock, flags);
+
+		raw_spin_lock_irqsave(&irq->irq_lock, flags);
+
+		goto retry;
+	}
+
+	/*
+	 * Grab a reference to the irq to reflect the fact that it is
+	 * now in the ap_list. This is safe as the caller must already
+	 * hold a reference on the irq.
+	 */
+	vgic_get_irq_ref(irq);
+	list_add_tail(&irq->ap_list, &vgic_dist->vgic_v5_spi_ap_list_head);
+
+	/*
+	 * Use the VCPU we've been given as the target VCPU to track
+	 * that we're on an AP list. We're not queued on that VCPU's AP
+	 * list, but in lieu of an AP flag, this will do.
+	 */
+	irq->vcpu = irq->target_vcpu;
+
+	raw_spin_unlock(&irq->irq_lock);
+	raw_spin_unlock_irqrestore(&vgic_dist->vgic_v5_spi_ap_list_lock, flags);
+
+	return true;
+}
+
+static struct irq_ops vgic_v5_spi_irq_ops = {
+	.set_pending_state = vgic_v5_set_spi_pending_state,
+	.queue_irq_unlock = vgic_v5_spi_queue_irq_unlock,
+};
+
+void vgic_v5_set_spi_ops(struct vgic_irq *irq)
+{
+	if (WARN_ON(!irq) || WARN_ON(irq->ops))
+		return;
+
+	irq->ops = &vgic_v5_spi_irq_ops;
+}
+
+/* Set the pending state for GICv5 SPIs and LPIs */
+void vgic_v5_set_irq_pend(struct kvm_vcpu *vcpu, struct vgic_irq *irq)
+{
+	if (WARN_ON(__irq_is_ppi(KVM_DEV_TYPE_ARM_VGIC_V5, irq->intid)))
+		return;
+
+	kvm_call_hyp(__vgic_v5_vdpend, irq->intid, irq_is_pending(irq),
+		     vcpu->kvm->arch.vgic.gicv5_vm.vm_id);
+}
+
 void vgic_v5_load(struct kvm_vcpu *vcpu)
 {
 	struct vgic_v5_cpu_if *cpu_if = &vcpu->arch.vgic_cpu.vgic_v5;

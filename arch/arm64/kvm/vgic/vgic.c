@@ -404,6 +404,13 @@ bool vgic_queue_irq_unlock(struct kvm *kvm, struct vgic_irq *irq,
 
 	lockdep_assert_held(&irq->irq_lock);
 
+	/*
+	 * If we have the queue_irq_unlock irq_op, we want to override
+	 * the default behaviour. Call that, and return early.
+	 */
+	if (irq->ops && irq->ops->queue_irq_unlock)
+		return irq->ops->queue_irq_unlock(kvm, irq, flags);
+
 retry:
 	vcpu = vgic_target_oracle(irq);
 	if (irq->vcpu || !vcpu) {
@@ -547,7 +554,11 @@ int kvm_vgic_inject_irq(struct kvm *kvm, struct kvm_vcpu *vcpu,
 	else
 		irq->pending_latch = true;
 
+	if (irq->ops && irq->ops->set_pending_state)
+		WARN_ON_ONCE(!irq->ops->set_pending_state(vcpu, irq));
+
 	vgic_queue_irq_unlock(kvm, irq, flags);
+
 	vgic_put_irq(kvm, irq);
 
 	return 0;

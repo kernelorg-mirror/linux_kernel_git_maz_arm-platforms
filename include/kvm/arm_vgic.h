@@ -32,6 +32,9 @@
 #define VGIC_MIN_LPI		8192
 #define KVM_IRQCHIP_NUM_PINS	(1020 - 32)
 
+/* GICv5 constants */
+#define VGIC_V5_NR_PRIVATE_IRQS	128
+
 #define is_v5_type(t, i)	(FIELD_GET(GICV5_HWIRQ_TYPE, (i)) == (t))
 
 #define __irq_is_sgi(t, i)						\

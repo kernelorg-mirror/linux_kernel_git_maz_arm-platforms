@@ -105,6 +105,14 @@ struct vgic_irq *vgic_get_vcpu_irq(struct kvm_vcpu *vcpu, u32 intid)
 	if (WARN_ON(!vcpu))
 		return NULL;
 
+	if (vgic_is_v5(vcpu->kvm) &&
+	    __irq_is_ppi(KVM_DEV_TYPE_ARM_VGIC_V5, intid)) {
+		u32 int_num = FIELD_GET(GICV5_HWIRQ_ID, intid);
+
+		int_num = array_index_nospec(int_num, VGIC_V5_NR_PRIVATE_IRQS);
+		return &vcpu->arch.vgic_cpu.private_irqs[int_num];
+	}
+
 	/* SGIs and PPIs */
 	if (intid < VGIC_NR_PRIVATE_IRQS) {
 		intid = array_index_nospec(intid, VGIC_NR_PRIVATE_IRQS);
@@ -258,10 +266,12 @@ struct kvm_vcpu *vgic_target_oracle(struct vgic_irq *irq)
 	 * If the distributor is disabled, pending interrupts shouldn't be
 	 * forwarded.
 	 */
-	if (irq->enabled && irq_is_pending(irq)) {
-		if (unlikely(irq->target_vcpu &&
-			     !irq->target_vcpu->kvm->arch.vgic.enabled))
-			return NULL;
+	if (irq_is_enabled(irq) && irq_is_pending(irq)) {
+		if (irq->target_vcpu) {
+			if (!vgic_is_v5(irq->target_vcpu->kvm) &&
+			    unlikely(!irq->target_vcpu->kvm->arch.vgic.enabled))
+				return NULL;
+		}
 
 		return irq->target_vcpu;
 	}
@@ -836,9 +846,11 @@ retry:
 		vgic_release_deleted_lpis(vcpu->kvm);
 }
 
-static inline void vgic_fold_lr_state(struct kvm_vcpu *vcpu)
+static void vgic_fold_state(struct kvm_vcpu *vcpu)
 {
-	if (kvm_vgic_global_state.type == VGIC_V2)
+	if (vgic_is_v5(vcpu->kvm))
+		vgic_v5_fold_ppi_state(vcpu);
+	else if (kvm_vgic_global_state.type == VGIC_V2)
 		vgic_v2_fold_lr_state(vcpu);
 	else
 		vgic_v3_fold_lr_state(vcpu);
@@ -1045,8 +1057,10 @@ void kvm_vgic_sync_hwstate(struct kvm_vcpu *vcpu)
 	if (can_access_vgic_from_kernel())
 		vgic_save_state(vcpu);
 
-	vgic_fold_lr_state(vcpu);
-	vgic_prune_ap_list(vcpu);
+	vgic_fold_state(vcpu);
+
+	if (!vgic_is_v5(vcpu->kvm))
+		vgic_prune_ap_list(vcpu);
 }
 
 /* Sync interrupts that were deactivated through a DIR trap */
@@ -1068,6 +1082,17 @@ static inline void vgic_restore_state(struct kvm_vcpu *vcpu)
 		vgic_v2_restore_state(vcpu);
 	else
 		__vgic_v3_restore_state(&vcpu->arch.vgic_cpu.vgic_v3);
+}
+
+static void vgic_flush_state(struct kvm_vcpu *vcpu)
+{
+	if (vgic_is_v5(vcpu->kvm)) {
+		vgic_v5_flush_ppi_state(vcpu);
+		return;
+	}
+
+	scoped_guard(raw_spinlock, &vcpu->arch.vgic_cpu.ap_list_lock)
+		vgic_flush_lr_state(vcpu);
 }
 
 /* Flush our emulation state into the GIC hardware before entering the guest. */
@@ -1106,13 +1131,12 @@ void kvm_vgic_flush_hwstate(struct kvm_vcpu *vcpu)
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 
-	scoped_guard(raw_spinlock, &vcpu->arch.vgic_cpu.ap_list_lock)
-		vgic_flush_lr_state(vcpu);
+	vgic_flush_state(vcpu);
 
 	if (can_access_vgic_from_kernel())
 		vgic_restore_state(vcpu);
 
-	if (vgic_supports_direct_irqs(vcpu->kvm))
+	if (vgic_supports_direct_irqs(vcpu->kvm) && !vgic_is_v5(vcpu->kvm))
 		vgic_v4_commit(vcpu);
 }
 

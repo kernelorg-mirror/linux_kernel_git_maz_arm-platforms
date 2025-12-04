@@ -2600,7 +2600,7 @@ local:
 		    !(params.Op1 & 0b100) && params.Op1 != 2 &&
 		    params.CRn == 0 &&
 		    !(params.CRm & 0b1000)) {
-			if (kvm_has_feat_enum(vcpu->kvm, ID_AA64MMFR2_EL1, IDS, IMP))
+			if (kvm_has_feat(vcpu->kvm, ID_AA64MMFR2_EL1, IDS, IMP))
 				kvm_inject_sync(vcpu, kvm_vcpu_get_esr(vcpu));
 			else
 				kvm_inject_undefined(vcpu);

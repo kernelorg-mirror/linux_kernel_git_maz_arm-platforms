@@ -13,11 +13,15 @@
 static struct vgic_v5_ppi_caps *ppi_caps;
 static void __iomem *irs_base;
 
+/* Forward decl for cleaner code layout */
+static int vgic_v5_irs_assign_vmt(bool two_level, u8 vm_id_bits, phys_addr_t vmt_base);
+
 /*
  * Probe for a vGICv5 compatible interrupt controller, returning 0 on success.
  */
 int vgic_v5_probe(const struct gic_kvm_info *info)
 {
+	struct vgic_v5_host_ist_caps *gicv5_host_ist_caps;
 	u64 ich_vtr_el2;
 	int ret;
 
@@ -39,7 +43,49 @@ int vgic_v5_probe(const struct gic_kvm_info *info)
 		goto skip_v5;
 	}
 
-	kvm_vgic_global_state.max_gic_vcpus = VGIC_V5_MAX_CPUS;
+	/*
+	 * Even if the HW supports more per-VM vCPUs, artifically cap as we
+	 * can't use them
+	 */
+	kvm_vgic_global_state.max_gic_vcpus =
+		min(info->gicv5_vm_caps.max_vpes, VGIC_V5_MAX_CPUS);
+
+	gicv5_host_ist_caps = vgic_v5_host_caps();
+	gicv5_host_ist_caps->ist_id_bits = info->gicv5_vm_caps.ist_id_bits;
+	gicv5_host_ist_caps->min_ist_id_bits = info->gicv5_vm_caps.min_ist_id_bits;
+	gicv5_host_ist_caps->ist_levels = info->gicv5_vm_caps.ist_levels;
+	gicv5_host_ist_caps->ist_l2sz = info->gicv5_vm_caps.ist_l2sz;
+	gicv5_host_ist_caps->istmd = info->gicv5_vm_caps.istmd;
+	gicv5_host_ist_caps->istmd_sz = info->gicv5_vm_caps.istmd_sz;
+	gicv5_host_ist_caps->irs_non_coherent = info->gicv5_vm_caps.irs_non_coherent;
+
+	/* We need to poke the IRS MMIO IF for VM config */
+	irs_base = info->gicv5_vm_caps.irs_base;
+
+	/*
+	 * GICv5 requires a set of tables to be allocated in order to manage VMs. We
+	 * allocate them in advance here, which alas means that we already have to
+	 * make a decisions regarding the maximum number of VMs we want to run. For
+	 * now, we match the maximum number offered by the hardware, but this might
+	 * not be a wise choice in the long term.
+	 */
+	ret = vgic_v5_vmt_allocate(info->gicv5_vm_caps.two_level_vmt_support,
+				   info->gicv5_vm_caps.max_vms,
+				   info->gicv5_vm_caps.vmd_size,
+				   info->gicv5_vm_caps.vped_size,
+				   kvm_vgic_global_state.max_gic_vcpus);
+	if (ret) {
+		kvm_err("Failed to allocate the GICv5 VM tables\n");
+		goto skip_v5;
+	}
+
+	ret = vgic_v5_irs_assign_vmt(info->gicv5_vm_caps.two_level_vmt_support,
+				     vgic_v5_get_vpe_id_bits(),
+				     vgic_v5_get_vmt_base());
+	if (ret) {
+		kvm_err("Failed to assign the GICv5 VM tables to the IRS\n");
+		goto skip_v5;
+	}
 
 	ret = kvm_register_vgic_device(KVM_DEV_TYPE_ARM_VGIC_V5);
 	if (ret) {

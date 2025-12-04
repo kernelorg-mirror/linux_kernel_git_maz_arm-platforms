@@ -351,10 +351,10 @@ static bool pvm_idst_access(struct kvm_vcpu *vcpu,
 			    struct sys_reg_params *p,
 			    const struct sys_reg_desc *r)
 {
-	if (kvm_has_feat_enum(vcpu->kvm, ID_AA64MMFR2_EL1, IDS, NI))
-		inject_undef64(vcpu);
-	else
+	if (kvm_has_feat(vcpu->kvm, ID_AA64MMFR2_EL1, IDS, IMP))
 		inject_sync64(vcpu, kvm_vcpu_get_esr(vcpu));
+	else
+		inject_undef64(vcpu);
 
 	return false;
 }

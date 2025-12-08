@@ -385,16 +385,6 @@ int gicv5_spi_irq_set_type(struct irq_data *d, unsigned int type);
 int gicv5_irs_iste_alloc(u32 lpi);
 void gicv5_irs_syncr(void);
 
-/* Embedded in kvm.arch */
-struct gicv5_vpe {
-	bool			resident;
-	bool			db_fired;
-};
-
-struct gicv5_vm {
-	u64			userspace_ppis[2];
-};
-
 struct gicv5_its_devtab_cfg {
 	union {
 		struct {
@@ -432,4 +422,39 @@ int gicv5_alloc_lpi(void);
 void gicv5_free_lpi(u32 lpi);
 
 void __init gicv5_its_of_probe(struct device_node *parent);
+
+/* Embedded in kvm.arch */
+struct gicv5_vm {
+	struct fwnode_handle	*fwnode;
+	struct irq_domain	*domain;
+	int			vpe_db_base;
+	int			nr_vpes;
+	u16			vm_id;
+	u64			userspace_ppis[2];
+};
+
+/* Embedded in kvm.arch */
+struct gicv5_vpe {
+	int			db;
+	bool			db_fired;
+	bool			resident;
+};
+
+enum gicv5_vcpu_info_cmd_type {
+	VMT_L2_MAP,		/* Map in a L2 VMT - *may* happen on VM init */
+	VMTE_MAKE_VALID,	/* Make the VMTE valid */
+	VMTE_MAKE_INVALID,	/* Make the VMTE (et al.) invalid */
+	VPE_MAKE_VALID,		/* No corresponding invalid */
+	VPE_CR0_READ,		/* Read of VPE_CR0 (guest read from PE_CR0) */
+	VPE_CR0_WRITE,		/* Write to VPE_CR0 (guest write to PE_CR0) */
+	SPI_VIST_MAKE_VALID,	/* No corresponding invalid */
+	LPI_VIST_MAKE_VALID,	/* Trigged by a guest */
+	LPI_VIST_MAKE_INVALID,	/* Trigged by a guest */
+};
+
+struct gicv5_cmd_info {
+	enum gicv5_vcpu_info_cmd_type	cmd_type;
+	u64				data;
+};
+
 #endif

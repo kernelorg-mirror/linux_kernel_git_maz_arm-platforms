@@ -5,6 +5,7 @@
 
 #include <kvm/arm_vgic.h>
 #include <linux/irqchip/arm-vgic-info.h>
+#include <linux/irqdomain.h>
 
 #include "vgic.h"
 
@@ -75,6 +76,168 @@ skip_v5:
 	kvm_info("GCIE legacy system register CPU interface\n");
 
 	return 0;
+}
+
+static irqreturn_t db_handler(int irq, void *data)
+{
+	struct kvm_vcpu *vcpu = data;
+
+	WRITE_ONCE(vcpu->arch.vgic_cpu.vgic_v5.gicv5_vpe.db_fired, true);
+
+	kvm_make_request(KVM_REQ_IRQ_PENDING, vcpu);
+	kvm_vcpu_kick(vcpu);
+
+	return IRQ_HANDLED;
+}
+
+static int vgic_v5_vpe_db(struct kvm_vcpu *vcpu)
+{
+	return vcpu->arch.vgic_cpu.vgic_v5.gicv5_vpe.db;
+}
+
+static int vgic_v5_send_command(struct kvm_vcpu *vcpu,
+			 enum gicv5_vcpu_info_cmd_type type)
+{
+	struct gicv5_cmd_info cmd_info;
+	cmd_info.cmd_type = type;
+
+	if (!vcpu)
+		return -EINVAL;
+
+	return irq_set_vcpu_affinity(vgic_v5_vpe_db(vcpu), &cmd_info);
+}
+
+static int vgic_v5_db_set_vcpu_affinity(struct irq_data *data, void *vcpu_info)
+{
+	struct gicv5_cmd_info *cmd_info = vcpu_info;
+
+	switch(cmd_info->cmd_type) {
+	default:
+		return -EINVAL;
+	}
+}
+
+/*
+ * This set of irq_chip functions is specific for doorbells.
+ */
+static struct irq_chip vgic_v5_db_irq_chip = {
+	.name = "GICv5-DB",
+	.irq_mask = irq_chip_mask_parent,
+	.irq_unmask = irq_chip_unmask_parent,
+	.irq_eoi = irq_chip_eoi_parent,
+	.irq_set_affinity = irq_chip_set_affinity_parent,
+	.irq_get_irqchip_state = irq_chip_get_parent_state,
+	.irq_set_irqchip_state = irq_chip_set_parent_state,
+	.irq_set_vcpu_affinity = vgic_v5_db_set_vcpu_affinity,
+	.flags = IRQCHIP_SET_TYPE_MASKED | IRQCHIP_SKIP_SET_WAKE |
+		 IRQCHIP_MASK_ON_SUSPEND,
+};
+
+static int vgic_v5_irq_db_domain_map(struct irq_domain *d, unsigned int virq,
+				   u16 vpe_id)
+{
+	int ret;
+	u32 lpi;
+	irq_hw_number_t hwirq;
+	struct irq_chip *chip = &vgic_v5_db_irq_chip;
+	struct irq_data *irqd = irq_desc_get_irq_data(irq_to_desc(virq));
+
+	/*
+	 * For the DB domain, we don't use the same hwirq as for LPIs.
+	 */
+	hwirq = vpe_id;
+
+	ret = gicv5_alloc_lpi();
+	if (ret < 0)
+		return ret;
+
+	lpi = ret;
+
+	irq_domain_set_hwirq_and_chip(d, virq, hwirq, chip, d->host_data);
+	irqd_set_single_target(irqd);
+
+	irq_domain_alloc_irqs_parent(d, virq, 1, &lpi);
+
+	return 0;
+}
+
+static int vgic_v5_irq_db_domain_alloc(struct irq_domain *domain,
+				     unsigned int virq, unsigned int nr_irqs,
+				     void *arg)
+{
+	struct gicv5_vm *vm = arg;
+	int ret;
+
+	if (vm->nr_vpes != nr_irqs) {
+		return -EINVAL;
+	}
+
+	if (vm == NULL) {
+		pr_err("invalid parameter for doorbell irq allocation");
+		return -EINVAL;
+	}
+
+	for (int i = 0; i < nr_irqs; i++) {
+		ret = vgic_v5_irq_db_domain_map(domain, virq + i, i);
+		if (ret)
+			break;
+	}
+
+	return ret;
+}
+
+static void vgic_v5_irq_db_domain_free(struct irq_domain *domain,
+				     unsigned int virq, unsigned int nr_irqs)
+{
+	int i;
+
+	for (i = 0; i < nr_irqs; i++) {
+		struct irq_data *d = irq_domain_get_irq_data(domain, virq + i);
+
+		gicv5_free_lpi(d->parent_data->hwirq);
+		irq_set_handler(virq + i, NULL);
+		irq_domain_reset_irq_data(d);
+	}
+
+	irq_domain_free_irqs_parent(domain, virq, nr_irqs);
+}
+
+static const struct irq_domain_ops vgic_v5_irq_db_domain_ops = {
+	.alloc = vgic_v5_irq_db_domain_alloc,
+	.free = vgic_v5_irq_db_domain_free,
+};
+
+static int vgic_v5_create_per_vm_domain(struct gicv5_vm *vm)
+{
+	if (!gicv5_global_data.lpi_domain) {
+		pr_err("LPI domain uninitialized, can't set up KVM Doorbells");
+		return -ENODEV;
+	}
+
+	vm->fwnode = irq_domain_alloc_named_id_fwnode("GICv5-vpe-db",
+						  task_pid_nr(current));
+
+	/*
+	 * KVM per-VM VPE DB domain; child of LPI domain; only ever handles
+	 * doorbells. We know how many doorbells we have, and therefore we
+	 * create a linear domain.
+	 */
+	vm->domain = irq_domain_create_hierarchy(gicv5_global_data.lpi_domain,
+						 0, vm->nr_vpes, vm->fwnode,
+						 &vgic_v5_irq_db_domain_ops, vm);
+
+	if (WARN_ON(!vm->domain))
+		return -ENOMEM;
+
+	return 0;
+}
+
+static void vgic_v5_teardown_per_vm_domain(struct gicv5_vm *vm)
+{
+	if (vm->domain) {
+		irq_domain_remove(vm->domain);
+		irq_domain_free_fwnode(vm->fwnode);
+	}
 }
 
 void vgic_v5_reset(struct kvm_vcpu *vcpu)

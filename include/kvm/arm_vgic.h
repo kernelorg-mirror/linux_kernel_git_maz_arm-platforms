@@ -333,7 +333,7 @@ struct vgic_dist {
 	bool			ready;
 	bool			initialized;
 
-	/* vGIC model the kernel emulates for the guest (GICv2 or GICv3) */
+	/* vGIC model the kernel emulates for the guest (GICv2, GICv3, or GICv5) */
 	u32			vgic_model;
 
 	/* Implementation revision as reported in the GICD_IIDR */

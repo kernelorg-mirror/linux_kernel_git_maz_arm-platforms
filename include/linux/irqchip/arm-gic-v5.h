@@ -48,6 +48,8 @@
 #define GICV5_IRS_IDR0			0x0000
 #define GICV5_IRS_IDR1			0x0004
 #define GICV5_IRS_IDR2			0x0008
+#define GICV5_IRS_IDR3			0x000c
+#define GICV5_IRS_IDR4			0x0010
 #define GICV5_IRS_IDR5			0x0014
 #define GICV5_IRS_IDR6			0x0018
 #define GICV5_IRS_IDR7			0x001c
@@ -84,6 +86,14 @@
 #define GICV5_IRS_IDR2_MIN_LPI_ID_BITS	GENMASK(9, 6)
 #define GICV5_IRS_IDR2_LPI		BIT(5)
 #define GICV5_IRS_IDR2_ID_BITS		GENMASK(4, 0)
+
+#define GICV5_IRS_IDR3_VMT_LEVELS	BIT(10)
+#define GICV5_IRS_IDR3_VM_ID_BITS	GENMASK(9, 5)
+#define GICV5_IRS_IDR3_VMD_SZ		GENMASK(4, 1)
+#define GICV5_IRS_IDR3_VMD		BIT(0)
+
+#define GICV5_IRS_IDR4_VPE_ID_BITS	GENMASK(9, 6)
+#define GICV5_IRS_IDR4_VPED_SZ		GENMASK(5, 0)
 
 #define GICV5_IRS_IDR5_SPI_RANGE	GENMASK(24, 0)
 #define GICV5_IRS_IDR6_SPI_IRS_RANGE	GENMASK(24, 0)
@@ -290,6 +300,20 @@ struct gicv5_chip_data {
 		u8 l2_bits;
 		bool l2;
 	} ist;
+
+	/* VM capabilities */
+	u8			ist_id_bits;
+	u8			min_ist_id_bits;
+	bool			ist_levels;
+	u8			ist_l2sz;
+	bool			istmd;
+	u8			istmd_sz;
+	bool			two_level_vmt_support;
+	u32			max_vms;
+	u32			max_vpes;
+	u16			vmd_size;
+	u16			vped_size;
+	bool			irs_non_coherent;
 };
 
 extern struct gicv5_chip_data gicv5_global_data __read_mostly;
@@ -350,6 +374,7 @@ void __init gicv5_init_lpi_domain(void);
 void __init gicv5_free_lpi_domain(void);
 
 int gicv5_irs_of_probe(struct device_node *parent);
+void __iomem* gicv5_irs_get_config_frame_base(void);
 void gicv5_irs_remove(void);
 int gicv5_irs_enable(void);
 void gicv5_irs_its_probe(void);

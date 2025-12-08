@@ -38,6 +38,22 @@ struct gic_kvm_info {
 	bool		has_v4_1;
 	/* Deactivation impared, subpar stuff */
 	bool		no_hw_deactivation;
+	/* GICv5 VM capabilities */
+	struct {
+		void __iomem	*irs_base;
+		bool		two_level_vmt_support;
+		u32		max_vms;
+		u32		max_vpes;
+		u16		vmd_size;
+		u16		vped_size;
+		u8		ist_id_bits;
+		u8		min_ist_id_bits;
+		bool		ist_levels;
+		u8		ist_l2sz;
+		bool		istmd;
+		u8		istmd_sz;
+		bool		irs_non_coherent;
+	}		gicv5_vm_caps;
 };
 
 #ifdef CONFIG_KVM

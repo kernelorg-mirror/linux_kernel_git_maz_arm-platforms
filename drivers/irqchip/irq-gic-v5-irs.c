@@ -49,6 +49,16 @@ static void irs_writeq_relaxed(struct gicv5_irs_chip_data *irs_data,
 	writeq_relaxed(val, irs_data->irs_base + reg_offset);
 }
 
+void __iomem* gicv5_irs_get_config_frame_base(void)
+{
+	struct gicv5_irs_chip_data *irs_data = per_cpu(per_cpu_irs_data, smp_processor_id());
+
+	if (!irs_data)
+		return NULL;
+
+	return irs_data->irs_base;
+}
+
 /*
  * The polling wait (in gicv5_wait_for_op_s_atomic()) on a GIC register
  * provides the memory barriers (through MMIO accessors)
@@ -363,6 +373,54 @@ static int __init gicv5_irs_init_ist(struct gicv5_irs_chip_data *irs_data)
 
 	return 0;
 }
+
+#ifdef CONFIG_KVM
+
+static void __init gicv5_irs_extract_vm_caps(struct gicv5_irs_chip_data *irs_data)
+{
+	u64 idr;
+	u32 vm_ids, vpe_ids;
+	u16 vmd_size, vped_size;
+	bool two_level, ist_levels, istmd;
+	u8 ist_id_bits, min_ist_id_bits, ist_l2sz, istmd_sz;
+
+	idr = irs_readl_relaxed(irs_data, GICV5_IRS_IDR2);
+	ist_id_bits = FIELD_GET(GICV5_IRS_IDR2_ID_BITS, idr);
+	min_ist_id_bits = FIELD_GET(GICV5_IRS_IDR2_MIN_LPI_ID_BITS, idr);
+	ist_levels = !!FIELD_GET(GICV5_IRS_IDR2_IST_LEVELS, idr);
+	ist_l2sz = FIELD_GET(GICV5_IRS_IDR2_IST_L2SZ, idr);
+	istmd = !!FIELD_GET(GICV5_IRS_IDR2_ISTMD, idr);;
+	istmd_sz = FIELD_GET(GICV5_IRS_IDR2_ISTMD_SZ, idr);
+	idr = irs_readl_relaxed(irs_data, GICV5_IRS_IDR3);
+
+	vm_ids = BIT(FIELD_GET(GICV5_IRS_IDR3_VM_ID_BITS, idr));
+	two_level = !!FIELD_GET(GICV5_IRS_IDR3_VMT_LEVELS, idr);
+
+	if (FIELD_GET(GICV5_IRS_IDR3_VMD, idr))
+		vmd_size = BIT(FIELD_GET(GICV5_IRS_IDR3_VMD_SZ, idr));
+	else
+		vmd_size = 0;
+
+	idr = irs_readl_relaxed(irs_data, GICV5_IRS_IDR4);
+	vped_size = BIT(FIELD_GET(GICV5_IRS_IDR4_VPED_SZ, idr));
+	/* Field stores VPE_ID_BITS - 1 */
+	vpe_ids = BIT(FIELD_GET(GICV5_IRS_IDR4_VPE_ID_BITS, idr) + 1);
+
+	gicv5_global_data.ist_id_bits  = ist_id_bits;
+	gicv5_global_data.min_ist_id_bits  = min_ist_id_bits;
+	gicv5_global_data.ist_levels  = ist_levels;
+	gicv5_global_data.ist_l2sz  = ist_l2sz;
+	gicv5_global_data.istmd  = istmd;
+	gicv5_global_data.istmd_sz  = istmd_sz;
+	gicv5_global_data.two_level_vmt_support = two_level;
+	gicv5_global_data.max_vms = vm_ids;
+	gicv5_global_data.max_vpes = vpe_ids;
+	gicv5_global_data.vmd_size = vmd_size;
+	gicv5_global_data.vped_size = vped_size;
+	gicv5_global_data.irs_non_coherent = !!(irs_data->flags & IRS_FLAGS_NON_COHERENT);
+}
+
+#endif // CONFIG_KVM
 
 struct iaffid_entry {
 	u16	iaffid;
@@ -756,9 +814,16 @@ static int __init gicv5_irs_init(struct device_node *node)
 		spi_count = FIELD_GET(GICV5_IRS_IDR5_SPI_RANGE, idr);
 		gicv5_global_data.global_spi_count = spi_count;
 
+		pr_debug("Detected %u SPIs globally\n", spi_count);
+
 		gicv5_init_lpi_domain();
 
-		pr_debug("Detected %u SPIs globally\n", spi_count);
+#ifdef CONFIG_KVM
+		idr = irs_readl_relaxed(irs_data, GICV5_IRS_IDR0);
+
+		if (FIELD_GET(GICV5_IRS_IDR0_VIRT, idr))
+			gicv5_irs_extract_vm_caps(irs_data);
+#endif // CONFIG_KVM
 	}
 
 	list_add_tail(&irs_data->entry, &irs_nodes);

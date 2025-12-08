@@ -1076,6 +1076,20 @@ static void __init gic_of_setup_kvm_info(struct device_node *node)
 
 	gic_v5_kvm_info.type = GIC_V5;
 
+	gic_v5_kvm_info.gicv5_vm_caps.irs_base = gicv5_irs_get_config_frame_base();
+	gic_v5_kvm_info.gicv5_vm_caps.ist_id_bits = gicv5_global_data.ist_id_bits;
+	gic_v5_kvm_info.gicv5_vm_caps.min_ist_id_bits = gicv5_global_data.min_ist_id_bits;
+	gic_v5_kvm_info.gicv5_vm_caps.ist_levels = gicv5_global_data.ist_levels;
+	gic_v5_kvm_info.gicv5_vm_caps.ist_l2sz = gicv5_global_data.ist_l2sz;
+	gic_v5_kvm_info.gicv5_vm_caps.istmd = gicv5_global_data.istmd;
+	gic_v5_kvm_info.gicv5_vm_caps.istmd_sz = gicv5_global_data.istmd_sz;
+	gic_v5_kvm_info.gicv5_vm_caps.two_level_vmt_support = gicv5_global_data.two_level_vmt_support;
+	gic_v5_kvm_info.gicv5_vm_caps.max_vms = gicv5_global_data.max_vms;
+	gic_v5_kvm_info.gicv5_vm_caps.max_vpes = gicv5_global_data.max_vpes;
+	gic_v5_kvm_info.gicv5_vm_caps.vmd_size = gicv5_global_data.vmd_size;
+	gic_v5_kvm_info.gicv5_vm_caps.vped_size = gicv5_global_data.vped_size;
+	gic_v5_kvm_info.gicv5_vm_caps.irs_non_coherent = gicv5_global_data.irs_non_coherent;
+
 	/* GIC Virtual CPU interface maintenance interrupt */
 	gic_v5_kvm_info.no_maint_irq_mask = false;
 	gic_v5_kvm_info.maint_irq = irq_of_parse_and_map(node, 0);

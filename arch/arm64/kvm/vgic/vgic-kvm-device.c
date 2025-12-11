@@ -181,6 +181,15 @@ static int kvm_vgic_addr(struct kvm *kvm, struct kvm_device_attr *attr, bool wri
 		addr |= (u64)rdreg->count << KVM_VGIC_V3_RDIST_COUNT_SHIFT;
 		goto out;
 	}
+	case KVM_VGIC_V5_ADDR_TYPE_IRS:
+		r = vgic_check_type(kvm, KVM_DEV_TYPE_ARM_VGIC_V5);
+		if (r)
+			return r;
+		addr_ptr = &vgic->vgic_v5_irs_data->vgic_v5_irs_base;
+		alignment = SZ_64K;
+		size = KVM_VGIC_V5_IRS_SIZE;
+		get_user(addr, uaddr);
+		break;
 	default:
 		r = -ENODEV;
 	}

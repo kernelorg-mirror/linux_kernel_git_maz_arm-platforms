@@ -181,6 +181,17 @@ int kvm_vgic_create(struct kvm *kvm, u32 type)
 		/* Allocate a vIRS for GICv5 systems */
 		kvm->arch.vgic.vgic_v5_irs_data =
 			kzalloc(sizeof(struct vgic_v5_irs), GFP_KERNEL_ACCOUNT);
+		if (!kvm->arch.vgic.vgic_v5_irs_data) {
+			ret = -ENOMEM;
+			goto out_unlock;
+		}
+
+		/*
+		 * Initialization happens later, for now just explicitly
+		 * disable the device and undef its base address.
+		 */
+		kvm->arch.vgic.vgic_v5_irs_data->enabled = false;
+		kvm->arch.vgic.vgic_v5_irs_data->vgic_v5_irs_base = VGIC_ADDR_UNDEF;
 
 		/*
 		 * We now know that we have a GICv5. The Arch Timer PPI
@@ -648,7 +659,6 @@ int kvm_vgic_map_resources(struct kvm *kvm)
 	} else {
 		ret = vgic_v5_map_resources(kvm);
 		type = VGIC_V5;
-		goto out;
 	}
 
 	if (ret)
@@ -657,10 +667,25 @@ int kvm_vgic_map_resources(struct kvm *kvm)
 	dist_base = dist->vgic_dist_base;
 	mutex_unlock(&kvm->arch.config_lock);
 
-	ret = vgic_register_dist_iodev(kvm, dist_base, type);
-	if (ret) {
-		kvm_err("Unable to register VGIC dist MMIO regions\n");
-		goto out_slots;
+	if (type != VGIC_V5) {
+		ret = vgic_register_dist_iodev(kvm, dist_base, type);
+		if (ret) {
+			kvm_err("Unable to register VGIC dist MMIO regions\n");
+			goto out_slots;
+		}
+	} else {
+		if (IS_VGIC_ADDR_UNDEF(
+			    dist->vgic_v5_irs_data->vgic_v5_irs_base)) {
+			kvm_err("No IRS address provided\n");
+			ret = -ENXIO;
+			goto out_slots;
+		}
+		ret = vgic_v5_register_irs_iodev(
+			kvm, dist->vgic_v5_irs_data->vgic_v5_irs_base);
+		if (ret) {
+			kvm_err("Unable to register VGIC IRS MMIO regions\n");
+			goto out_slots;
+		}
 	}
 
 	smp_store_release(&dist->ready, true);

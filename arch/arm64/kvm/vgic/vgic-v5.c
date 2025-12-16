@@ -5,6 +5,8 @@
 
 #include "vgic.h"
 
+static struct vgic_v5_ppi_caps *ppi_caps;
+
 /*
  * Probe for a vGICv5 compatible interrupt controller, returning 0 on success.
  * Currently only supports GICv3-based VMs on a GICv5 host, and hence only
@@ -49,4 +51,31 @@ int vgic_v5_probe(const struct gic_kvm_info *info)
 	kvm_info("GCIE legacy system register CPU interface\n");
 
 	return 0;
+}
+
+/*
+ * Not all PPIs are guaranteed to be implemented for
+ * GICv5. Deterermine which ones are, and generate a mask. This is
+ * called early in boot, so we can just write directly to the ICH_PPI*
+ * regs and have no state to preserve.
+ */
+void vgic_v5_get_implemented_ppis(void)
+{
+	if (!cpus_have_final_cap(ARM64_HAS_GICV5_CPUIF))
+		return;
+
+	/* Never freed again */
+	ppi_caps = kzalloc(sizeof(*ppi_caps), GFP_KERNEL);
+	if (!ppi_caps)
+		return;
+
+	if (!has_vhe()) {
+		struct arm_smccc_res res;
+
+		kvm_call_hyp_nvhe_res(&res, __vgic_v5_detect_ppis);
+		ppi_caps->impl_ppi_mask[0] = res.a1;
+		ppi_caps->impl_ppi_mask[1] = res.a2;
+	} else {
+		__vgic_v5_detect_ppis(ppi_caps->impl_ppi_mask);
+	}
 }

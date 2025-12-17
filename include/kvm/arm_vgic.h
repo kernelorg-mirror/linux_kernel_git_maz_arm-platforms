@@ -456,6 +456,13 @@ struct vgic_v5_cpu_if {
 	u64	vgic_ppi_pendr_exit[2];
 
 	/*
+	 * We only expose a subset of PPIs to the guest. This subset
+	 * is a combination of the PPIs that are actually implemented
+	 * and what we actually choose to expose.
+	 */
+	u64	vgic_ppi_mask[2];
+
+	/*
 	 * The ICSR is re-used across host and guest, and hence it needs to be
 	 * saved/restored. Only one copy is required as the host should block
 	 * preemption between executing GIC CDRCFG and acccessing the
@@ -591,6 +598,8 @@ void kvm_vgic_v4_unset_forwarding(struct kvm *kvm, int host_irq);
 int vgic_v4_load(struct kvm_vcpu *vcpu);
 void vgic_v4_commit(struct kvm_vcpu *vcpu);
 int vgic_v4_put(struct kvm_vcpu *vcpu);
+
+int vgic_v5_finalize_ppi_state(struct kvm *kvm);
 
 bool vgic_state_is_nested(struct kvm_vcpu *vcpu);
 

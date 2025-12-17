@@ -81,6 +81,66 @@ static u32 vgic_v5_get_effective_priority_mask(struct kvm_vcpu *vcpu)
 	return priority_mask;
 }
 
+static int vgic_v5_finalize_state(struct kvm_vcpu *vcpu)
+{
+	if (!ppi_caps)
+		return -ENXIO;
+
+	vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_mask[0] = 0;
+	vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_mask[1] = 0;
+	vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_hmr[0] = 0;
+	vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_hmr[1] = 0;
+	for (int i = 0; i < VGIC_V5_NR_PRIVATE_IRQS; ++i) {
+		int reg = i / 64;
+		u64 bit = BIT_ULL(i % 64);
+		struct vgic_irq *irq = &vcpu->arch.vgic_cpu.private_irqs[i];
+
+		raw_spin_lock(&irq->irq_lock);
+
+		/*
+		 * We only expose PPIs with an owner or thw SW_PPI to
+		 * the guest.
+		 */
+		if (!irq->owner && irq->intid == GICV5_SW_PPI)
+			goto unlock;
+
+		/*
+		 * If the PPI isn't implemented, we can't pass it
+		 * through to a guest anyhow.
+		 */
+		if (!(ppi_caps->impl_ppi_mask[reg] & bit))
+			goto unlock;
+
+		vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_mask[reg] |= bit;
+
+		if (irq->config == VGIC_CONFIG_LEVEL)
+			vcpu->arch.vgic_cpu.vgic_v5.vgic_ppi_hmr[reg] |= bit;
+
+unlock:
+		raw_spin_unlock(&irq->irq_lock);
+	}
+
+	return 0;
+}
+
+int vgic_v5_finalize_ppi_state(struct kvm *kvm)
+{
+	struct kvm_vcpu *vcpu;
+	unsigned long c;
+	int ret;
+
+	if (!vgic_is_v5(kvm))
+		return 0;
+
+	kvm_for_each_vcpu(c, vcpu, kvm) {
+		ret = vgic_v5_finalize_state(vcpu);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static bool vgic_v5_ppi_set_pending_state(struct kvm_vcpu *vcpu,
 					  struct vgic_irq *irq)
 {

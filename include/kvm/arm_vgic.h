@@ -404,6 +404,11 @@ struct vgic_dist {
 	 * else.
 	 */
 	struct its_vm		its_vm;
+
+	/*
+	 * GICv5 per-VM data.
+	 */
+	struct gicv5_vm		gicv5_vm;
 };
 
 struct vgic_v2_cpu_if {

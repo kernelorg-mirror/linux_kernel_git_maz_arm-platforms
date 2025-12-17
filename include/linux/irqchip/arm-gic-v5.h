@@ -365,6 +365,10 @@ struct gicv5_vpe {
 	bool			resident;
 };
 
+struct gicv5_vm {
+	u64			userspace_ppis[2];
+};
+
 struct gicv5_its_devtab_cfg {
 	union {
 		struct {

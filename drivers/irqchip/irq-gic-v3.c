@@ -239,6 +239,10 @@ static DEFINE_PER_CPU(bool, has_rss);
 #define gic_data_rdist_rd_base()	(gic_data_rdist()->rd_base)
 #define gic_data_rdist_sgi_base()	(gic_data_rdist_rd_base() + SZ_64K)
 
+#define gic_data_rdist_cpu(c)		per_cpu_ptr(gic_data.rdists.rdist, c)
+#define gic_data_rdist_rd_base_cpu(c)	(gic_data_rdist_cpu(c)->rd_base)
+#define gic_data_rdist_sgi_base_cpu(c)	(gic_data_rdist_rd_base_cpu(c) + SZ_64K)
+
 /* Our default, arbitrary priority value. Linux only uses one anyway. */
 #define DEFAULT_PMR_VALUE	0xf0
 
@@ -1388,7 +1392,16 @@ static void gic_ipi_send_mask(struct irq_data *d, const struct cpumask *mask)
 	 * other CPUs before issuing the IPI.
 	 */
 	dsb(ishst);
+#if 1
+	for_each_cpu(cpu, mask) {
+		void __iomem *base;
 
+		base = gic_data_rdist_sgi_base_cpu(cpu);
+		writel_relaxed(BIT(d->hwirq), base + GICD_ISPENDR);
+	}
+
+	return;
+#endif
 	for_each_cpu(cpu, mask) {
 		u64 cluster_id = MPIDR_TO_SGI_CLUSTER_ID(gic_cpu_to_affinity(cpu));
 		u16 tlist;

@@ -102,6 +102,10 @@ struct reg_feat_map_desc {
  */
 #define NEEDS_FEAT(m, ...)	NEEDS_FEAT_FLAG(m, 0, __VA_ARGS__)
 
+/* Declare fixed RESx bits */
+#define FORCE_RES0(m)		NEEDS_FEAT_FLAG(m, 0, enforce_resx)
+#define FORCE_RES1(m)		NEEDS_FEAT_FLAG(m, AS_RES1, enforce_resx)
+
 /*
  * Declare the dependency between a non-FGT register, a set of
  * feature, and the set of individual bits it contains. This generates
@@ -224,6 +228,15 @@ struct reg_feat_map_desc {
 #define FEAT_MTPMU		ID_AA64DFR0_EL1, MTPMU, IMP
 #define FEAT_HCX		ID_AA64MMFR1_EL1, HCX, IMP
 #define FEAT_S2PIE		ID_AA64MMFR3_EL1, S2PIE, IMP
+
+static bool enforce_resx(struct kvm *kvm)
+{
+	/*
+	 * Returning false here means that the RESx bits will be always
+	 * addded to the fixed set bit. Yes, this is counter-intuitive.
+	 */
+	return false;
+}
 
 static bool not_feat_aa64el3(struct kvm *kvm)
 {
@@ -1030,6 +1043,8 @@ static const struct reg_bits_to_feat_map hcr_feat_map[] = {
 		   HCR_EL2_TWEDEn,
 		   FEAT_TWED),
 	NEEDS_FEAT_FIXED(HCR_EL2_E2H, compute_hcr_e2h),
+	FORCE_RES0(HCR_EL2_RES0),
+	FORCE_RES1(HCR_EL2_RES1),
 };
 
 static const DECLARE_FEAT_MAP(hcr_desc, HCR_EL2,
@@ -1050,6 +1065,8 @@ static const struct reg_bits_to_feat_map sctlr2_feat_map[] = {
 		   SCTLR2_EL1_CPTM	|
 		   SCTLR2_EL1_CPTM0,
 		   FEAT_CPA2),
+	FORCE_RES0(SCTLR2_EL1_RES0),
+	FORCE_RES1(SCTLR2_EL1_RES1),
 };
 
 static const DECLARE_FEAT_MAP(sctlr2_desc, SCTLR2_EL1,
@@ -1075,6 +1092,8 @@ static const struct reg_bits_to_feat_map tcr2_el2_feat_map[] = {
 		   TCR2_EL2_E0POE,
 		   FEAT_S1POE),
 	NEEDS_FEAT(TCR2_EL2_PIE, FEAT_S1PIE),
+	FORCE_RES0(TCR2_EL2_RES0),
+	FORCE_RES1(TCR2_EL2_RES1),
 };
 
 static const DECLARE_FEAT_MAP(tcr2_el2_desc, TCR2_EL2,
@@ -1152,6 +1171,8 @@ static const struct reg_bits_to_feat_map sctlr_el1_feat_map[] = {
 		   SCTLR_EL1_A		|
 		   SCTLR_EL1_M,
 		   FEAT_AA64EL1),
+	FORCE_RES0(SCTLR_EL1_RES0),
+	FORCE_RES1(SCTLR_EL1_RES1),
 };
 
 static const DECLARE_FEAT_MAP(sctlr_el1_desc, SCTLR_EL1,
@@ -1186,6 +1207,8 @@ static const struct reg_bits_to_feat_map mdcr_el2_feat_map[] = {
 		   MDCR_EL2_TDE		|
 		   MDCR_EL2_TDRA,
 		   FEAT_AA64EL1),
+	FORCE_RES0(MDCR_EL2_RES0),
+	FORCE_RES1(MDCR_EL2_RES1),
 };
 
 static const DECLARE_FEAT_MAP(mdcr_el2_desc, MDCR_EL2,
@@ -1224,6 +1247,8 @@ static const struct reg_bits_to_feat_map vtcr_el2_feat_map[] = {
 		   VTCR_EL2_SL0		|
 		   VTCR_EL2_T0SZ,
 		   FEAT_AA64EL1),
+	FORCE_RES0(VTCR_EL2_RES0),
+	FORCE_RES1(VTCR_EL2_RES1),
 };
 
 static const DECLARE_FEAT_MAP(vtcr_el2_desc, VTCR_EL2,
@@ -1235,7 +1260,9 @@ static void __init check_feat_map(const struct reg_bits_to_feat_map *map,
 	u64 mask = 0;
 
 	for (int i = 0; i < map_size; i++)
-		mask |= map[i].bits;
+		if ((map[i].flags & (CALL_FUNC | FIXED_VALUE)) != CALL_FUNC ||
+		    map[i].match != enforce_resx)
+			mask |= map[i].bits;
 
 	if (mask != ~resx)
 		kvm_err("Undefined %s behaviour, bits %016llx\n",
@@ -1450,28 +1477,22 @@ struct resx get_reg_fixed_bits(struct kvm *kvm, enum vcpu_sysreg reg)
 		break;
 	case HCR_EL2:
 		resx = compute_reg_resx_bits(kvm, &hcr_desc, 0, 0);
-		resx.res1 |= HCR_EL2_RES1;
 		break;
 	case SCTLR2_EL1:
 	case SCTLR2_EL2:
 		resx = compute_reg_resx_bits(kvm, &sctlr2_desc, 0, 0);
-		resx.res1 |= SCTLR2_EL1_RES1;
 		break;
 	case TCR2_EL2:
 		resx = compute_reg_resx_bits(kvm, &tcr2_el2_desc, 0, 0);
-		resx.res1 |= TCR2_EL2_RES1;
 		break;
 	case SCTLR_EL1:
 		resx = compute_reg_resx_bits(kvm, &sctlr_el1_desc, 0, 0);
-		resx.res1 |= SCTLR_EL1_RES1;
 		break;
 	case MDCR_EL2:
 		resx = compute_reg_resx_bits(kvm, &mdcr_el2_desc, 0, 0);
-		resx.res1 |= MDCR_EL2_RES1;
 		break;
 	case VTCR_EL2:
 		resx = compute_reg_resx_bits(kvm, &vtcr_el2_desc, 0, 0);
-		resx.res1 |= VTCR_EL2_RES1;
 		break;
 	default:
 		WARN_ON_ONCE(1);

@@ -2120,19 +2120,6 @@ config ARM64_MTE
 
 endmenu # "ARMv8.5 architectural features"
 
-menu "ARMv8.7 architectural features"
-
-config ARM64_EPAN
-	bool "Enable support for Enhanced Privileged Access Never (EPAN)"
-	default y
-	help
-	  Enhanced Privileged Access Never (EPAN) allows Privileged
-	  Access Never to be used with Execute-only mappings.
-
-	  The feature is detected at runtime, and will remain disabled
-	  if the cpu does not implement the feature.
-endmenu # "ARMv8.7 architectural features"
-
 config AS_HAS_MOPS
 	def_bool $(as-instr,.arch_extension mops)
 

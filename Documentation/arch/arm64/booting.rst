@@ -555,6 +555,11 @@ Before jumping into the kernel, the following conditions must be met:
  - If EL3 is present:
 
    - MDCR_EL3.TPM (bit 6) must be initialized to 0b0
+ For CPUs with Non-maskable Interrupts (FEAT_NMI):
+
+ - If the kernel is entered at EL1 and EL2 is present:
+
+   - HCRX_EL2.TALLINT must be initialised to 0b0.
 
 The requirements described above for CPU mode, caches, MMUs, architected
 timers, coherency and system registers apply to all CPUs.  All CPUs must

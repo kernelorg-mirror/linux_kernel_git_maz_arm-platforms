@@ -405,6 +405,7 @@ int swsusp_arch_suspend(void)
 int swsusp_arch_resume(void)
 {
 	int rc;
+	unsigned long flags;
 	void *zero_page;
 	size_t exit_size;
 	pgd_t *tmp_pg_dir;
@@ -465,9 +466,19 @@ int swsusp_arch_resume(void)
 	if (el2_reset_needed())
 		__hyp_set_vectors(el2_vectors);
 
+	/*
+	 * We are late in the new kernel initialization, so Debug and SError
+	 * exceptions are unmasked. However, the hibernating kernel masked
+	 * all exceptions before suspending in `swsusp_arch_suspend()`.
+	 * Mask them before returning there for the resume path.
+	 * If the resume is successful, it will restore the proper
+	 * interrupt masking from the hibernated kernel and we will not return.
+	 */
+	flags = local_daif_save();
 	hibernate_exit(virt_to_phys(tmp_pg_dir), resume_hdr.ttbr1_el1,
 		       resume_hdr.reenter_kernel, restore_pblist,
 		       resume_hdr.__hyp_stub_vectors, virt_to_phys(zero_page));
+	local_daif_restore(flags);
 
 	return 0;
 }

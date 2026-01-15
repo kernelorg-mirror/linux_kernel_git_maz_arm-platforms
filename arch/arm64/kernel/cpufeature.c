@@ -82,12 +82,13 @@
 #include <asm/cpu_ops.h>
 #include <asm/fpsimd.h>
 #include <asm/hwcap.h>
+#include <asm/hypervisor.h>
 #include <asm/insn.h>
+#include <asm/interrupts/common_flags.h>
 #include <asm/kvm_host.h>
 #include <asm/mmu.h>
 #include <asm/mmu_context.h>
 #include <asm/mte.h>
-#include <asm/hypervisor.h>
 #include <asm/processor.h>
 #include <asm/smp.h>
 #include <asm/sysreg.h>
@@ -310,6 +311,7 @@ static const struct arm64_ftr_bits ftr_id_aa64pfr1[] = {
 	ARM64_FTR_BITS(FTR_VISIBLE_IF_IS_ENABLED(CONFIG_ARM64_GCS),
 		       FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR1_EL1_GCS_SHIFT, 4, 0),
 	S_ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR1_EL1_MTE_frac_SHIFT, 4, 0),
+	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR1_EL1_NMI_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_VISIBLE_IF_IS_ENABLED(CONFIG_ARM64_SME),
 		       FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR1_EL1_SME_SHIFT, 4, 0),
 	ARM64_FTR_BITS(FTR_HIDDEN, FTR_STRICT, FTR_LOWER_SAFE, ID_AA64PFR1_EL1_MPAM_frac_SHIFT, 4, 0),
@@ -2304,6 +2306,51 @@ static bool has_gic_prio_relaxed_sync(const struct arm64_cpu_capabilities *entry
 }
 #endif
 
+#ifdef CONFIG_ARM64_NMI
+static bool can_use_nmi(const struct arm64_cpu_capabilities *entry, int scope)
+{
+	/*
+	 * ARM64_HAS_NMI has a lower index, and is a boot CPU
+	 * feature, so will be detected earlier.
+	 */
+	BUILD_BUG_ON(ARM64_NMI <= ARM64_HAS_NMI);
+	if (!cpus_have_cap(ARM64_HAS_NMI))
+		return false;
+
+	/*
+	 * Having both real and pseudo NMIs enabled simultaneously is
+	 * likely to cause confusion.  Since pseudo NMIs must be
+	 * enabled with an explicit command line option, if the user
+	 * has set that option on a system with real NMIs for some
+	 * reason assume they know what they're doing.
+	 *
+	 * ARM64_HAS_GIC_PRIO_MASKING has a lower index, and is a boot CPU
+	 * feature, so will be detected earlier.
+	 */
+	BUILD_BUG_ON(IS_ENABLED(CONFIG_ARM64_PSEUDO_NMI) &&
+			(ARM64_NMI <= ARM64_HAS_GIC_PRIO_MASKING));
+	if (cpus_have_cap(ARM64_HAS_GIC_PRIO_MASKING)) {
+		pr_info("Pseudo NMI enabled, not using architected NMI\n");
+		return false;
+	}
+
+	return true;
+}
+
+static void nmi_enable(const struct arm64_cpu_capabilities *__unused)
+{
+	/*
+	 * Enable use of NMIs controlled by ALLINT, SPINTMASK should
+	 * be clear by default but make it explicit that we are using
+	 * this mode.  Ensure that ALLINT is clear first in order to
+	 * avoid leaving things masked.
+	 */
+	_allint_clear();
+	sysreg_clear_set(sctlr_el1, SCTLR_EL1_SPINTMASK, SCTLR_EL1_NMI);
+	isb();
+}
+#endif
+
 static bool can_trap_icv_dir_el1(const struct arm64_cpu_capabilities *entry,
 				 int scope)
 {
@@ -3148,6 +3195,25 @@ static const struct arm64_cpu_capabilities arm64_features[] = {
 		.matches = has_cpuid_feature,
 		ARM64_CPUID_FIELDS(ID_AA64MMFR1_EL1, XNX, IMP)
 	},
+	{
+		.type = ARM64_CPUCAP_BOOT_CPU_FEATURE,
+		.capability = ARM64_HAS_NMI,
+		.matches = has_cpuid_feature,
+		ARM64_CPUID_FIELDS(ID_AA64PFR1_EL1, NMI, IMP)
+	},
+#ifdef CONFIG_ARM64_NMI
+	/*
+	 * Depends on ARM64_HAS_NMI
+	 * Checks for conflict with pseudo-NMIs, giving them priority.
+	 */
+	{
+		.desc = "Non-maskable Interrupts",
+		.type = ARM64_CPUCAP_BOOT_CPU_FEATURE,
+		.capability = ARM64_NMI,
+		.matches = can_use_nmi,
+		.cpu_enable = nmi_enable,
+	},
+#endif
 	{},
 };
 

@@ -73,6 +73,8 @@ cpucap_is_possible(const unsigned int cap)
 		return true;
 	case ARM64_HAS_PMUV3:
 		return IS_ENABLED(CONFIG_HW_PERF_EVENTS);
+	case ARM64_NMI:
+		return IS_ENABLED(CONFIG_ARM64_NMI);
 	}
 
 	return true;

@@ -209,9 +209,15 @@ static inline void forget_syscall(struct pt_regs *regs)
 		(regs)->pmr >= GIC_PRIO_IRQON :				\
 		true)
 
+/* SPSR.ALLINT is RES0 when FEAT_NMI is not implemented. */
+#define irqs_allint_clear(regs)				\
+	(((regs)->pstate & PSR_ALLINT_BIT) == 0)
+
 static __always_inline bool regs_irqs_disabled(const struct pt_regs *regs)
 {
-	return (regs->pstate & PSR_I_BIT) || !irqs_priority_unmasked(regs);
+	return (regs->pstate & PSR_I_BIT) ||
+		!irqs_priority_unmasked(regs) ||
+		!irqs_allint_clear(regs);
 }
 
 #define interrupts_enabled(regs)	(!regs_irqs_disabled(regs))

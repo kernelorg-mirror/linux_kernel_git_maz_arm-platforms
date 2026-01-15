@@ -20,6 +20,16 @@
  * always masked and unmasked together, and have no side effects for other
  * flags. Keeping to this order makes it easier for entry.S to know which
  * exceptions should be unmasked.
+ *
+ * With the addition of the FEAT_NMI extension we gain an additional
+ * class of superpriority IRQ/FIQ which is separately masked with a
+ * choice of modes controlled by SCTLR_ELn.{SPINTMASK,NMI}.
+ * Linux sets SPINTMASK to 0 and NMI to 1 which results in ALLINT.ALLINT
+ * masking both superpriority interrupts and IRQ/FIQ regardless of the
+ * I and F settings. Since these superpriority interrupts are being
+ * used as NMIs we do not include them in the interrupt masking here,
+ * anything that requires that NMIs be masked needs to explicitly do so,
+ * but we do check for ALLINT masking IRQs/FIQs.
  */
 
  /*
@@ -31,6 +41,7 @@
 union arm64_local_irqs {
 	struct {
 		u16 daif;
+		u16 allint;
 		u8 pmr;
 	};
 	unsigned long irqflags;
@@ -101,6 +112,9 @@ static inline unsigned long arch_local_save_flags(void)
 {
 	union arm64_local_irqs irqs = { .daif = read_sysreg(daif) };
 
+	if (system_uses_nmi())
+		irqs.allint = read_sysreg_s(SYS_ALLINT);
+
 	if (system_uses_irq_prio_masking())
 		irqs.pmr = read_sysreg_s(SYS_ICC_PMR_EL1);
 
@@ -112,6 +126,10 @@ static inline bool arch_irqs_disabled_flags(unsigned long flags)
 	union arm64_local_irqs irqs = { .irqflags = flags };
 	/* If I is set, the PMR doesn't matter : interrupts will not be taken. */
 	if (irqs.daif & PSR_I_BIT)
+		return true;
+
+	/* SCTLR_EL1.SPINTMASK is clear, so ALLINT masks *all* IRQs/FIQs. */
+	if (system_uses_nmi() && irqs.allint > 0)
 		return true;
 
 	if (system_uses_irq_prio_masking() && irqs.pmr < GIC_PRIO_IRQON)

@@ -54,6 +54,7 @@ static noinstr irqentry_state_t enter_from_kernel_mode(struct pt_regs *regs)
 static void noinstr exit_to_kernel_mode(struct pt_regs *regs,
 					irqentry_state_t state)
 {
+	local_daif_mask();
 	mte_check_tfsr_exit();
 	irqentry_exit(regs, state);
 }
@@ -301,7 +302,6 @@ static void noinstr el1_abort(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_mem_abort(far, esr, regs);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -313,7 +313,6 @@ static void noinstr el1_pc(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_sp_pc_abort(far, esr, regs);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -324,7 +323,6 @@ static void noinstr el1_undef(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_el1_undef(regs, esr);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -335,7 +333,6 @@ static void noinstr el1_bti(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_el1_bti(regs, esr);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -346,7 +343,6 @@ static void noinstr el1_gcs(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_el1_gcs(regs, esr);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -357,7 +353,6 @@ static void noinstr el1_mops(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_el1_mops(regs, esr);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -423,7 +418,6 @@ static void noinstr el1_fpac(struct pt_regs *regs, unsigned long esr)
 	state = enter_from_kernel_mode(regs);
 	local_daif_inherit(regs);
 	do_el1_fpac(regs, esr);
-	local_daif_mask();
 	exit_to_kernel_mode(regs, state);
 }
 
@@ -483,6 +477,7 @@ static __always_inline void __el1_pnmi(struct pt_regs *regs,
 
 	state = irqentry_nmi_enter(regs);
 	do_interrupt_handler(regs, handler);
+	local_daif_mask();
 	irqentry_nmi_exit(regs, state);
 }
 
@@ -528,6 +523,7 @@ asmlinkage void noinstr el1h_64_error_handler(struct pt_regs *regs)
 	local_daif_restore(DAIF_ERRCTX);
 	state = irqentry_nmi_enter(regs);
 	do_serror(regs, esr);
+	local_daif_mask();
 	irqentry_nmi_exit(regs, state);
 }
 

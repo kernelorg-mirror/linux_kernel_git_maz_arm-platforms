@@ -161,6 +161,62 @@ static inline void local_all_irqs_final_mask(void)
 #endif /* CONFIG_DEBUG_IRQFLAGS */
 
 /*
+ * In some cases, WFI or guest entry for example, we always want interrupts
+ * to reach the CPU even if masked. Masking via the PMR prevents them from
+ * reaching the CPU and waking it up.
+ * Force IQR masking using DAIF by raising the priority mask
+ * and setting the IF flags.
+ *
+ * Should only be called when IRQs are already masked.
+ */
+static inline struct arm64_irqs_state local_all_irqs_force_daif_save(void)
+{
+	struct arm64_irqs_state saved_state;
+	/*
+	 * Cannot use lockdep_assert here as idle entry enables hardirqs
+	 * while keeping interrupts masked.
+	 */
+	WARN_ON_ONCE(!irqs_disabled());
+
+	if (system_uses_irq_prio_masking()) {
+		saved_state.daif = read_sysreg(daif);
+		saved_state.pmr = gic_read_pmr();
+		write_sysreg(saved_state.daif | DAIF_PROCCTX_NOIRQ, daif);
+		gic_write_pmr(GIC_PRIO_IRQON);
+		pmr_sync();
+	}
+
+	return saved_state;
+}
+
+/*
+ * Return to masking with the PMR, restoring previously saved DAIF and PMR.
+ *
+ * IRQs or interrupt priority masking should not have been re-enabled in between
+ * the save and restore.
+ */
+static inline
+void local_all_irqs_force_daif_restore(struct arm64_irqs_state saved_state)
+{
+	/*
+	 * Cannot use lockdep_assert here as idle entry enables hardirqs
+	 * while keeping interrupts masked.
+	 */
+	WARN_ON_ONCE(!irqs_disabled());
+	WARN_ON_ONCE(system_has_prio_mask_debugging() &&
+		gic_read_pmr() != GIC_PRIO_IRQON);
+
+	if (system_uses_irq_prio_masking()) {
+		/*
+		 * As above : the PMR is self-synchronizing and will not signal
+		 * IRQs of lower priority as soon as this write is executed.
+		 */
+		gic_write_pmr(saved_state.pmr);
+		write_sysreg(saved_state.daif, daif);
+	}
+}
+
+/*
  * During early boot, we unmask PSR.DA before the GIC has been set up.
  * If we use IRQ priority masking, the PMR and PSR will be out of sync
  * after the GIC is enabled : sync them up.

@@ -141,4 +141,19 @@ static inline void local_daif_inherit(struct pt_regs *regs)
 	 */
 	write_sysreg(flags, daif);
 }
+
+/*
+ * During early boot, we unmask PSR.DA before the GIC has been set up.
+ * If we use IRQ priority masking, the PMR and PSR will be out of sync
+ * after the GIC is enabled : sync them up.
+ */
+static inline void local_interrupt_priority_init(void)
+{
+	WARN_ON(read_sysreg(daif) & PSR_A_BIT);
+	lockdep_assert_irqs_disabled();
+
+	gic_write_pmr(GIC_PRIO_IRQOFF);
+	write_sysreg(DAIF_PROCCTX, daif);
+}
+
 #endif

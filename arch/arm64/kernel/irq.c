@@ -115,10 +115,9 @@ void __init init_IRQ(void)
 
 	if (system_uses_irq_prio_masking()) {
 		/*
-		 * Now that we have a stack for our IRQ handler, set
-		 * the PMR/PSR pair to a consistent state.
+		 * Now that we have a stack for our IRQ handler,
+		 * let's mask interrupts via the PMR.
 		 */
-		WARN_ON(read_sysreg(daif) & PSR_A_BIT);
-		local_daif_restore(DAIF_PROCCTX_NOIRQ);
+		local_interrupt_priority_init();
 	}
 }

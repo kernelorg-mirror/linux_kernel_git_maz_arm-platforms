@@ -121,28 +121,6 @@ static inline void local_daif_restore(unsigned long flags)
 }
 
 /*
- * Called by synchronous exception handlers to restore the DAIF bits that were
- * modified by taking an exception.
- */
-static inline void local_daif_inherit(struct pt_regs *regs)
-{
-	unsigned long flags = regs->pstate & DAIF_MASK;
-
-	if (!regs_irqs_disabled(regs))
-		trace_hardirqs_on();
-
-	if (system_uses_irq_prio_masking())
-		gic_write_pmr(regs->pmr);
-
-	/*
-	 * We can't use local_daif_restore(regs->pstate) here as
-	 * system_has_prio_mask_debugging() won't restore the I bit if it can
-	 * use the pmr instead.
-	 */
-	write_sysreg(flags, daif);
-}
-
-/*
  * During early boot, we unmask PSR.DA before the GIC has been set up.
  * If we use IRQ priority masking, the PMR and PSR will be out of sync
  * after the GIC is enabled : sync them up.

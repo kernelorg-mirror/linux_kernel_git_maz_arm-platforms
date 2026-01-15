@@ -185,7 +185,7 @@ static void init_gic_priority_masking(void)
 	WARN_ON(!(cpuflags & PSR_I_BIT));
 	WARN_ON(!(cpuflags & PSR_F_BIT));
 
-	gic_write_pmr(GIC_PRIO_IRQON | GIC_PRIO_PSR_I_SET);
+	gic_write_pmr(GIC_PRIO_IRQON);
 }
 
 /*

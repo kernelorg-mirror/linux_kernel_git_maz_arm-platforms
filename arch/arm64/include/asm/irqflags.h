@@ -9,6 +9,8 @@
 #include <asm/ptrace.h>
 #include <asm/sysreg.h>
 
+#include <linux/compiler.h>
+
 /*
  * Aarch64 has flags for masking: Debug, Asynchronous (serror), Interrupts and
  * FIQ exceptions, in the 'daif' register. We mask and unmask them in 'daif'
@@ -19,6 +21,21 @@
  * flags. Keeping to this order makes it easier for entry.S to know which
  * exceptions should be unmasked.
  */
+
+ /*
+  * Internally, we want to independently manipulate and track the different
+  * interrupt masking mechanisms.
+  * Externally, the generic irqflags API expects unsgined longs to represent
+  * the state of interrupts, which are treated as obscure arch-specific data.
+  */
+union arm64_local_irqs {
+	struct {
+		u16 daif;
+		u8 pmr;
+	};
+	unsigned long irqflags;
+};
+static_assert(sizeof(union arm64_local_irqs) == sizeof(unsigned long));
 
 static __always_inline void __daif_local_irq_enable(void)
 {
@@ -77,14 +94,14 @@ static inline void arch_local_irq_disable(void)
 	}
 }
 
-static __always_inline unsigned long __daif_local_save_flags(void)
+static __always_inline union arm64_local_irqs __daif_local_save_flags(void)
 {
-	return read_sysreg(daif);
+	return (union arm64_local_irqs){ .daif = read_sysreg(daif) };
 }
 
-static __always_inline unsigned long __pmr_local_save_flags(void)
+static __always_inline union arm64_local_irqs __pmr_local_save_flags(void)
 {
-	return read_sysreg_s(SYS_ICC_PMR_EL1);
+	return (union arm64_local_irqs){ .pmr = read_sysreg_s(SYS_ICC_PMR_EL1) };
 }
 
 /*
@@ -93,28 +110,31 @@ static __always_inline unsigned long __pmr_local_save_flags(void)
 static inline unsigned long arch_local_save_flags(void)
 {
 	if (system_uses_irq_prio_masking()) {
-		return __pmr_local_save_flags();
+		return __pmr_local_save_flags().irqflags;
 	} else {
-		return __daif_local_save_flags();
+		return __daif_local_save_flags().irqflags;
 	}
 }
 
-static __always_inline bool __daif_irqs_disabled_flags(unsigned long flags)
+static __always_inline
+bool __daif_irqs_disabled_flags(union arm64_local_irqs irqs)
 {
-	return flags & PSR_I_BIT;
+	return irqs.daif & PSR_I_BIT;
 }
 
-static __always_inline bool __pmr_irqs_disabled_flags(unsigned long flags)
+static __always_inline
+bool __pmr_irqs_disabled_flags(union arm64_local_irqs irqs)
 {
-	return flags != GIC_PRIO_IRQON;
+	return irqs.pmr != GIC_PRIO_IRQON;
 }
 
 static inline bool arch_irqs_disabled_flags(unsigned long flags)
 {
+	union arm64_local_irqs irqs = { .irqflags = flags };
 	if (system_uses_irq_prio_masking()) {
-		return __pmr_irqs_disabled_flags(flags);
+		return __pmr_irqs_disabled_flags(irqs);
 	} else {
-		return __daif_irqs_disabled_flags(flags);
+		return __daif_irqs_disabled_flags(irqs);
 	}
 }
 
@@ -137,49 +157,51 @@ static inline bool arch_irqs_disabled(void)
 	}
 }
 
-static __always_inline unsigned long __daif_local_irq_save(void)
+static __always_inline union arm64_local_irqs __daif_local_irq_save(void)
 {
-	unsigned long flags = __daif_local_save_flags();
+	union arm64_local_irqs irqs = __daif_local_save_flags();
 
 	__daif_local_irq_disable();
 
-	return flags;
+	return irqs;
 }
 
-static __always_inline unsigned long __pmr_local_irq_save(void)
+static __always_inline union arm64_local_irqs __pmr_local_irq_save(void)
 {
-	unsigned long flags = __pmr_local_save_flags();
+	union arm64_local_irqs irqs = __pmr_local_save_flags();
 
 	/*
 	 * There are too many states with IRQs disabled, just keep the current
 	 * state if interrupts are already disabled/masked.
 	 */
-	if (!__pmr_irqs_disabled_flags(flags))
+	if (!__pmr_irqs_disabled_flags(irqs))
 		__pmr_local_irq_disable();
 
-	return flags;
+	return irqs;
 }
 
 static inline unsigned long arch_local_irq_save(void)
 {
 	if (system_uses_irq_prio_masking()) {
-		return __pmr_local_irq_save();
+		return __pmr_local_irq_save().irqflags;
 	} else {
-		return __daif_local_irq_save();
+		return __daif_local_irq_save().irqflags;
 	}
 }
 
-static __always_inline void __daif_local_irq_restore(unsigned long flags)
+static __always_inline
+void __daif_local_irq_restore(union arm64_local_irqs irqs)
 {
 	barrier();
-	write_sysreg(flags, daif);
+	write_sysreg(irqs.daif, daif);
 	barrier();
 }
 
-static __always_inline void __pmr_local_irq_restore(unsigned long flags)
+static __always_inline
+void __pmr_local_irq_restore(union arm64_local_irqs irqs)
 {
 	barrier();
-	write_sysreg_s(flags, SYS_ICC_PMR_EL1);
+	write_sysreg_s(irqs.pmr, SYS_ICC_PMR_EL1);
 	pmr_sync();
 	barrier();
 }
@@ -189,10 +211,11 @@ static __always_inline void __pmr_local_irq_restore(unsigned long flags)
  */
 static inline void arch_local_irq_restore(unsigned long flags)
 {
+	union arm64_local_irqs irqs = { .irqflags = flags };
 	if (system_uses_irq_prio_masking()) {
-		__pmr_local_irq_restore(flags);
+		__pmr_local_irq_restore(irqs);
 	} else {
-		__daif_local_irq_restore(flags);
+		__daif_local_irq_restore(irqs);
 	}
 }
 

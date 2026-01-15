@@ -34,6 +34,14 @@
 	wx\n	.req	w\n
 	.endr
 
+	.macro	disable_allint
+#ifdef CONFIG_ARM64_NMI
+alternative_if ARM64_NMI
+	msr_s	SYS_ALLINT_SET, xzr
+alternative_else_nop_endif
+#endif
+	.endm
+
 /*
  * Save/restore interrupts.
  */

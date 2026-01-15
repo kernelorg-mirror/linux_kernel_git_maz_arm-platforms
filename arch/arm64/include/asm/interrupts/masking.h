@@ -14,6 +14,7 @@
 struct arm64_irqs_state {
 	enum arm64_irqs_masks masked_to;
 	u64 daif;
+	u64 allint;
 	u64 pmr;
 };
 
@@ -86,7 +87,18 @@ static inline void __local_all_irqs_set_mask(enum arm64_irqs_masks new_mask)
 			pmr_sync();
 	}
 
+	/*
+	 * Try to order ALLINT writes to be consistent with the DAIF state :
+	 * we don't want to take an NMI with DAIF masked or when it should
+	 * be masked but isn't yet.
+	 */
+	if (system_uses_nmi() && new_mask >= NONMI_PROCESS_CONTEXT)
+		_allint_set();
+
 	write_sysreg(daif_flags, daif);
+
+	if (system_uses_nmi() && new_mask < NONMI_PROCESS_CONTEXT)
+		_allint_clear();
 
 	if (new_mask > PROCESS_CONTEXT)
 		trace_hardirqs_off();
@@ -101,9 +113,12 @@ struct arm64_irqs_state local_all_irqs_save_mask(enum arm64_irqs_masks new_mask)
 	};
 	if (system_uses_irq_prio_masking())
 		irqs_state.pmr = gic_read_pmr();
+	if (system_uses_nmi())
+		irqs_state.allint = read_sysreg_s(SYS_ALLINT);
 
 	WARN_ON(IS_ENABLED(CONFIG_DEBUG_IRQFLAGS) &&
-		new_mask < get_irqs_mask(irqs_state.daif, irqs_state.pmr));
+		new_mask < get_irqs_mask(irqs_state.daif, irqs_state.pmr,
+					 irqs_state.allint));
 
 	__local_all_irqs_set_mask(new_mask);
 
@@ -116,20 +131,26 @@ static inline void local_all_irqs_restore(struct arm64_irqs_state irqs_state)
 		enum arm64_irqs_masks current_mask;
 		unsigned long pmr = system_uses_irq_prio_masking() ?
 				gic_read_pmr() : GIC_PRIO_IRQON;
+		unsigned long allint = system_uses_nmi() ?
+				read_sysreg_s(SYS_ALLINT) : 0;
 
-		current_mask = get_irqs_mask(read_sysreg(daif), pmr);
+		current_mask = get_irqs_mask(read_sysreg(daif), pmr, allint);
 
 		/* Inconsistent IRQ masking between save and restore */
 		WARN_ON(current_mask != irqs_state.masked_to);
 	}
 
-	if (get_irqs_mask(irqs_state.daif, irqs_state.pmr) == PROCESS_CONTEXT)
+	if (get_irqs_mask(irqs_state.daif, irqs_state.pmr, irqs_state.allint) ==
+								PROCESS_CONTEXT)
 		trace_hardirqs_on();
 
 	if (system_uses_irq_prio_masking())
 		gic_write_pmr(irqs_state.pmr);
 
 	write_sysreg(irqs_state.daif, daif);
+
+	if (system_uses_nmi())
+		write_sysreg_s(irqs_state.allint, SYS_ALLINT);
 }
 
 #ifdef CONFIG_DEBUG_IRQFLAGS

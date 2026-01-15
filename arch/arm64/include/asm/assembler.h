@@ -47,6 +47,7 @@ alternative_else_nop_endif
  */
 	.macro save_and_disable_daif, flags
 	mrs	\flags, daif
+	disable_allint
 	msr	daifset, #0xf
 	.endm
 
@@ -57,6 +58,14 @@ alternative_else_nop_endif
 
 	.macro	restore_irq, flags
 	msr	daif, \flags
+#ifdef CONFIG_ARM64_NMI
+alternative_if ARM64_NMI
+	/* If async exceptions are unmasked we can take NMIs */
+	tbnz    \flags, #8, .skip_allint_clr\@
+	msr_s   SYS_ALLINT_CLR, xzr
+.skip_allint_clr\@:
+alternative_else_nop_endif
+#endif
 	.endm
 
 	.macro	disable_step_tsk, flgs, tmp

@@ -12,8 +12,9 @@
 #include <asm/sysreg.h>
 
 /*
- * Exception handlers should always be called with DAIF set and PMR not masking
- * any exceptions. They should always return after setting DAIF.
+ * Exception handlers should always be called with DAIF and ALLINT set,
+ * and PMR not masking any exceptions.
+ * They should always return after setting DAIF and ALLINT.
  * As we always know what should be saved/restored, instead track what we are
  * changing things to, so we can detect inconsistent interrupt masking by
  * the code we call.
@@ -68,6 +69,9 @@ struct entry_irqs_state entry_unmask_irqs_to(enum arm64_irqs_masks mask)
 
 	write_sysreg(daif_flags, daif);
 
+	if (system_uses_nmi() && mask < NONMI_PROCESS_CONTEXT)
+		_allint_clear();
+
 	return state;
 }
 
@@ -97,6 +101,7 @@ static inline struct entry_irqs_state entry_inherit_irqs(struct pt_regs *regs)
 {
 	struct entry_irqs_state state;
 	unsigned long daif_flags = regs->pstate & DAIF_MASK;
+	unsigned long allint = regs->pstate & PSR_ALLINT_BIT;
 
 	if (!regs_irqs_disabled(regs))
 		trace_hardirqs_on();
@@ -128,13 +133,18 @@ static inline struct entry_irqs_state entry_inherit_irqs(struct pt_regs *regs)
 
 	write_sysreg(daif_flags, daif);
 
-	state.unmasked_to = get_irqs_mask(daif_flags, state.restored_pmr);
+	if (system_uses_nmi() && allint == 0)
+		_allint_clear();
+
+	state.unmasked_to = get_irqs_mask(daif_flags, state.restored_pmr, allint);
 	return state;
 }
 
 static inline void entry_mask_irqs_exit(struct entry_irqs_state saved_state)
 {
 	unsigned long pmr = system_uses_irq_prio_masking() ? gic_read_pmr() : 0;
+	unsigned long allint = system_uses_nmi() ?
+				read_sysreg_s(SYS_ALLINT) : 0;
 	/*
 	 * Exception handlers don't use the PMR to mask exceptions.
 	 * If we restore with an inconsistent PMR, that means the code we called
@@ -146,7 +156,11 @@ static inline void entry_mask_irqs_exit(struct entry_irqs_state saved_state)
 	//	(saved_state.restored_pmr != pmr));
 
 	WARN_ON(IS_ENABLED(CONFIG_DEBUG_IRQFLAGS) &&
-		(get_irqs_mask(read_sysreg(daif), pmr) < saved_state.unmasked_to));
+		(get_irqs_mask(read_sysreg(daif), pmr, allint) <
+						saved_state.unmasked_to));
+
+	if (system_uses_nmi())
+		_allint_set();
 
 	write_sysreg(DAIF_MASK, daif);
 	/*

@@ -20,7 +20,7 @@
 #include <asm/barrier.h>
 #include <asm/cacheflush.h>
 #include <asm/cputype.h>
-#include <asm/daifflags.h>
+#include <asm/interrupts/masking.h>
 #include <asm/irqflags.h>
 #include <asm/kexec.h>
 #include <asm/memory.h>
@@ -333,7 +333,7 @@ static void swsusp_mte_restore_tags(void)
 int swsusp_arch_suspend(void)
 {
 	int ret = 0;
-	unsigned long flags;
+	struct arm64_irqs_state flags;
 	struct sleep_stack_data state;
 
 	if (cpus_are_stuck_in_kernel()) {
@@ -341,7 +341,7 @@ int swsusp_arch_suspend(void)
 		return -EBUSY;
 	}
 
-	flags = local_daif_save();
+	flags = local_all_irqs_save_mask(CRITICAL_CONTEXT);
 
 	if (__cpu_suspend_enter(&state)) {
 		/* make the crash dump kernel image visible/saveable */
@@ -391,7 +391,7 @@ int swsusp_arch_suspend(void)
 		spectre_v4_enable_mitigation(NULL);
 	}
 
-	local_daif_restore(flags);
+	local_all_irqs_restore(flags);
 
 	return ret;
 }
@@ -405,13 +405,13 @@ int swsusp_arch_suspend(void)
 int swsusp_arch_resume(void)
 {
 	int rc;
-	unsigned long flags;
 	void *zero_page;
 	size_t exit_size;
 	pgd_t *tmp_pg_dir;
 	phys_addr_t el2_vectors;
 	void __noreturn (*hibernate_exit)(phys_addr_t, phys_addr_t, void *,
 					  void *, phys_addr_t, phys_addr_t);
+	struct arm64_irqs_state flags;
 	struct trans_pgd_info trans_info = {
 		.trans_alloc_page	= hibernate_page_alloc,
 		.trans_alloc_arg	= (__force void *)GFP_ATOMIC,
@@ -474,11 +474,11 @@ int swsusp_arch_resume(void)
 	 * If the resume is successful, it will restore the proper
 	 * interrupt masking from the hibernated kernel and we will not return.
 	 */
-	flags = local_daif_save();
+	flags = local_all_irqs_save_mask(CRITICAL_CONTEXT);
 	hibernate_exit(virt_to_phys(tmp_pg_dir), resume_hdr.ttbr1_el1,
 		       resume_hdr.reenter_kernel, restore_pblist,
 		       resume_hdr.__hyp_stub_vectors, virt_to_phys(zero_page));
-	local_daif_restore(flags);
+	local_all_irqs_restore(flags);
 
 	return 0;
 }

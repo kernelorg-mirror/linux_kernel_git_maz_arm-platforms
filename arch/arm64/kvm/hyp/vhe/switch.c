@@ -17,6 +17,7 @@
 
 #include <asm/barrier.h>
 #include <asm/cpufeature.h>
+#include <asm/interrupts/masking.h>
 #include <asm/kprobes.h>
 #include <asm/kvm_asm.h>
 #include <asm/kvm_emulate.h>
@@ -630,8 +631,9 @@ NOKPROBE_SYMBOL(__kvm_vcpu_run_vhe);
 int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 {
 	int ret;
+	struct arm64_irqs_state irqs_state;
 
-	local_daif_mask();
+	irqs_state = local_all_irqs_save_mask(CRITICAL_CONTEXT);
 
 	/*
 	 * Having IRQs masked via PMR when entering the guest means the GIC
@@ -639,18 +641,18 @@ int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * only way to get out will be via guest exceptions.
 	 * Naturally, we want to avoid this.
 	 *
-	 * local_daif_mask() already sets GIC_PRIO_PSR_I_SET, we just need a
-	 * dsb to ensure the redistributor is forwards EL2 IRQs to the CPU.
+	 * local_all_irqs_save_mask() already sets GIC_PRIO_IRQON, we just need a
+	 * dsb to ensure the redistributor forwards EL2 IRQs to the CPU.
 	 */
 	pmr_sync();
 
 	ret = __kvm_vcpu_run_vhe(vcpu);
 
 	/*
-	 * local_daif_restore() takes care to properly restore PSTATE.DAIF
+	 * local_all_irqs_restore() takes care to properly restore PSTATE.DAIF
 	 * and the GIC PMR if the host is using IRQ priorities.
 	 */
-	local_daif_restore(DAIF_PROCCTX_NOIRQ);
+	local_all_irqs_restore(irqs_state);
 
 	return ret;
 }

@@ -10,6 +10,7 @@
 #include <linux/irqchip/arm-gic-v3.h>
 #include <linux/kvm_host.h>
 
+#include <asm/interrupts/masking.h>
 #include <asm/kvm_emulate.h>
 #include <asm/kvm_hyp.h>
 #include <asm/kvm_mmu.h>
@@ -446,7 +447,7 @@ void __vgic_v3_init_lrs(void)
 u64 __vgic_v3_get_gic_config(void)
 {
 	u64 val, sre;
-	unsigned long flags = 0;
+	struct arm64_irqs_state flags;
 
 	/*
 	 * In compat mode, we cannot access ICC_SRE_EL1 at any EL
@@ -476,7 +477,7 @@ u64 __vgic_v3_get_gic_config(void)
 	 * of the exception entry to EL2.
 	 */
 	if (has_vhe()) {
-		flags = local_daif_save();
+		flags = local_all_irqs_save_mask(CRITICAL_CONTEXT);
 	} else {
 		sysreg_clear_set_hcr(0, HCR_AMO | HCR_FMO | HCR_IMO);
 		isb();
@@ -491,7 +492,7 @@ u64 __vgic_v3_get_gic_config(void)
 	isb();
 
 	if (has_vhe()) {
-		local_daif_restore(flags);
+		local_all_irqs_restore(flags);
 	} else {
 		sysreg_clear_set_hcr(HCR_AMO | HCR_FMO | HCR_IMO, 0);
 		isb();

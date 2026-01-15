@@ -20,7 +20,7 @@
 #include <linux/seq_file.h>
 #include <linux/smp.h>
 #include <linux/vmalloc.h>
-#include <asm/daifflags.h>
+#include <asm/interrupts/masking.h>
 #include <asm/exception.h>
 #include <asm/numa.h>
 #include <asm/softirq_stack.h>

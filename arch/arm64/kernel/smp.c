@@ -42,7 +42,7 @@
 #include <asm/cpu.h>
 #include <asm/cputype.h>
 #include <asm/cpu_ops.h>
-#include <asm/daifflags.h>
+#include <asm/interrupts/masking.h>
 #include <asm/kvm_mmu.h>
 #include <asm/mmu_context.h>
 #include <asm/numa.h>
@@ -263,7 +263,7 @@ asmlinkage notrace void secondary_start_kernel(void)
 	 * as the root irqchip has already been detected and initialized we can
 	 * unmask IRQ and FIQ at the same time.
 	 */
-	local_daif_restore(DAIF_PROCCTX);
+	local_all_irqs_cpu_init_mask(PROCESS_CONTEXT);
 
 	/*
 	 * OK, it's off to the idle thread for us
@@ -370,7 +370,7 @@ void __noreturn cpu_die(void)
 
 	idle_task_exit();
 
-	local_daif_mask();
+	local_all_irqs_final_mask();
 
 	/* Tell cpuhp_bp_sync_dead() that this CPU is now safe to dispose of */
 	cpuhp_ap_report_dead();
@@ -865,7 +865,7 @@ static void __noreturn local_cpu_stop(unsigned int cpu)
 {
 	set_cpu_online(cpu, false);
 
-	local_daif_mask();
+	local_all_irqs_final_mask();
 	sdei_mask_local_cpu();
 	cpu_park_loop();
 }
@@ -884,14 +884,14 @@ static void __noreturn ipi_cpu_crash_stop(unsigned int cpu, struct pt_regs *regs
 {
 #ifdef CONFIG_KEXEC_CORE
 	/*
-	 * Use local_daif_mask() instead of local_irq_disable() to make sure
-	 * that pseudo-NMIs are disabled. The "crash stop" code starts with
+	 * Use local_all_irqs_final_mask() instead of local_irq_disable() to make
+	 * sure that pseudo-NMIs are disabled. The "crash stop" code starts with
 	 * an IRQ and falls back to NMI (which might be pseudo). If the IRQ
 	 * finally goes through right as we're timing out then the NMI could
 	 * interrupt us. It's better to prevent the NMI and let the IRQ
 	 * finish since the pt_regs will be better.
 	 */
-	local_daif_mask();
+	local_all_irqs_final_mask();
 
 	crash_save_cpu(regs, cpu);
 

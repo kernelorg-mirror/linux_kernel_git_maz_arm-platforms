@@ -254,7 +254,7 @@ int __kvm_vcpu_run(struct kvm_vcpu *vcpu)
 	 * Naturally, we want to avoid this.
 	 */
 	if (system_uses_irq_prio_masking()) {
-		gic_write_pmr(GIC_PRIO_IRQON | GIC_PRIO_PSR_I_SET);
+		gic_write_pmr(GIC_PRIO_IRQON);
 		pmr_sync();
 	}
 

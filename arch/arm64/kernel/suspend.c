@@ -9,7 +9,7 @@
 #include <asm/cacheflush.h>
 #include <asm/cpufeature.h>
 #include <asm/cpuidle.h>
-#include <asm/daifflags.h>
+#include <asm/interrupts/masking.h>
 #include <asm/debug-monitors.h>
 #include <asm/exec.h>
 #include <asm/fpsimd.h>
@@ -69,7 +69,7 @@ void notrace __cpu_suspend_exit(void)
 	/*
 	 * Restore HW breakpoint registers to sane values
 	 * before debug exceptions are possibly reenabled
-	 * by cpu_suspend()s local_daif_restore() call.
+	 * by cpu_suspend()s local_all_irqs_save_mask() call.
 	 */
 	if (hw_breakpoint_restore)
 		hw_breakpoint_restore(cpu);
@@ -97,7 +97,7 @@ void notrace __cpu_suspend_exit(void)
 int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 {
 	int ret = 0;
-	unsigned long flags;
+	struct arm64_irqs_state flags;
 	struct sleep_stack_data state;
 
 	/*
@@ -119,12 +119,12 @@ int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 	 *
 	 * Strictly speaking the trace_hardirqs_off() here is superfluous,
 	 * hardirqs should be firmly off by now. This really ought to use
-	 * something like raw_local_daif_save().
+	 * something like raw_local_all_irqs_save_mask().
 	 *
 	 * This also unmasks interrupts in PMR in order to reliably
 	 * resume if we're using pseudo-NMIs.
 	 */
-	flags = local_daif_save();
+	flags = local_all_irqs_save_mask(CRITICAL_CONTEXT);
 
 	/*
 	 * Function graph tracer state gets inconsistent when the kernel
@@ -158,11 +158,11 @@ int cpu_suspend(unsigned long arg, int (*fn)(unsigned long))
 	unpause_graph_tracing();
 
 	/*
-	 * Restore pstate flags. OS lock and mdscr have been already
+	 * Restore interrupt masks. OS lock and mdscr have been already
 	 * restored, so from this point onwards, debugging is fully
 	 * reenabled if it was enabled when core started shutdown.
 	 */
-	local_daif_restore(flags);
+	local_all_irqs_restore(flags);
 
 	return ret;
 }

@@ -15,7 +15,9 @@
 enum arm64_irqs_masks {
 	PROCESS_CONTEXT,
 	NOIRQ_PROCESS_CONTEXT,
+	NONMI_PROCESS_CONTEXT,
 	ERROR_CONTEXT,
+	CRITICAL_CONTEXT,
 };
 
 static inline
@@ -23,10 +25,14 @@ enum arm64_irqs_masks get_irqs_mask(unsigned long daif, unsigned long pmr)
 {
 	enum arm64_irqs_masks mask = PROCESS_CONTEXT;
 
-	if (daif >= PSR_A_BIT)
+	if (daif >= PSR_D_BIT)
+		mask = CRITICAL_CONTEXT;
+	else if (daif >= PSR_A_BIT)
 		mask = ERROR_CONTEXT;
 	else if (daif > 0)
 		mask = NOIRQ_PROCESS_CONTEXT;
+	else if (system_uses_irq_prio_masking() && pmr < GIC_PRIO_NMIOFF)
+		mask = NONMI_PROCESS_CONTEXT;
 	else if (system_uses_irq_prio_masking() && pmr < GIC_PRIO_IRQON)
 		mask = NOIRQ_PROCESS_CONTEXT;
 

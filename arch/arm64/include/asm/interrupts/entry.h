@@ -50,10 +50,15 @@ struct entry_irqs_state entry_unmask_irqs_to(enum arm64_irqs_masks mask)
 		daif_flags = DAIF_PROCCTX;
 		break;
 	case NOIRQ_PROCESS_CONTEXT:
+	case NONMI_PROCESS_CONTEXT:
 		daif_flags = DAIF_PROCCTX_NOIRQ;
 		break;
 	case ERROR_CONTEXT:
 		daif_flags = DAIF_ERRCTX;
+		break;
+	/* Should not be useful, as this is the default on entry. */
+	case CRITICAL_CONTEXT:
+		daif_flags = DAIF_MASK;
 		break;
 	default:
 		WARN(true, "Invalid interrupt mask in exception handler, not unmasking to be safe.\n");

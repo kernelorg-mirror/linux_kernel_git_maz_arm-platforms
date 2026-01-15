@@ -94,116 +94,53 @@ static inline void arch_local_irq_disable(void)
 	}
 }
 
-static __always_inline union arm64_local_irqs __daif_local_save_flags(void)
-{
-	return (union arm64_local_irqs){ .daif = read_sysreg(daif) };
-}
-
-static __always_inline union arm64_local_irqs __pmr_local_save_flags(void)
-{
-	return (union arm64_local_irqs){ .pmr = read_sysreg_s(SYS_ICC_PMR_EL1) };
-}
-
 /*
  * Save the current interrupt enable state.
  */
 static inline unsigned long arch_local_save_flags(void)
 {
-	if (system_uses_irq_prio_masking()) {
-		return __pmr_local_save_flags().irqflags;
-	} else {
-		return __daif_local_save_flags().irqflags;
-	}
-}
+	union arm64_local_irqs irqs = { .daif = read_sysreg(daif) };
 
-static __always_inline
-bool __daif_irqs_disabled_flags(union arm64_local_irqs irqs)
-{
-	return irqs.daif & PSR_I_BIT;
-}
+	if (system_uses_irq_prio_masking())
+		irqs.pmr = read_sysreg_s(SYS_ICC_PMR_EL1);
 
-static __always_inline
-bool __pmr_irqs_disabled_flags(union arm64_local_irqs irqs)
-{
-	return irqs.pmr != GIC_PRIO_IRQON;
+	return irqs.irqflags;
 }
 
 static inline bool arch_irqs_disabled_flags(unsigned long flags)
 {
 	union arm64_local_irqs irqs = { .irqflags = flags };
-	if (system_uses_irq_prio_masking()) {
-		return __pmr_irqs_disabled_flags(irqs);
-	} else {
-		return __daif_irqs_disabled_flags(irqs);
-	}
-}
+	/* If I is set, the PMR doesn't matter : interrupts will not be taken. */
+	if (irqs.daif & PSR_I_BIT)
+		return true;
 
-static __always_inline bool __daif_irqs_disabled(void)
-{
-	return __daif_irqs_disabled_flags(__daif_local_save_flags());
-}
+	if (system_uses_irq_prio_masking() && irqs.pmr < GIC_PRIO_IRQON)
+		return true;
 
-static __always_inline bool __pmr_irqs_disabled(void)
-{
-	return __pmr_irqs_disabled_flags(__pmr_local_save_flags());
+	return false;
 }
 
 static inline bool arch_irqs_disabled(void)
 {
-	if (system_uses_irq_prio_masking()) {
-		return __pmr_irqs_disabled();
-	} else {
-		return __daif_irqs_disabled();
-	}
-}
-
-static __always_inline union arm64_local_irqs __daif_local_irq_save(void)
-{
-	union arm64_local_irqs irqs = __daif_local_save_flags();
-
-	__daif_local_irq_disable();
-
-	return irqs;
-}
-
-static __always_inline union arm64_local_irqs __pmr_local_irq_save(void)
-{
-	union arm64_local_irqs irqs = __pmr_local_save_flags();
-
-	/*
-	 * There are too many states with IRQs disabled, just keep the current
-	 * state if interrupts are already disabled/masked.
-	 */
-	if (!__pmr_irqs_disabled_flags(irqs))
-		__pmr_local_irq_disable();
-
-	return irqs;
+	return arch_irqs_disabled_flags(arch_local_save_flags());
 }
 
 static inline unsigned long arch_local_irq_save(void)
 {
+	unsigned long flags = arch_local_save_flags();
+
 	if (system_uses_irq_prio_masking()) {
-		return __pmr_local_irq_save().irqflags;
+		/*
+		 * There are too many states with IRQs disabled, just keep the current
+		 * state if interrupts are already disabled/masked.
+		 */
+		if (!arch_irqs_disabled_flags(flags))
+			__pmr_local_irq_disable();
 	} else {
-		return __daif_local_irq_save().irqflags;
+		__daif_local_irq_disable();
 	}
-}
 
-static __always_inline
-void __daif_local_irq_restore(union arm64_local_irqs irqs)
-{
-	barrier();
-	write_sysreg(irqs.daif, daif);
-	barrier();
-}
-
-static __always_inline
-void __pmr_local_irq_restore(union arm64_local_irqs irqs)
-{
-	barrier();
-	write_sysreg_s(irqs.pmr, SYS_ICC_PMR_EL1);
-	pmr_sync();
-	barrier();
+	return flags;
 }
 
 /*
@@ -212,11 +149,15 @@ void __pmr_local_irq_restore(union arm64_local_irqs irqs)
 static inline void arch_local_irq_restore(unsigned long flags)
 {
 	union arm64_local_irqs irqs = { .irqflags = flags };
+
+	barrier();
 	if (system_uses_irq_prio_masking()) {
-		__pmr_local_irq_restore(irqs);
+		write_sysreg_s(irqs.pmr, SYS_ICC_PMR_EL1);
+		pmr_sync();
 	} else {
-		__daif_local_irq_restore(irqs);
+		write_sysreg(irqs.daif, daif);
 	}
+	barrier();
 }
 
 #endif /* __ASM_IRQFLAGS_H */

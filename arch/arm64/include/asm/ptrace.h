@@ -207,7 +207,7 @@ static inline void forget_syscall(struct pt_regs *regs)
 
 #define irqs_priority_unmasked(regs)					\
 	(system_uses_irq_prio_masking() ?				\
-		(regs)->pmr == GIC_PRIO_IRQON :				\
+		(regs)->pmr >= GIC_PRIO_IRQON :				\
 		true)
 
 static __always_inline bool regs_irqs_disabled(const struct pt_regs *regs)

@@ -146,6 +146,8 @@ static void do_interrupt_handler(struct pt_regs *regs,
 	set_irq_regs(old_regs);
 }
 
+extern void (*handle_arch_nmi_irq)(struct pt_regs *);
+extern void (*handle_arch_nmi_fiq)(struct pt_regs *);
 extern void (*handle_arch_irq)(struct pt_regs *);
 extern void (*handle_arch_fiq)(struct pt_regs *);
 
@@ -483,6 +485,18 @@ asmlinkage void noinstr el1h_64_sync_handler(struct pt_regs *regs)
 	}
 }
 
+static __always_inline void __el1_nmi(struct pt_regs *regs,
+				      void (*handler)(struct pt_regs *),
+				      struct entry_irqs_state irqs_state)
+{
+	irqentry_state_t state;
+
+	irqentry_nmi_enter(regs);
+	do_interrupt_handler(regs, handler);
+	entry_mask_irqs_exit(irqs_state);
+	irqentry_nmi_exit(regs, state);
+}
+
 static __always_inline void __el1_pnmi(struct pt_regs *regs,
 				       void (*handler)(struct pt_regs *),
 				       struct entry_irqs_state irqs_state)
@@ -517,10 +531,19 @@ static __always_inline void __el1_irq(struct pt_regs *regs,
 
 	exit_to_kernel_mode(regs, state, irqs_state);
 }
-static void noinstr el1_interrupt(struct pt_regs *regs,
-				  void (*handler)(struct pt_regs *))
+
+static void noinstr el1_interrupt(struct pt_regs *regs, u64 nmi_flag,
+				  void (*handler)(struct pt_regs *),
+				  void (*nmi_handler)(struct pt_regs *))
 {
 	struct entry_irqs_state irqs_state;
+
+	/* Is there a NMI to handle? */
+	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
+		irqs_state = entry_unmask_irqs_to(NONMI_PROCESS_CONTEXT);
+		__el1_nmi(regs, nmi_handler, irqs_state);
+		return;
+	}
 
 	irqs_state = entry_unmask_irqs_to(NOIRQ_PROCESS_CONTEXT);
 
@@ -532,12 +555,12 @@ static void noinstr el1_interrupt(struct pt_regs *regs,
 
 asmlinkage void noinstr el1h_64_irq_handler(struct pt_regs *regs)
 {
-	el1_interrupt(regs, handle_arch_irq);
+	el1_interrupt(regs, ISR_EL1_IS, handle_arch_irq, handle_arch_nmi_irq);
 }
 
 asmlinkage void noinstr el1h_64_fiq_handler(struct pt_regs *regs)
 {
-	el1_interrupt(regs, handle_arch_fiq);
+	el1_interrupt(regs, ISR_EL1_FS, handle_arch_fiq, handle_arch_nmi_fiq);
 }
 
 asmlinkage void noinstr el1h_64_error_handler(struct pt_regs *regs)
@@ -859,12 +882,39 @@ asmlinkage void noinstr el0t_64_sync_handler(struct pt_regs *regs)
 	}
 }
 
-static void noinstr el0_interrupt(struct pt_regs *regs,
-				  void (*handler)(struct pt_regs *))
+static void noinstr el0_interrupt(struct pt_regs *regs, u64 nmi_flag,
+				  void (*handler)(struct pt_regs *),
+				  void (*nmi_handler)(struct pt_regs *))
 {
 	struct entry_irqs_state irqs_state;
 
 	arm64_enter_from_user_mode(regs);
+
+	/* Is there a NMI to handle? */
+	if (system_uses_nmi() && (read_sysreg(isr_el1) & nmi_flag)) {
+		irqentry_state_t state;
+
+		irqs_state = entry_unmask_irqs_to(NONMI_PROCESS_CONTEXT);
+
+		if (regs->pc & BIT(55))
+			arm64_apply_bp_hardening();
+
+		irqentry_nmi_enter(regs);
+		do_interrupt_handler(regs, nmi_handler);
+		irqentry_nmi_exit(regs, state);
+
+		/*
+		 * Generic exit to user mode code will handle some work and
+		 * might try to schedule. This needs to have control on IRQs,
+		 * which is prevented by ALLINT masking NMIS and IRQs+FIQs
+		 * regardless of DAIF.IF.
+		 * We are done handling our NMI, so it should be safe to unmask.
+		 */
+		irqs_state = entry_unmask_irqs_nested(NOIRQ_PROCESS_CONTEXT,
+							irqs_state);
+		arm64_exit_to_user_mode(regs, irqs_state);
+		return;
+	}
 
 	irqs_state = entry_unmask_irqs_to(NOIRQ_PROCESS_CONTEXT);
 
@@ -888,7 +938,7 @@ static void noinstr el0_interrupt(struct pt_regs *regs,
 
 static void noinstr __el0_irq_handler_common(struct pt_regs *regs)
 {
-	el0_interrupt(regs, handle_arch_irq);
+	el0_interrupt(regs, ISR_EL1_IS, handle_arch_irq, handle_arch_nmi_irq);
 }
 
 asmlinkage void noinstr el0t_64_irq_handler(struct pt_regs *regs)
@@ -898,7 +948,7 @@ asmlinkage void noinstr el0t_64_irq_handler(struct pt_regs *regs)
 
 static void noinstr __el0_fiq_handler_common(struct pt_regs *regs)
 {
-	el0_interrupt(regs, handle_arch_fiq);
+	el0_interrupt(regs, ISR_EL1_FS, handle_arch_fiq, handle_arch_nmi_fiq);
 }
 
 asmlinkage void noinstr el0t_64_fiq_handler(struct pt_regs *regs)

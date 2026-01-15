@@ -238,6 +238,48 @@ void local_all_irqs_force_daif_restore(struct arm64_irqs_state saved_state)
 }
 
 /*
+ * `preempt_schedule_irq()` is generic code, it can only affect DAIF.IF and
+ * the PMR if using pseudo-NMIs.
+ * Unmask all other exceptions so that it does not lead to a broken state where
+ * DAIF.DA is masked and DAIF.if is unmasked.
+ */
+static inline void __local_all_irqs_schedule_irq_unmask(void) {
+	if (IS_ENABLED(CONFIG_DEBUG_IRQFLAGS)) {
+		unsigned long pmr = system_uses_irq_prio_masking() ?
+				gic_read_pmr() : GIC_PRIO_IRQON;
+		unsigned long allint = system_uses_nmi() ?
+				read_sysreg_s(SYS_ALLINT) : 0;
+
+		/*
+		 * We should always reach `preempt_schedule_irq()` with all
+		 * exceptions masked.
+		 */
+		WARN_ON(get_irqs_mask(read_sysreg(daif), pmr, allint) !=
+				CRITICAL_CONTEXT);
+	}
+	lockdep_assert_irqs_disabled();
+	__local_all_irqs_set_mask(NOIRQ_PROCESS_CONTEXT);
+}
+
+static inline void __local_all_irqs_schedule_irq_mask(void) {
+	if (IS_ENABLED(CONFIG_DEBUG_IRQFLAGS)) {
+		unsigned long pmr = system_uses_irq_prio_masking() ?
+				gic_read_pmr() : GIC_PRIO_IRQON;
+		unsigned long allint = system_uses_nmi() ?
+				read_sysreg_s(SYS_ALLINT) : 0;
+
+		/*
+		 * We should always exit `preempt_schedule_irq()` with all
+		 * exceptions unmasked.
+		 */
+		WARN_ON(get_irqs_mask(read_sysreg(daif), pmr, allint) !=
+				NOIRQ_PROCESS_CONTEXT);
+	}
+	lockdep_assert_irqs_disabled();
+	__local_all_irqs_set_mask(CRITICAL_CONTEXT);
+}
+
+/*
  * During early boot, we unmask PSR.DA before the GIC has been set up.
  * If we use IRQ priority masking, the PMR and PSR will be out of sync
  * after the GIC is enabled : sync them up.

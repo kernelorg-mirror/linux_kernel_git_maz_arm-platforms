@@ -162,6 +162,25 @@ static inline bool arch_irqentry_exit_need_resched(void);
 static inline bool arch_irqentry_exit_need_resched(void) { return true; }
 #endif
 
+/**
+ * arch_irqentry_exit_{prepare_schedule_irq,complete} - Architecture specific
+ * prologue and epilogue to preempt_schedule_irq().
+ * 
+ * Permit archs to have specific handling around `preempt_schedule_irq()`,
+ * for example if its interrupts would not be properly masked before irq exit.
+ */
+static inline void arch_irqentry_exit_prepare_schedule_irq(void);
+
+#ifndef arch_irqentry_exit_prepare_schedule_irq
+static inline void arch_irqentry_exit_prepare_schedule_irq(void) { }
+#endif
+
+static inline void arch_irqentry_exit_complete_schedule_irq(void);
+
+#ifndef arch_irqentry_exit_complete_schedule_irq
+static inline void arch_irqentry_exit_complete_schedule_irq(void) { }
+#endif
+
 void raw_irqentry_exit_cond_resched(void)
 {
 	if (!preempt_count()) {
@@ -169,8 +188,12 @@ void raw_irqentry_exit_cond_resched(void)
 		rcu_irq_exit_check_preempt();
 		if (IS_ENABLED(CONFIG_DEBUG_ENTRY))
 			WARN_ON_ONCE(!on_thread_stack());
-		if (need_resched() && arch_irqentry_exit_need_resched())
+		if (need_resched() && arch_irqentry_exit_need_resched()) {
+			arch_irqentry_exit_prepare_schedule_irq();
 			preempt_schedule_irq();
+			arch_irqentry_exit_complete_schedule_irq();
+		}
+
 	}
 }
 #ifdef CONFIG_PREEMPT_DYNAMIC
@@ -252,7 +275,7 @@ void noinstr irqentry_nmi_exit(struct pt_regs *regs, irqentry_state_t irq_state)
 {
 	instrumentation_begin();
 	ftrace_nmi_exit();
-	if (irq_state.lockdep) {
+	if (irq_state.lockdep || !regs_irqs_disabled(regs)) {
 		trace_hardirqs_on_prepare();
 		lockdep_hardirqs_on_prepare();
 	}
@@ -260,7 +283,7 @@ void noinstr irqentry_nmi_exit(struct pt_regs *regs, irqentry_state_t irq_state)
 
 	ct_nmi_exit();
 	lockdep_hardirq_exit();
-	if (irq_state.lockdep)
+	if (irq_state.lockdep || !regs_irqs_disabled(regs))
 		lockdep_hardirqs_on(CALLER_ADDR0);
 	__nmi_exit();
 }

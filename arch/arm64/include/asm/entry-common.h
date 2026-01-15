@@ -7,6 +7,7 @@
 
 #include <asm/cpufeature.h>
 #include <asm/fpsimd.h>
+#include <asm/interrupts/masking.h>
 #include <asm/mte.h>
 #include <asm/stacktrace.h>
 
@@ -52,5 +53,27 @@ static inline bool arch_irqentry_exit_need_resched(void)
 }
 
 #define arch_irqentry_exit_need_resched arch_irqentry_exit_need_resched
+
+/* When exiting EL1 handlers, we masked all interrupts.
+ * This is not compatible with the scheduling done in `irqentry_exit()`,
+ * as it expects *only* local_irqs to be masked, and will unmask them.
+ * However, we still want to have everything properly mask when exiting
+ * the kernel, so partially unmask in preparation for scheduling.
+ */
+static inline void arch_irqentry_exit_prepare_schedule_irq(void) {
+	__local_all_irqs_schedule_irq_unmask();
+}
+
+#define arch_irqentry_exit_prepare_schedule_irq arch_irqentry_exit_prepare_schedule_irq
+
+/*
+ * Now that we are done scheduling in `irqentry_exit()`, mask all interrupts
+ * properly again so that we can safely exit the kernel.
+ */
+static inline void arch_irqentry_exit_complete_schedule_irq(void) {
+	__local_all_irqs_schedule_irq_mask();
+}
+
+#define arch_irqentry_exit_complete_schedule_irq arch_irqentry_exit_complete_schedule_irq
 
 #endif /* _ASM_ARM64_ENTRY_COMMON_H */

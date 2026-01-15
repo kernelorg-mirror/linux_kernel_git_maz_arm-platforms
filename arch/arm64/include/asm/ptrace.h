@@ -27,8 +27,6 @@
 #define GIC_PRIO_IRQOFF		GICV3_PRIO_IRQ
 #define GIC_PRIO_NMIOFF		GICV3_PRIO_NMI
 
-#define GIC_PRIO_PSR_I_SET	GICV3_PRIO_PSR_I_SET
-
 /* Additional SPSR bits not exposed in the UABI */
 #define PSR_MODE_THREAD_BIT	(1 << 0)
 #define PSR_IL_BIT		(1 << 20)

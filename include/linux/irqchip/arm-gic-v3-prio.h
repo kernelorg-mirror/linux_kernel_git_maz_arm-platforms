@@ -20,16 +20,10 @@
  * GICV3_PRIO_NMI is the PMR view of the priority of pseudo-NMIs. This can be
  * written to the PMR to mask pseudo-NMIs.
  *
- * On arm64 some code sections either automatically switch back to PSR.I or
- * explicitly require to not use priority masking. If bit GICV3_PRIO_PSR_I_SET
- * is included in the priority mask, it indicates that PSR.I should be set and
- * interrupt disabling temporarily does not rely on IRQ priorities.
  */
 #define GICV3_PRIO_UNMASKED	0xe0
 #define GICV3_PRIO_IRQ		0xc0
 #define GICV3_PRIO_NMI		0x80
-
-#define GICV3_PRIO_PSR_I_SET	(1 << 4)
 
 #ifndef __ASSEMBLER__
 
@@ -44,8 +38,6 @@ static_assert(__gicv3_prio_valid_ns(GICV3_PRIO_IRQ));
 
 static_assert(GICV3_PRIO_NMI < GICV3_PRIO_IRQ);
 static_assert(GICV3_PRIO_IRQ < GICV3_PRIO_UNMASKED);
-
-static_assert(GICV3_PRIO_IRQ < (GICV3_PRIO_IRQ | GICV3_PRIO_PSR_I_SET));
 
 #endif /* __ASSEMBLER */
 

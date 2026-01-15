@@ -24,9 +24,9 @@
 #include <linux/vmalloc.h>
 
 #include <asm/cacheflush.h>
-#include <asm/daifflags.h>
 #include <asm/debug-monitors.h>
 #include <asm/insn.h>
+#include <asm/interrupts/common_flags.h>
 #include <asm/irq.h>
 #include <asm/text-patching.h>
 #include <asm/ptrace.h>

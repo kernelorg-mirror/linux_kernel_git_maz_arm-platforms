@@ -33,7 +33,6 @@
 #include <asm/cpufeature.h>
 #include <asm/efi.h>
 #include <asm/exception.h>
-#include <asm/daifflags.h>
 #include <asm/debug-monitors.h>
 #include <asm/esr.h>
 #include <asm/kprobes.h>

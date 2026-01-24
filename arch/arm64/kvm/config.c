@@ -26,6 +26,10 @@ struct reg_bits_to_feat_map {
 #define	MASKS_POINTER	BIT(3)	/* Pointer to fgt_masks struct instead of bits */
 #define	AS_RES1		BIT(4)	/* RES1 when not supported */
 #define	REQUIRES_E2H1	BIT(5)	/* Add HCR_EL2.E2H RES1 as a pre-condition */
+#define	RES0_WHEN_E2H0	BIT(6)	/* RES0 when E2H=0 and not supported */
+#define	RES0_WHEN_E2H1	BIT(7)	/* RES0 when E2H=1 and not supported */
+#define	RES1_WHEN_E2H0	BIT(8)	/* RES1 when E2H=0 and not supported */
+#define	RES1_WHEN_E2H1	BIT(9)	/* RES1 when E2H=1 and not supported */
 
 	unsigned long	flags;
 
@@ -1328,10 +1332,24 @@ struct resx compute_resx_bits(struct kvm *kvm,
 			match &= !e2h0;
 		
 		if (!match) {
+			u64 bits = reg_feat_map_bits(&map[i]);
+
+			if (e2h0) {
+				if      (map[i].flags & RES1_WHEN_E2H0)
+					resx.res1 |= bits;
+				else if (map[i].flags & RES0_WHEN_E2H0)
+					resx.res0 |= bits;
+			} else {
+				if      (map[i].flags & RES1_WHEN_E2H1)
+					resx.res1 |= bits;
+				else if (map[i].flags & RES0_WHEN_E2H1)
+					resx.res0 |= bits;
+			}
+
 			if (map[i].flags & AS_RES1)
- 				resx.res1 |= reg_feat_map_bits(&map[i]);
-			else
-				resx.res0 |= reg_feat_map_bits(&map[i]);
+				resx.res1 |= bits;
+			else if (!(resx.res1 & bits))
+				resx.res0 |= bits;
 		}
 	}
 

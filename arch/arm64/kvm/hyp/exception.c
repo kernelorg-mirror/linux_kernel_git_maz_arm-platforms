@@ -86,6 +86,7 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 			      enum exception_type type)
 {
 	unsigned long sctlr, vbar, old, new, mode;
+	struct kvm *kvm = kern_hyp_va(vcpu->kvm);
 	u64 exc_offset;
 
 	mode = *vcpu_cpsr(vcpu) & (PSR_MODE_MASK | PSR_MODE32_BIT);
@@ -125,7 +126,7 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 	new |= (old & PSR_C_BIT);
 	new |= (old & PSR_V_BIT);
 
-	if (kvm_has_mte(kern_hyp_va(vcpu->kvm)))
+	if (kvm_has_mte(kvm))
 		new |= PSR_TCO_BIT;
 
 	new |= (old & PSR_DIT_BIT);
@@ -150,6 +151,11 @@ static void enter_exception64(struct kvm_vcpu *vcpu, unsigned long target_mode,
 	// See ARM DDI 0487E.a, page D13-3258
 	if (sctlr & SCTLR_ELx_DSSBS)
 		new |= PSR_SSBS_BIT;
+
+	// PSTATE.ALLINT is set to the inverse value of SCTLR_ELx.SPINTMASK
+	// See ARM DDI 0487M.a.a, R_WTXBY
+	if (kvm_has_nmi(kvm) && !(sctlr & SCTLR_EL1_SPINTMASK))
+		new |= PSR_ALLINT_BIT;
 
 	// PSTATE.BTYPE is set to zero upon any exception to AArch64
 	// See ARM DDI 0487E.a, pages D1-2293 to D1-2294.

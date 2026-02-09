@@ -303,9 +303,6 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 	/* Trap on AArch32 cp15 c15 (impdef sysregs) accesses (EL1 or EL0) */
 	write_sysreg(1 << 15, hstr_el2);
 
-	if (cpus_have_final_cap(ARM64_HAS_NMI))
-		sysreg_clear_set_s(SYS_HCRX_EL2, 0, HCRX_EL2_TALLINT);
-
 	/*
 	 * Make sure we trap PMU access from EL0 to EL2. Also sanitize
 	 * PMSELR_EL0 to make sure it never contains the cycle
@@ -339,9 +336,6 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 static inline void __deactivate_traps_common(struct kvm_vcpu *vcpu)
 {
 	struct kvm_cpu_context *hctxt = host_data_ptr(host_ctxt);
-
-	if (cpus_have_final_cap(ARM64_HAS_NMI))
-		sysreg_clear_set_s(SYS_HCRX_EL2, HCRX_EL2_TALLINT, 0);
 
 	write_sysreg(0, hstr_el2);
 	if (system_supports_pmuv3()) {

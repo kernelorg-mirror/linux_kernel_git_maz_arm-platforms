@@ -374,3 +374,22 @@ Groups:
 
     The vINTID specifies which interrupt is generated when the vGIC
     must generate a maintenance interrupt. This must be a PPI.
+
+
+FEAT_NMI and FEAT_GICv3_NMI control:
+
+  NMIs are split over two features: FEAT_NMI, which is concerned with
+  the CPU side of the NMI handling, and FEAT_GICv3_NMI, which is
+  concerned with the distribution of NMIs by the GIC.
+
+  Not all combinations of these two features are meaningful, and
+  (FEAT_GICv3_NMI && !FEAT_NMI) is explicitly forbidden.
+
+  In order to make the KVM authors' life slightly less insane,
+  FEAT_NMI is only available to the guest if the host has both
+  FEAT_NMI and FEAT_GICv3_NMI. Similarly, only FEAT_NMI can be used to
+  control the presence or absence of NMI delivery in a guest.
+
+  This means that to disable NMI support in a guest, userspace must
+  set ID_AA64PFR1_EL1.NMI to zero. In this configuration, the
+  GICR_INMIR0 and GICD_INMIRn registers are RES0 for userspace.

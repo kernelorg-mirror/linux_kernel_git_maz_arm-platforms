@@ -62,8 +62,6 @@ enum ftr_visibility {
 #define FTR_CONFIG(c, e, d)				\
 	(IS_ENABLED(c) ? FTR_ ## e : FTR_ ## d)
 
-#define FTR_VISIBLE_IF_IS_ENABLED(c)	FTR_CONFIG(c, VISIBLE, HIDDEN)
-
 struct arm64_ftr_bits {
 	bool		sign;	/* Value is signed ? */
 	enum ftr_visibility visibility:8;

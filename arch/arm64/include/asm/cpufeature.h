@@ -53,17 +53,22 @@ enum ftr_type {
 #define FTR_SIGNED	true	/* Value should be treated as signed */
 #define FTR_UNSIGNED	false	/* Value should be treated as unsigned */
 
-#define FTR_VISIBLE	true	/* Feature visible to the user space */
-#define FTR_HIDDEN	false	/* Feature is hidden from the user */
+enum ftr_visibility {
+	FTR_HIDDEN,		/* Feature hidden from the user */
+	FTR_ALL_HIDDEN,		/* Feature hidden from kernel, user and KVM */
+	FTR_VISIBLE,		/* Feature visible to all observers */
+};
 
-#define FTR_VISIBLE_IF_IS_ENABLED(config)		\
-	(IS_ENABLED(config) ? FTR_VISIBLE : FTR_HIDDEN)
+#define FTR_CONFIG(c, e, d)				\
+	(IS_ENABLED(c) ? FTR_ ## e : FTR_ ## d)
+
+#define FTR_VISIBLE_IF_IS_ENABLED(c)	FTR_CONFIG(c, VISIBLE, HIDDEN)
 
 struct arm64_ftr_bits {
 	bool		sign;	/* Value is signed ? */
-	bool		visible;
+	enum ftr_visibility visibility:8;
 	bool		strict;	/* CPU Sanity check: strict matching required ? */
-	enum ftr_type	type;
+	enum ftr_type	type:8;
 	u8		shift;
 	u8		width;
 	s64		safe_val; /* safe value for FTR_EXACT features */

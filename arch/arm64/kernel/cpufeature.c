@@ -192,7 +192,7 @@ void dump_cpu_features(void)
 #define __ARM64_FTR_BITS(SIGNED, VISIBLE, STRICT, TYPE, SHIFT, WIDTH, SAFE_VAL) \
 	{						\
 		.sign = SIGNED,				\
-		.visible = VISIBLE,			\
+		.visibility = VISIBLE,			\
 		.strict = STRICT,			\
 		.type = TYPE,				\
 		.shift = SHIFT,				\
@@ -1063,16 +1063,33 @@ static void init_cpu_ftr_reg(u32 sys_reg, u64 new)
 				ftrp->shift);
 		}
 
-		val = arm64_ftr_set_value(ftrp, val, ftr_new);
-
 		valid_mask |= ftr_mask;
 		if (!ftrp->strict)
 			strict_mask &= ~ftr_mask;
-		if (ftrp->visible)
+
+		switch (ftrp->visibility) {
+		case FTR_VISIBLE:
+			val = arm64_ftr_set_value(ftrp, val, ftr_new);
 			user_mask |= ftr_mask;
-		else
+			break;
+		case FTR_ALL_HIDDEN:
+			/*
+			 * ALL_HIDDEN and HIGHER_SAFE are incompatible.
+			 * Only hide from userspace, and log the oddity.
+			 */
+			if (WARN_ON(ftrp->type == FTR_HIGHER_SAFE))
+				val = arm64_ftr_set_value(ftrp, val, ftr_new);
+			else
+				val = arm64_ftr_set_safe_value(ftrp, val);
 			reg->user_val = arm64_ftr_set_safe_value(ftrp,
 								 reg->user_val);
+			break;
+		case FTR_HIDDEN:
+			val = arm64_ftr_set_value(ftrp, val, ftr_new);
+			reg->user_val = arm64_ftr_set_safe_value(ftrp,
+								 reg->user_val);
+			break;
+		}
 	}
 
 	val &= valid_mask;
@@ -1230,9 +1247,10 @@ static void update_cpu_ftr_reg(struct arm64_ftr_reg *reg, u64 new)
 
 		/*
 		 * Don't alter the initial value that has been forced
-		 * by an override.
+		 * by an override or a disabled feature.
 		 */
-		if ((reg->override->mask & arm64_ftr_mask(ftrp)) == arm64_ftr_mask(ftrp))
+		if (ftrp->visibility == FTR_ALL_HIDDEN ||
+		    (reg->override->mask & arm64_ftr_mask(ftrp)) == arm64_ftr_mask(ftrp))
 			continue;
 
 		if (ftr_cur == ftr_new)

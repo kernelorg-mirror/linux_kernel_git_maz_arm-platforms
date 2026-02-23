@@ -1224,6 +1224,13 @@ static void update_cpu_ftr_reg(struct arm64_ftr_reg *reg, u64 new)
 		s64 ftr_cur = arm64_ftr_value(ftrp, reg->sys_val);
 		s64 ftr_new = arm64_ftr_value(ftrp, new);
 
+		/*
+		 * Don't alter the initial value that has been forced
+		 * by an override.
+		 */
+		if ((reg->override->mask & arm64_ftr_mask(ftrp)) == arm64_ftr_mask(ftrp))
+			continue;
+
 		if (ftr_cur == ftr_new)
 			continue;
 		/* Find a safe value */

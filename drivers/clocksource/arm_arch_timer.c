@@ -137,6 +137,8 @@ static noinstr u64 arch_counter_get_cntvct(void)
 u64 (*arch_timer_read_counter)(void) __ro_after_init = arch_counter_get_cntvct;
 EXPORT_SYMBOL_GPL(arch_timer_read_counter);
 
+u64 (*arch_timer_read_vcounter)(void) __ro_after_init = arch_counter_get_cntvct;
+
 static u64 arch_counter_read(struct clocksource *cs)
 {
 	return arch_timer_read_counter();
@@ -931,6 +933,9 @@ static void __init arch_counter_register(void)
 	}
 
 	arch_timer_read_counter = rd;
+	arch_timer_read_vcounter = (arch_timer_counter_has_wa() ?
+				    arch_counter_get_cntvct_stable :
+				    arch_counter_get_cntvct);
 	clocksource_counter.vdso_clock_mode = vdso_default;
 
 	width = arch_counter_get_width();

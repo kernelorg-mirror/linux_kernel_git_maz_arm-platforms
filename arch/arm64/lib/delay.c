@@ -34,8 +34,7 @@ static inline unsigned long xloops_to_cycles(unsigned long xloops)
  */
 static cycles_t __delay_cycles(void)
 {
-	guard(preempt)();
-	return __arch_counter_get_cntvct_stable();
+	return arch_timer_read_vcounter();
 }
 
 void __delay(unsigned long cycles)

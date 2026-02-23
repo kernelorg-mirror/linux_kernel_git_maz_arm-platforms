@@ -128,6 +128,8 @@ static notrace u64 arch_counter_get_cntvct(void)
 	return __arch_counter_get_cntvct();
 }
 
+u64 arch_timer_read_vcounter(void) __attribute__((alias("arch_counter_get_cntvct")));
+
 /*
  * Default to cp15 based access because arm64 uses this function for
  * sched_clock() before DT is probed and the cp15 method is guaranteed

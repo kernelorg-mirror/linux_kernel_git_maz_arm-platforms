@@ -926,6 +926,11 @@ static u64 arm64_ftr_set_value(const struct arm64_ftr_bits *ftrp, s64 reg,
 	return reg;
 }
 
+static u64 arm64_ftr_set_safe_value(const struct arm64_ftr_bits *ftrp, s64 reg)
+{
+	return arm64_ftr_set_value(ftrp, reg, ftrp->safe_val);
+}
+
 s64 arm64_ftr_safe_value(const struct arm64_ftr_bits *ftrp, s64 new,
 				s64 cur)
 {
@@ -1066,9 +1071,8 @@ static void init_cpu_ftr_reg(u32 sys_reg, u64 new)
 		if (ftrp->visible)
 			user_mask |= ftr_mask;
 		else
-			reg->user_val = arm64_ftr_set_value(ftrp,
-							    reg->user_val,
-							    ftrp->safe_val);
+			reg->user_val = arm64_ftr_set_safe_value(ftrp,
+								 reg->user_val);
 	}
 
 	val &= valid_mask;

@@ -100,19 +100,12 @@ static noinstr u64 raw_counter_get_cntpct(void)
 	return __arch_counter_get_cntpct();
 }
 
-static notrace u64 arch_counter_get_cntpct_stable(void)
+static notrace u64 arch_counter_get_cntpct(void)
 {
-	u64 val;
-	preempt_disable_notrace();
-	val = __arch_counter_get_cntpct_stable();
-	preempt_enable_notrace();
-	return val;
-}
-
-static noinstr u64 arch_counter_get_cntpct(void)
-{
-	if (arch_counter_broken_accessors())
-		return arch_counter_get_cntpct_stable();
+	if (arch_counter_broken_accessors()) {
+		guard(preempt_notrace)();
+		return __arch_counter_get_cntpct_stable();
+	}
 
 	return __arch_counter_get_cntpct();
 }
@@ -125,19 +118,12 @@ static noinstr u64 raw_counter_get_cntvct(void)
 	return __arch_counter_get_cntvct();
 }
 
-static notrace u64 arch_counter_get_cntvct_stable(void)
+static notrace u64 arch_counter_get_cntvct(void)
 {
-	u64 val;
-	preempt_disable_notrace();
-	val = __arch_counter_get_cntvct_stable();
-	preempt_enable_notrace();
-	return val;
-}
-
-static noinstr u64 arch_counter_get_cntvct(void)
-{
-	if (arch_counter_broken_accessors())
-		return arch_counter_get_cntvct_stable();
+	if (arch_counter_broken_accessors()) {
+		guard(preempt_notrace)();
+		return __arch_counter_get_cntvct_stable();
+	}
 
 	return __arch_counter_get_cntvct();
 }
@@ -342,10 +328,10 @@ void erratum_set_next_event_generic(const int access, unsigned long evt,
 	ctrl &= ~ARCH_TIMER_CTRL_IT_MASK;
 
 	if (access == ARCH_TIMER_PHYS_ACCESS) {
-		cval = evt + arch_counter_get_cntpct_stable();
+		cval = evt + arch_counter_get_cntpct();
 		write_sysreg(cval, cntp_cval_el0);
 	} else {
-		cval = evt + arch_counter_get_cntvct_stable();
+		cval = evt + arch_counter_get_cntvct();
 		write_sysreg(cval, cntv_cval_el0);
 	}
 

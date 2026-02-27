@@ -90,6 +90,8 @@ static int arch_counter_get_width(void)
 /*
  * Architected system timer support.
  */
+static inline bool arch_counter_broken_accessors(void);
+
 static noinstr u64 raw_counter_get_cntpct_stable(void)
 {
 	return __arch_counter_get_cntpct_stable();
@@ -555,10 +557,42 @@ static bool arch_timer_counter_has_wa(void)
 {
 	return atomic_read(&timer_unstable_counter_workaround_in_use);
 }
+
+static DEFINE_STATIC_KEY_TRUE(broken_cnt_accessors);
+
+static inline bool arch_counter_broken_accessors(void)
+{
+	return static_branch_unlikely(&broken_cnt_accessors);
+}
+
+static void enable_direct_accessors(struct work_struct *wk)
+{
+	pr_info("Enabling direct accessors\n");
+	static_branch_disable(&broken_cnt_accessors);
+}
+
+static void arch_timer_set_direct_accessors(void)
+{
+	static DECLARE_WORK(enable_accessors_wk, enable_direct_accessors);
+	int cpu;
+
+	if (!arch_counter_broken_accessors())
+		return;
+
+	/* Each CPU with non-zero IRQ has booted at least once */
+	for_each_cpu(cpu, cpu_possible_mask)
+		if (!per_cpu_ptr(arch_timer_evt, cpu)->irq)
+			return;
+
+	if (!arch_timer_counter_has_wa())
+		schedule_work(&enable_accessors_wk);
+}
 #else
 #define arch_timer_check_ool_workaround(t,a)		do { } while(0)
 #define arch_timer_this_cpu_has_cntvct_wa()		({false;})
 #define arch_timer_counter_has_wa()			({false;})
+static inline bool arch_counter_broken_accessors(void)	{ return false ; }
+#define arch_timer_set_direct_accessors()		do { } while(0)
 #endif /* CONFIG_ARM_ARCH_TIMER_OOL_WORKAROUND */
 
 static __always_inline irqreturn_t timer_handler(const int access,
@@ -841,6 +875,7 @@ static int arch_timer_starting_cpu(unsigned int cpu)
 	}
 
 	arch_counter_set_user_access();
+	arch_timer_set_direct_accessors();
 
 	return 0;
 }

@@ -92,9 +92,12 @@ static int arch_counter_get_width(void)
  */
 static inline bool arch_counter_broken_accessors(void);
 
-static noinstr u64 raw_counter_get_cntpct_stable(void)
+static noinstr u64 raw_counter_get_cntpct(void)
 {
-	return __arch_counter_get_cntpct_stable();
+	if (arch_counter_broken_accessors())
+		return __arch_counter_get_cntpct_stable();
+
+	return __arch_counter_get_cntpct();
 }
 
 static notrace u64 arch_counter_get_cntpct_stable(void)
@@ -108,12 +111,18 @@ static notrace u64 arch_counter_get_cntpct_stable(void)
 
 static noinstr u64 arch_counter_get_cntpct(void)
 {
+	if (arch_counter_broken_accessors())
+		return arch_counter_get_cntpct_stable();
+
 	return __arch_counter_get_cntpct();
 }
 
-static noinstr u64 raw_counter_get_cntvct_stable(void)
+static noinstr u64 raw_counter_get_cntvct(void)
 {
-	return __arch_counter_get_cntvct_stable();
+	if (arch_counter_broken_accessors())
+		return __arch_counter_get_cntvct_stable();
+
+	return __arch_counter_get_cntvct();
 }
 
 static notrace u64 arch_counter_get_cntvct_stable(void)
@@ -127,6 +136,9 @@ static notrace u64 arch_counter_get_cntvct_stable(void)
 
 static noinstr u64 arch_counter_get_cntvct(void)
 {
+	if (arch_counter_broken_accessors())
+		return arch_counter_get_cntvct_stable();
+
 	return __arch_counter_get_cntvct();
 }
 
@@ -950,21 +962,11 @@ static void __init arch_counter_register(void)
 	if ((IS_ENABLED(CONFIG_ARM64) && !is_hyp_mode_available()) ||
 	    arch_timer_uses_ppi == ARCH_TIMER_VIRT_PPI ||
 	    arch_timer_uses_ppi == ARCH_TIMER_HYP_VIRT_PPI) {
-		if (arch_timer_counter_has_wa()) {
-			rd = arch_counter_get_cntvct_stable;
-			scr = raw_counter_get_cntvct_stable;
-		} else {
-			rd = arch_counter_get_cntvct;
-			scr = arch_counter_get_cntvct;
-		}
+		rd = arch_counter_get_cntvct;
+		scr = raw_counter_get_cntvct;
 	} else {
-		if (arch_timer_counter_has_wa()) {
-			rd = arch_counter_get_cntpct_stable;
-			scr = raw_counter_get_cntpct_stable;
-		} else {
-			rd = arch_counter_get_cntpct;
-			scr = arch_counter_get_cntpct;
-		}
+		rd = arch_counter_get_cntpct;
+		scr = raw_counter_get_cntpct;
 	}
 
 	arch_timer_read_counter = rd;
@@ -990,10 +992,8 @@ bool read_sched_clock_is_arch_counter(const struct clock_read_data *crd)
 {
 	u64 (*rd)(void) = crd->read_sched_clock;
 
-	return (rd == raw_counter_get_cntvct_stable	||
-		rd == raw_counter_get_cntpct_stable	||
-		rd == arch_counter_get_cntvct		||
-		rd == arch_counter_get_cntpct);
+	return (rd == raw_counter_get_cntvct	||
+		rd == raw_counter_get_cntpct);
 }
 
 static void arch_timer_stop(struct clock_event_device *clk)

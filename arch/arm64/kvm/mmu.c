@@ -1400,8 +1400,7 @@ static bool fault_supports_stage2_huge_mapping(struct kvm_memory_slot *memslot,
  */
 static long
 transparent_hugepage_adjust(struct kvm *kvm, struct kvm_memory_slot *memslot,
-			    unsigned long hva, kvm_pfn_t *pfnp,
-			    phys_addr_t *ipap)
+			    unsigned long hva, kvm_pfn_t *pfnp, gfn_t *gfnp)
 {
 	kvm_pfn_t pfn = *pfnp;
 
@@ -1419,7 +1418,7 @@ transparent_hugepage_adjust(struct kvm *kvm, struct kvm_memory_slot *memslot,
 		if (sz < PMD_SIZE)
 			return PAGE_SIZE;
 
-		*ipap &= PMD_MASK;
+		*gfnp = gpa_to_gfn(gfn_to_gpa(*gfnp) & PMD_MASK);
 		pfn &= ~(PTRS_PER_PMD - 1);
 		*pfnp = pfn;
 
@@ -1735,6 +1734,7 @@ static int kvm_s2_fault_get_vma_info(struct kvm_s2_fault *fault)
 {
 	struct vm_area_struct *vma;
 	struct kvm *kvm = fault->vcpu->kvm;
+	phys_addr_t ipa;
 
 	mmap_read_lock(current->mm);
 	vma = vma_lookup(current->mm, fault->hva);
@@ -1752,10 +1752,8 @@ static int kvm_s2_fault_get_vma_info(struct kvm_s2_fault *fault)
 	 * mapping size to ensure we find the right PFN and lay down the
 	 * mapping in the right place.
 	 */
-	fault->fault_ipa = ALIGN_DOWN(fault->fault_ipa, fault->vma_pagesize);
-	fault->gfn = (fault->nested ?
-		      ALIGN_DOWN(kvm_s2_trans_output(fault->nested), fault->vma_pagesize) :
-		      fault->fault_ipa) >> PAGE_SHIFT;
+	ipa = fault->nested ? kvm_s2_trans_output(fault->nested) : fault->fault_ipa;
+	fault->gfn = gpa_to_gfn(ALIGN_DOWN(ipa, fault->vma_pagesize));
 
 	fault->mte_allowed = kvm_vma_mte_allowed(vma);
 
@@ -1885,6 +1883,11 @@ static int kvm_s2_fault_compute_prot(struct kvm_s2_fault *fault)
 	return 0;
 }
 
+static phys_addr_t get_ipa(const struct kvm_s2_fault *fault)
+{
+	return gfn_to_gpa(fault->gfn);
+}
+
 static int kvm_s2_fault_map(struct kvm_s2_fault *fault, void *memcache)
 {
 	struct kvm *kvm = fault->vcpu->kvm;
@@ -1909,7 +1912,7 @@ static int kvm_s2_fault_map(struct kvm_s2_fault *fault, void *memcache)
 		} else {
 			fault->vma_pagesize = transparent_hugepage_adjust(kvm, fault->memslot,
 									  fault->hva, &fault->pfn,
-									  &fault->fault_ipa);
+									  &fault->gfn);
 
 			if (fault->vma_pagesize < 0) {
 				ret = fault->vma_pagesize;
@@ -1932,10 +1935,10 @@ static int kvm_s2_fault_map(struct kvm_s2_fault *fault, void *memcache)
 		 * PTE, which will be preserved.
 		 */
 		fault->prot &= ~KVM_NV_GUEST_MAP_SZ;
-		ret = KVM_PGT_FN(kvm_pgtable_stage2_relax_perms)(pgt, fault->fault_ipa,
+		ret = KVM_PGT_FN(kvm_pgtable_stage2_relax_perms)(pgt, get_ipa(fault),
 								 fault->prot, flags);
 	} else {
-		ret = KVM_PGT_FN(kvm_pgtable_stage2_map)(pgt, fault->fault_ipa, fault->vma_pagesize,
+		ret = KVM_PGT_FN(kvm_pgtable_stage2_map)(pgt, get_ipa(fault), fault->vma_pagesize,
 							 __pfn_to_phys(fault->pfn), fault->prot,
 							 memcache, flags);
 	}

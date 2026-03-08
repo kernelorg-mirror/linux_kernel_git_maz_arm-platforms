@@ -1638,23 +1638,28 @@ out_unlock:
 	return ret != -EAGAIN ? ret : 0;
 }
 
-static short kvm_s2_resolve_vma_size(struct vm_area_struct *vma,
-				     unsigned long hva,
-				     struct kvm_memory_slot *memslot,
-				     struct kvm_s2_trans *nested,
-				     bool *force_pte)
+struct kvm_s2_fault_desc {
+	struct kvm_vcpu		*vcpu;
+	phys_addr_t		fault_ipa;
+	struct kvm_s2_trans	*nested;
+	struct kvm_memory_slot	*memslot;
+	unsigned long		hva;
+};
+
+static short kvm_s2_resolve_vma_size(const struct kvm_s2_fault_desc *s2fd,
+				     struct vm_area_struct *vma, bool *force_pte)
 {
 	short vma_shift;
 
 	if (*force_pte)
 		vma_shift = PAGE_SHIFT;
 	else
-		vma_shift = get_vma_page_shift(vma, hva);
+		vma_shift = get_vma_page_shift(vma, s2fd->hva);
 
 	switch (vma_shift) {
 #ifndef __PAGETABLE_PMD_FOLDED
 	case PUD_SHIFT:
-		if (fault_supports_stage2_huge_mapping(memslot, hva, PUD_SIZE))
+		if (fault_supports_stage2_huge_mapping(s2fd->memslot, s2fd->hva, PUD_SIZE))
 			break;
 		fallthrough;
 #endif
@@ -1662,7 +1667,7 @@ static short kvm_s2_resolve_vma_size(struct vm_area_struct *vma,
 		vma_shift = PMD_SHIFT;
 		fallthrough;
 	case PMD_SHIFT:
-		if (fault_supports_stage2_huge_mapping(memslot, hva, PMD_SIZE))
+		if (fault_supports_stage2_huge_mapping(s2fd->memslot, s2fd->hva, PMD_SIZE))
 			break;
 		fallthrough;
 	case CONT_PTE_SHIFT:
@@ -1675,7 +1680,7 @@ static short kvm_s2_resolve_vma_size(struct vm_area_struct *vma,
 		WARN_ONCE(1, "Unknown vma_shift %d", vma_shift);
 	}
 
-	if (nested) {
+	if (s2fd->nested) {
 		unsigned long max_map_size;
 
 		max_map_size = *force_pte ? PAGE_SIZE : PUD_SIZE;
@@ -1685,7 +1690,7 @@ static short kvm_s2_resolve_vma_size(struct vm_area_struct *vma,
 		 * can only create a block mapping if the guest stage 2 page
 		 * table uses at least as big a mapping.
 		 */
-		max_map_size = min(kvm_s2_trans_size(nested), max_map_size);
+		max_map_size = min(kvm_s2_trans_size(s2fd->nested), max_map_size);
 
 		/*
 		 * Be careful that if the mapping size falls between
@@ -1704,11 +1709,6 @@ static short kvm_s2_resolve_vma_size(struct vm_area_struct *vma,
 }
 
 struct kvm_s2_fault {
-	struct kvm_vcpu *vcpu;
-	phys_addr_t fault_ipa;
-	struct kvm_s2_trans *nested;
-	struct kvm_memory_slot *memslot;
-	unsigned long hva;
 	bool fault_is_perm;
 
 	bool write_fault;
@@ -1730,29 +1730,29 @@ struct kvm_s2_fault {
 	vm_flags_t vm_flags;
 };
 
-static int kvm_s2_fault_get_vma_info(struct kvm_s2_fault *fault)
+static int kvm_s2_fault_get_vma_info(const struct kvm_s2_fault_desc *s2fd,
+				     struct kvm_s2_fault *fault)
 {
 	struct vm_area_struct *vma;
-	struct kvm *kvm = fault->vcpu->kvm;
+	struct kvm *kvm = s2fd->vcpu->kvm;
 	phys_addr_t ipa;
 
 	mmap_read_lock(current->mm);
-	vma = vma_lookup(current->mm, fault->hva);
+	vma = vma_lookup(current->mm, s2fd->hva);
 	if (unlikely(!vma)) {
-		kvm_err("Failed to find VMA for fault->hva 0x%lx\n", fault->hva);
+		kvm_err("Failed to find VMA for hva 0x%lx\n", s2fd->hva);
 		mmap_read_unlock(current->mm);
 		return -EFAULT;
 	}
 
-	fault->vma_pagesize = 1UL << kvm_s2_resolve_vma_size(vma, fault->hva, fault->memslot,
-							     fault->nested, &fault->force_pte);
+	fault->vma_pagesize = BIT(kvm_s2_resolve_vma_size(s2fd, vma, &fault->force_pte));
 
 	/*
 	 * Both the canonical IPA and fault IPA must be aligned to the
 	 * mapping size to ensure we find the right PFN and lay down the
 	 * mapping in the right place.
 	 */
-	ipa = fault->nested ? kvm_s2_trans_output(fault->nested) : fault->fault_ipa;
+	ipa = s2fd->nested ? kvm_s2_trans_output(s2fd->nested) : s2fd->fault_ipa;
 	fault->gfn = gpa_to_gfn(ALIGN_DOWN(ipa, fault->vma_pagesize));
 
 	fault->mte_allowed = kvm_vma_mte_allowed(vma);
@@ -1775,20 +1775,21 @@ static int kvm_s2_fault_get_vma_info(struct kvm_s2_fault *fault)
 	return 0;
 }
 
-static int kvm_s2_fault_pin_pfn(struct kvm_s2_fault *fault)
+static int kvm_s2_fault_pin_pfn(const struct kvm_s2_fault_desc *s2fd,
+				struct kvm_s2_fault *fault)
 {
 	int ret;
 
-	ret = kvm_s2_fault_get_vma_info(fault);
+	ret = kvm_s2_fault_get_vma_info(s2fd, fault);
 	if (ret)
 		return ret;
 
-	fault->pfn = __kvm_faultin_pfn(fault->memslot, fault->gfn,
+	fault->pfn = __kvm_faultin_pfn(s2fd->memslot, fault->gfn,
 				       fault->write_fault ? FOLL_WRITE : 0,
 				       &fault->writable, &fault->page);
 	if (unlikely(is_error_noslot_pfn(fault->pfn))) {
 		if (fault->pfn == KVM_PFN_ERR_HWPOISON) {
-			kvm_send_hwpoison_signal(fault->hva, __ffs(fault->vma_pagesize));
+			kvm_send_hwpoison_signal(s2fd->hva, __ffs(fault->vma_pagesize));
 			return 0;
 		}
 		return -EFAULT;
@@ -1797,9 +1798,10 @@ static int kvm_s2_fault_pin_pfn(struct kvm_s2_fault *fault)
 	return 1;
 }
 
-static int kvm_s2_fault_compute_prot(struct kvm_s2_fault *fault)
+static int kvm_s2_fault_compute_prot(const struct kvm_s2_fault_desc *s2fd,
+				     struct kvm_s2_fault *fault)
 {
-	struct kvm *kvm = fault->vcpu->kvm;
+	struct kvm *kvm = s2fd->vcpu->kvm;
 
 	/*
 	 * Check if this is non-struct page memory PFN, and cannot support
@@ -1851,13 +1853,13 @@ static int kvm_s2_fault_compute_prot(struct kvm_s2_fault *fault)
 	 * and trigger the exception here. Since the memslot is valid, inject
 	 * the fault back to the guest.
 	 */
-	if (esr_fsc_is_excl_atomic_fault(kvm_vcpu_get_esr(fault->vcpu))) {
-		kvm_inject_dabt_excl_atomic(fault->vcpu, kvm_vcpu_get_hfar(fault->vcpu));
+	if (esr_fsc_is_excl_atomic_fault(kvm_vcpu_get_esr(s2fd->vcpu))) {
+		kvm_inject_dabt_excl_atomic(s2fd->vcpu, kvm_vcpu_get_hfar(s2fd->vcpu));
 		return 1;
 	}
 
-	if (fault->nested)
-		adjust_nested_fault_perms(fault->nested, &fault->prot, &fault->writable);
+	if (s2fd->nested)
+		adjust_nested_fault_perms(s2fd->nested, &fault->prot, &fault->writable);
 
 	if (fault->writable)
 		fault->prot |= KVM_PGTABLE_PROT_W;
@@ -1871,8 +1873,8 @@ static int kvm_s2_fault_compute_prot(struct kvm_s2_fault *fault)
 	else if (cpus_have_final_cap(ARM64_HAS_CACHE_DIC))
 		fault->prot |= KVM_PGTABLE_PROT_X;
 
-	if (fault->nested)
-		adjust_nested_exec_perms(kvm, fault->nested, &fault->prot);
+	if (s2fd->nested)
+		adjust_nested_exec_perms(kvm, s2fd->nested, &fault->prot);
 
 	if (!fault->fault_is_perm && !fault->s2_force_noncacheable && kvm_has_mte(kvm)) {
 		/* Check the VMM hasn't introduced a new disallowed VMA */
@@ -1888,15 +1890,16 @@ static phys_addr_t get_ipa(const struct kvm_s2_fault *fault)
 	return gfn_to_gpa(fault->gfn);
 }
 
-static int kvm_s2_fault_map(struct kvm_s2_fault *fault, void *memcache)
+static int kvm_s2_fault_map(const struct kvm_s2_fault_desc *s2fd,
+			    struct kvm_s2_fault *fault, void *memcache)
 {
-	struct kvm *kvm = fault->vcpu->kvm;
+	struct kvm *kvm = s2fd->vcpu->kvm;
 	struct kvm_pgtable *pgt;
 	int ret;
 	enum kvm_pgtable_walk_flags flags = KVM_PGTABLE_WALK_SHARED;
 
 	kvm_fault_lock(kvm);
-	pgt = fault->vcpu->arch.hw_mmu->pgt;
+	pgt = s2fd->vcpu->arch.hw_mmu->pgt;
 	ret = -EAGAIN;
 	if (mmu_invalidate_retry(kvm, fault->mmu_seq))
 		goto out_unlock;
@@ -1910,8 +1913,8 @@ static int kvm_s2_fault_map(struct kvm_s2_fault *fault, void *memcache)
 		if (fault->fault_is_perm && fault->fault_granule > PAGE_SIZE) {
 			fault->vma_pagesize = fault->fault_granule;
 		} else {
-			fault->vma_pagesize = transparent_hugepage_adjust(kvm, fault->memslot,
-									  fault->hva, &fault->pfn,
+			fault->vma_pagesize = transparent_hugepage_adjust(kvm, s2fd->memslot,
+									  s2fd->hva, &fault->pfn,
 									  &fault->gfn);
 
 			if (fault->vma_pagesize < 0) {
@@ -1949,34 +1952,27 @@ out_unlock:
 
 	/* Mark the fault->page dirty only if the fault is handled successfully */
 	if (fault->writable && !ret)
-		mark_page_dirty_in_slot(kvm, fault->memslot, fault->gfn);
+		mark_page_dirty_in_slot(kvm, s2fd->memslot, fault->gfn);
 
 	if (ret != -EAGAIN)
 		return ret;
 	return 0;
 }
 
-static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
-			  struct kvm_s2_trans *nested,
-			  struct kvm_memory_slot *memslot, unsigned long hva,
-			  bool fault_is_perm)
+static int user_mem_abort(const struct kvm_s2_fault_desc *s2fd)
 {
-	bool write_fault = kvm_is_write_fault(vcpu);
-	bool logging_active = memslot_is_logging(memslot);
+	bool perm_fault = kvm_vcpu_trap_is_permission_fault(s2fd->vcpu);
+	bool write_fault = kvm_is_write_fault(s2fd->vcpu);
+	bool logging_active = memslot_is_logging(s2fd->memslot);
 	struct kvm_s2_fault fault = {
-		.vcpu = vcpu,
-		.fault_ipa = fault_ipa,
-		.nested = nested,
-		.memslot = memslot,
-		.hva = hva,
-		.fault_is_perm = fault_is_perm,
+		.fault_is_perm = perm_fault,
 		.logging_active = logging_active,
 		.force_pte = logging_active,
 		.prot = KVM_PGTABLE_PROT_R,
-		.fault_granule = fault_is_perm ? kvm_vcpu_trap_get_perm_fault_granule(vcpu) : 0,
+		.fault_granule = perm_fault ? kvm_vcpu_trap_get_perm_fault_granule(s2fd->vcpu) : 0,
 		.write_fault = write_fault,
-		.exec_fault = kvm_vcpu_trap_is_exec_fault(vcpu),
-		.topup_memcache = !fault_is_perm || (logging_active && write_fault),
+		.exec_fault = kvm_vcpu_trap_is_exec_fault(s2fd->vcpu),
+		.topup_memcache = !perm_fault || (logging_active && write_fault),
 	};
 	void *memcache;
 	int ret;
@@ -1989,7 +1985,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	 * only exception to this is when dirty logging is enabled at runtime
 	 * and a write fault needs to collapse a block entry into a table.
 	 */
-	ret = prepare_mmu_memcache(vcpu, fault.topup_memcache, &memcache);
+	ret = prepare_mmu_memcache(s2fd->vcpu, fault.topup_memcache, &memcache);
 	if (ret)
 		return ret;
 
@@ -1997,17 +1993,17 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	 * Let's check if we will get back a huge fault->page backed by hugetlbfs, or
 	 * get block mapping for device MMIO region.
 	 */
-	ret = kvm_s2_fault_pin_pfn(&fault);
+	ret = kvm_s2_fault_pin_pfn(s2fd, &fault);
 	if (ret != 1)
 		return ret;
 
-	ret = kvm_s2_fault_compute_prot(&fault);
+	ret = kvm_s2_fault_compute_prot(s2fd, &fault);
 	if (ret) {
 		kvm_release_page_unused(fault.page);
 		return ret;
 	}
 
-	return kvm_s2_fault_map(&fault, memcache);
+	return kvm_s2_fault_map(s2fd, &fault, memcache);
 }
 
 /* Resolve the access fault by making the page young again. */
@@ -2273,12 +2269,20 @@ int kvm_handle_guest_abort(struct kvm_vcpu *vcpu)
 	VM_WARN_ON_ONCE(kvm_vcpu_trap_is_permission_fault(vcpu) &&
 			!write_fault && !kvm_vcpu_trap_is_exec_fault(vcpu));
 
+	const struct kvm_s2_fault_desc s2fd = {
+		.vcpu		= vcpu,
+		.fault_ipa	= fault_ipa,
+		.nested		= nested,
+		.memslot	= memslot,
+		.hva		= hva,
+	};
+
 	if (kvm_slot_has_gmem(memslot))
 		ret = gmem_abort(vcpu, fault_ipa, nested, memslot,
 				 esr_fsc_is_permission_fault(esr));
 	else
-		ret = user_mem_abort(vcpu, fault_ipa, nested, memslot, hva,
-				     esr_fsc_is_permission_fault(esr));
+		ret = user_mem_abort(&s2fd);
+
 	if (ret == 0)
 		ret = 1;
 out:

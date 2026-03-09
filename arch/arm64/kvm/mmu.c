@@ -1803,7 +1803,7 @@ static int kvm_s2_fault_pin_pfn(const struct kvm_s2_fault_desc *s2fd,
 
 static int kvm_s2_fault_compute_prot(const struct kvm_s2_fault_desc *s2fd,
 				     struct kvm_s2_fault *fault,
-				     struct kvm_s2_fault_vma_info *s2vi)
+				     const struct kvm_s2_fault_vma_info *s2vi)
 {
 	struct kvm *kvm = s2fd->vcpu->kvm;
 

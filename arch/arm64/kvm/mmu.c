@@ -1978,7 +1978,7 @@ static int user_mem_abort(const struct kvm_s2_fault_desc *s2fd)
 		.force_pte = memslot_is_logging(s2fd->memslot),
 		.prot = KVM_PGTABLE_PROT_R,
 	};
-	void *memcache;
+	void *memcache = NULL;
 	int ret;
 
 	/*

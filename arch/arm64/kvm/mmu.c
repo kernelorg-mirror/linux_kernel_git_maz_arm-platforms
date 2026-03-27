@@ -1865,9 +1865,9 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		} else {
 			/*
 			 * If the page was identified as device early by looking at
-			 * the VMA flags, fault->vma_pagesize is already representing the
+			 * the VMA flags, vma_pagesize is already representing the
 			 * largest quantity we can map.  If instead it was mapped
-			 * via __kvm_faultin_pfn(), fault->vma_pagesize is set to PAGE_SIZE
+			 * via __kvm_faultin_pfn(), vma_pagesize is set to PAGE_SIZE
 			 * and must not be upgraded.
 			 *
 			 * In both cases, we don't let transparent_hugepage_adjust()
@@ -1877,7 +1877,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 		}
 	} else if (fault->logging_active && !fault->write_fault) {
 		/*
-		 * Only actually map the page as fault->writable if this was a write
+		 * Only actually map the page as writable if this was a write
 		 * fault.
 		 */
 		fault->writable = false;
@@ -1892,7 +1892,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	/*
 	 * Guest performs atomic/exclusive operations on memory with unsupported
 	 * attributes (e.g. ld64b/st64b on normal memory when no FEAT_LS64WB)
-	 * and trigger the exception here. Since the fault->memslot is valid, inject
+	 * and trigger the exception here. Since the memslot is valid, inject
 	 * the fault back to the guest.
 	 */
 	if (esr_fsc_is_excl_atomic_fault(kvm_vcpu_get_esr(fault->vcpu))) {
@@ -1960,7 +1960,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 
 	/*
 	 * Under the premise of getting a FSC_PERM fault, we just need to relax
-	 * permissions only if fault->vma_pagesize equals fault->fault_granule. Otherwise,
+	 * permissions only if vma_pagesize equals fault_granule. Otherwise,
 	 * kvm_pgtable_stage2_map() should be called to change block size.
 	 */
 	if (fault->fault_is_perm && fault->vma_pagesize == fault->fault_granule) {

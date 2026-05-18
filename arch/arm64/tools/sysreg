@@ -4503,7 +4503,13 @@ Fields	ZCR_ELx
 EndSysreg
 
 Sysreg	HCRX_EL2	3	4	1	2	2
-Res0	63:25
+Res0	63:35
+Field	34	NVnTTLBOS
+Field	33	NVnTTLBIS
+Field	32	NVnTTLB
+Res0	31:28
+Field	27	NVTGE
+Res0	26:25
 Field	24	PACMEn
 Field	23	EnFPM
 Field	22	GCSEn

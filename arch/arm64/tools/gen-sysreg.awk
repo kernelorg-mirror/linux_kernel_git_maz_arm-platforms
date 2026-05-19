@@ -228,7 +228,7 @@ $1 == "EndSysreg" && block_current() == "Sysreg" {
 }
 
 # Currently this is effectivey a comment, in future we may want to emit
-# defines for the fields.
+# defines for the fields. "Mapping" does emit the RESx/UNKN definitions.
 ($1 == "Fields" || $1 == "Mapping") && block_current() == "Sysreg" {
 	expect_fields(2)
 
@@ -239,9 +239,15 @@ $1 == "EndSysreg" && block_current() == "Sysreg" {
 	print ""
 
 	next_bit = -1
-	res0 = null
-	res1 = null
-	unkn = null
+	if ($1 == "Mapping") {
+		res0 = $2 "_RES0"
+		res1 = $2 "_RES1"
+		unkn = $2 "_UNKN"
+	} else {
+		res0 = null
+		res1 = null
+		unkn = null
+	}
 
 	next
 }

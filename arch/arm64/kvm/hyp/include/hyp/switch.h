@@ -347,10 +347,15 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 
 	if (cpus_have_final_cap(ARM64_HAS_HCX)) {
 		u64 hcrx = vcpu->arch.hcrx_el2;
-		if (is_nested_ctxt(vcpu)) {
-			u64 val = __vcpu_sys_reg(vcpu, HCRX_EL2);
-			hcrx |= val & __HCRX_EL2_MASK;
-			hcrx &= ~(~val & __HCRX_EL2_nMASK);
+
+		if (vcpu_has_nv(vcpu)) {
+			if (is_nested_ctxt(vcpu)) {
+				u64 val = __vcpu_sys_reg(vcpu, HCRX_EL2);
+				hcrx |= val & __HCRX_EL2_MASK;
+				hcrx &= ~(~val & __HCRX_EL2_nMASK);
+			} else if (cpus_have_final_cap(ARM64_HAS_NV3)) {
+				hcrx |= HCRX_EL2_NVTGE;
+			}
 		}
 
 		ctxt_sys_reg(hctxt, HCRX_EL2) = read_sysreg_s(SYS_HCRX_EL2);

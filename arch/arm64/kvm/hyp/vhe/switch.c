@@ -71,7 +71,10 @@ static u64 __compute_hcr(struct kvm_vcpu *vcpu)
 			hcr |= HCR_NV1;
 
 		/* Publish the guest's view of HCR_EL2 to the HW */
-		__vcpu_assign_sys_reg(vcpu, NVHCR_EL2, __vcpu_sys_reg(vcpu, HCR_EL2));
+		if (cpus_have_final_cap(ARM64_HAS_NV3))
+			write_sysreg_s(__vcpu_sys_reg(vcpu, HCR_EL2), SYS_NVHCR_EL2);
+		else
+			__vcpu_assign_sys_reg(vcpu, NVHCR_EL2, __vcpu_sys_reg(vcpu, HCR_EL2));
 
 		/*
 		 * Nothing in HCR_EL2 should impact running in hypervisor
@@ -97,6 +100,14 @@ static u64 __compute_hcr(struct kvm_vcpu *vcpu)
 
 			/* Force NV2 in case the guest is forgetful... */
 			guest_hcr |= HCR_NV2;
+
+			/*
+			 * Publish the L2 view of HCR_EL2 to the HW if L1 is
+			 * doing NV3. Otherwise, the data is already in
+			 * place in the L1's own VNCR.
+			 */
+			if (is_nested_nv3_ctxt(vcpu))
+				write_sysreg_s(__vcpu_sys_reg(vcpu, NVHCR_EL2), SYS_NVHCR_EL2);
 		}
 
 		/*
@@ -562,9 +573,14 @@ static void fixup_nv_guest_exit(struct kvm_vcpu *vcpu)
 		*vcpu_cpsr(vcpu) |= mode;
 
 		/* Publish the latest HCR_EL2 to the emulation */
-		hcr = __vcpu_sys_reg(vcpu, NVHCR_EL2);
+		hcr = cpus_have_final_cap(ARM64_HAS_NV3) ?
+			read_sysreg_s(SYS_NVHCR_EL2) :
+			__vcpu_sys_reg(vcpu, NVHCR_EL2);
 
 		__vcpu_assign_sys_reg(vcpu, HCR_EL2, hcr);
+	} else if (is_nested_nv3_ctxt(vcpu)) {
+		/* Retrieve L2's HCR_EL2, and save it for future use */
+		__vcpu_assign_sys_reg(vcpu, NVHCR_EL2, read_sysreg_s(SYS_NVHCR_EL2));
 	}
 
 	/* Apply extreme paranoia! */

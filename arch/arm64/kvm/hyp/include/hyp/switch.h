@@ -355,6 +355,15 @@ static inline void __activate_traps_common(struct kvm_vcpu *vcpu)
 				hcrx &= ~(~val & __HCRX_EL2_nMASK);
 			} else if (cpus_have_final_cap(ARM64_HAS_NV3)) {
 				hcrx |= HCRX_EL2_NVTGE;
+
+				/*
+				 * If the guest is NV2-capable, then we need
+				 * to see all the TLBIs, as configured in
+				 * HCR_EL2. Otherwise, relax the TLBI traps
+				 * to TGE=0.
+				 */
+				if (!kvm_has_nv2(vcpu->kvm))
+					hcrx |= HCRX_EL2_NVnTTLB | HCRX_EL2_NVnTTLBIS;
 			}
 		}
 

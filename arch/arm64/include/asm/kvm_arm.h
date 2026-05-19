@@ -293,7 +293,7 @@
  * them, but that at least those that are not advertised to a guest
  * will be RES0 for that guest.
  */
-#define __HCRX_EL2_MASK		(BIT_ULL(6))
+#define __HCRX_EL2_MASK		(GENMASK_ULL(34, 32) | BIT_ULL(27) | BIT_ULL(6))
 #define __HCRX_EL2_nMASK	(GENMASK_ULL(24, 14) | \
 				 GENMASK_ULL(11, 7)  | \
 				 GENMASK_ULL(5, 0))

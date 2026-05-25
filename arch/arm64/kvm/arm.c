@@ -3092,7 +3092,9 @@ static __init int kvm_arm_init(void)
 				     "Protected " : "Hyp "),
 		 in_hyp_mode ? "" : (cpus_have_final_cap(ARM64_KVM_HVHE) ?
 				     "h" : "n"),
-		 cpus_have_final_cap(ARM64_HAS_NESTED_VIRT) ? "+NV2": "");
+		 !cpus_have_final_cap(ARM64_HAS_NESTED_VIRT) ? "" :
+		 (cpus_have_final_cap(ARM64_HAS_NV3) ? "+NV3" :
+		  (cpus_have_final_cap(ARM64_HAS_NVTGE) ? "+NVTGE" : "+NV2")));
 
 	/*
 	 * FIXME: Do something reasonable if kvm_init() fails after pKVM

@@ -350,7 +350,7 @@ static bool kvm_hyp_handle_timer(struct kvm_vcpu *vcpu, u64 *exit_code)
 static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	u64 esr = kvm_vcpu_get_esr(vcpu);
-	u64 spsr, elr, mode;
+	u64 spsr, elr, mode, hcr;
 
 	/* With NV3, the fast path is handled in HW */
 	if (cpus_have_final_cap(ARM64_HAS_NV3) && vcpu_el2_e2h_is_set(vcpu))
@@ -368,16 +368,30 @@ static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * ERET when running an L2. The consequence is that any ERET trap is
 	 * the result of HCR_EL2 or HFGITR_EL2 programming by L1 for its own
 	 * guest, and the exception must be forwarded to L1.
+	 *
+	 * In nested context, we can still do the NVTGE fast path *if*
+	 * L1 has enabled it and doesn't trap ERET, or that we can't get
+	 * to its VNCR memory.
 	 */
-	if (is_nested_ctxt(vcpu))
-		return false;
+	if (is_nested_ctxt(vcpu)) {
+		if (!(__vcpu_sys_reg(vcpu, HCRX_EL2) & HCRX_EL2_NVTGE))
+			return false;
+
+		if (__vcpu_sys_reg(vcpu, HFGITR_EL2) & HFGITR_EL2_ERET)
+			return false;
+
+		if (__vcpu_l1_vncr_read(vcpu, NVHCR_EL2, &hcr))
+			return false;
+	} else {
+		hcr = __vcpu_sys_reg(vcpu, HCR_EL2);
+	}
 
 	spsr = read_sysreg_el1(SYS_SPSR);
 	mode = spsr & (PSR_MODE_MASK | PSR_MODE32_BIT);
 
 	switch (mode) {
 	case PSR_MODE_EL0t:
-		if (!(vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)))
+		if ((hcr & (HCR_EL2_E2H | HCR_EL2_TGE)) != (HCR_EL2_E2H | HCR_EL2_TGE))
 			return false;
 		break;
 	case PSR_MODE_EL2t:

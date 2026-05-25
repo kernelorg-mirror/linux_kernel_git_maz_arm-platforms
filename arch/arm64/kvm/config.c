@@ -244,6 +244,12 @@ static bool feat_nv2_e2h0_ni(struct kvm *kvm)
 	return feat_nv2(kvm) && !kvm_has_feat(kvm, FEAT_E2H0);
 }
 
+static bool feat_nv3_nvtge(struct kvm *kvm)
+{
+	return (kvm_has_feat(kvm, FEAT_NV3) ||
+		kvm_has_feat(kvm, ID_AA64MMFR0_EL1, NVTGE, IMP));
+}
+
 static bool feat_rasv1p1(struct kvm *kvm)
 {
 	return (kvm_has_feat(kvm, ID_AA64PFR0_EL1, RAS, V1P1) ||
@@ -909,7 +915,7 @@ static const struct reg_bits_to_feat_map hcrx_feat_map[] = {
 		   HCRX_EL2_NVnTTLB		|
 		   HCRX_EL2_NVnTTLBIS		|
 		   HCRX_EL2_NVnTTLBOS,
-		   FEAT_NV3),
+		   feat_nv3_nvtge),
 	NEEDS_FEAT(HCRX_EL2_SRMASKEn, FEAT_SRMASK),
 	NEEDS_FEAT(HCRX_EL2_PACMEn, feat_pauth_lr),
 	NEEDS_FEAT(HCRX_EL2_EnFPM, FEAT_FPMR),

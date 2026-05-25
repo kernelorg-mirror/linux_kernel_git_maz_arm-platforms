@@ -3123,8 +3123,33 @@ out_err:
 	return err;
 }
 
+static void __init parse_nested_options(char *arg)
+{
+	char *opt;
+
+	if (!arg)
+		return;
+
+	/* Handles "nvtge", "nvtge=force" */
+	opt = strsep(&arg, "=");
+	if (strcmp(opt, "nvtge")) {
+		pr_warn("Unknown nested option %s\n", arg);
+		return;
+	}
+
+	emulates_nvtge = true;
+	if (!arg)
+		return;
+	if (strcmp(arg, "force") == 0)
+		forces_nvtge = true;
+	else
+		pr_warn("Unknown nvtge option %s\n", arg);
+}
+
 static int __init early_kvm_mode_cfg(char *arg)
 {
+	char *str;
+
 	if (!arg)
 		return -EINVAL;
 
@@ -3152,8 +3177,10 @@ static int __init early_kvm_mode_cfg(char *arg)
 		return 0;
 	}
 
-	if (strcmp(arg, "nested") == 0 && !WARN_ON(!is_kernel_in_hyp_mode())) {
+	str = strsep(&arg, ",");
+	if (strcmp(str, "nested") == 0 && !WARN_ON(!is_kernel_in_hyp_mode())) {
 		kvm_mode = KVM_MODE_NV;
+		parse_nested_options(arg);
 		return 0;
 	}
 

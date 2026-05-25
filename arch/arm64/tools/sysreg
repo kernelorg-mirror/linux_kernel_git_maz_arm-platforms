@@ -2106,7 +2106,11 @@ UnsignedEnum	59:56	FGT
 	0b0001	IMP
 	0b0010	FGT2
 EndEnum
-Res0	55:48
+Res0	55:52
+UnsignedEnum	51:48	NVTGE
+	0b0000	NI
+	0b0001	IMP
+EndEnum
 UnsignedEnum	47:44	EXS
 	0b0000	NI
 	0b0001	IMP

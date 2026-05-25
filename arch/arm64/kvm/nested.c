@@ -1845,6 +1845,10 @@ u64 limit_nv_id_reg(struct kvm *kvm, u32 reg, u64 val)
 
 		/* Cap PARange to 48bits */
 		val = ID_REG_LIMIT_FIELD_ENUM(val, ID_AA64MMFR0_EL1, PARANGE, 48);
+
+		/* Advertise fictional FEAT_NVTGE when !FEAT_NV3 */
+		if (!cpus_have_final_cap(ARM64_HAS_NV3) && kvm_emulates_nvtge())
+			val |= SYS_FIELD_PREP_ENUM(ID_AA64MMFR0_EL1, NVTGE, IMP);
 		break;
 
 	case SYS_ID_AA64MMFR1_EL1:

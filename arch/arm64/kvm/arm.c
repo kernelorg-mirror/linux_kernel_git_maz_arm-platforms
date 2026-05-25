@@ -56,6 +56,7 @@
 #include "sys_regs.h"
 
 static enum kvm_mode kvm_mode = KVM_MODE_DEFAULT;
+static bool emulates_nvtge;
 
 enum kvm_wfx_trap_policy {
 	KVM_WFX_NOTRAP_SINGLE_TASK, /* Default option */
@@ -3192,6 +3193,11 @@ early_param("kvm-arm.wfe_trap_policy", early_kvm_wfe_trap_policy_cfg);
 enum kvm_mode kvm_get_mode(void)
 {
 	return kvm_mode;
+}
+
+bool kvm_emulates_nvtge(void)
+{
+	return emulates_nvtge;
 }
 
 module_init(kvm_arm_init);

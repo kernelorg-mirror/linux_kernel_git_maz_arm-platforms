@@ -420,11 +420,90 @@ static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 	return true;
 }
 
+static bool tlbi_s1e2_nvtge(struct kvm_vcpu *vcpu, u32 instr)
+{
+	u64 hcrx = __vcpu_sys_reg(vcpu, HCRX_EL2);
+
+	if (!(hcrx & HCRX_EL2_NVTGE))
+		return false;
+
+	switch (instr) {
+	case OP_TLBI_VAE1:
+	case OP_TLBI_VAAE1:
+	case OP_TLBI_VALE1:
+	case OP_TLBI_VAALE1:
+	case OP_TLBI_RVAE1:
+	case OP_TLBI_RVAAE1:
+	case OP_TLBI_RVALE1:
+	case OP_TLBI_RVAALE1:
+	case OP_TLBI_ASIDE1:
+	case OP_TLBI_VMALLE1:
+	case OP_TLBI_VAE1NXS:
+	case OP_TLBI_VAAE1NXS:
+	case OP_TLBI_VALE1NXS:
+	case OP_TLBI_VAALE1NXS:
+	case OP_TLBI_RVAE1NXS:
+	case OP_TLBI_RVAAE1NXS:
+	case OP_TLBI_RVALE1NXS:
+	case OP_TLBI_RVAALE1NXS:
+	case OP_TLBI_ASIDE1NXS:
+	case OP_TLBI_VMALLE1NXS:
+		return (hcrx & HCRX_EL2_NVnTTLB);
+
+	case OP_TLBI_VAE1IS:
+	case OP_TLBI_VAAE1IS:
+	case OP_TLBI_VALE1IS:
+	case OP_TLBI_VAALE1IS:
+	case OP_TLBI_RVAE1IS:
+	case OP_TLBI_RVAAE1IS:
+	case OP_TLBI_RVALE1IS:
+	case OP_TLBI_RVAALE1IS:
+	case OP_TLBI_ASIDE1IS:
+	case OP_TLBI_VMALLE1IS:
+	case OP_TLBI_VAE1ISNXS:
+	case OP_TLBI_VAAE1ISNXS:
+	case OP_TLBI_VALE1ISNXS:
+	case OP_TLBI_VAALE1ISNXS:
+	case OP_TLBI_RVAE1ISNXS:
+	case OP_TLBI_RVAAE1ISNXS:
+	case OP_TLBI_RVALE1ISNXS:
+	case OP_TLBI_RVAALE1ISNXS:
+	case OP_TLBI_ASIDE1ISNXS:
+	case OP_TLBI_VMALLE1ISNXS:
+		return (hcrx & HCRX_EL2_NVnTTLBIS);
+
+	case OP_TLBI_VAE1OS:
+	case OP_TLBI_VAAE1OS:
+	case OP_TLBI_VALE1OS:
+	case OP_TLBI_VAALE1OS:
+	case OP_TLBI_RVAE1OS:
+	case OP_TLBI_RVAAE1OS:
+	case OP_TLBI_RVALE1OS:
+	case OP_TLBI_RVAALE1OS:
+	case OP_TLBI_ASIDE1OS:
+	case OP_TLBI_VMALLE1OS:
+	case OP_TLBI_VAE1OSNXS:
+	case OP_TLBI_VAAE1OSNXS:
+	case OP_TLBI_VALE1OSNXS:
+	case OP_TLBI_VAALE1OSNXS:
+	case OP_TLBI_RVAE1OSNXS:
+	case OP_TLBI_RVAAE1OSNXS:
+	case OP_TLBI_RVALE1OSNXS:
+	case OP_TLBI_RVAALE1OSNXS:
+	case OP_TLBI_ASIDE1OSNXS:
+	case OP_TLBI_VMALLE1OSNXS:
+		return (hcrx & HCRX_EL2_NVnTTLBOS);
+	}
+
+	return false;
+}
+
 static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 {
 	int ret = -EINVAL;
+	bool inhost;
 	u32 instr;
-	u64 val;
+	u64 hcr;
 
 	/*
 	 * Ideally, we would never trap on EL2 S1 TLB invalidations using
@@ -442,16 +521,28 @@ static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * with the VHE program, we can also handle the nVHE style of EL2
 	 * invalidation.
 	 */
-	if (!(is_hyp_ctxt(vcpu)))
-		return false;
-
 	instr = esr_sys64_to_sysreg(kvm_vcpu_get_esr(vcpu));
-	val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
 
-	if ((kvm_supported_tlbi_s1e1_op(vcpu, instr) &&
-	     vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu)) ||
-	    kvm_supported_tlbi_s1e2_op (vcpu, instr))
+	if (is_nested_ctxt(vcpu)) {
+		if (!tlbi_s1e2_nvtge(vcpu, instr))
+			return false;
+
+		if (!host_data_test_flag(L1_VNCR_MAPPED))
+			return false;
+
+		if (__vcpu_l1_vncr_read(vcpu, NVHCR_EL2, &hcr))
+			return false;
+	} else {
+		hcr = __vcpu_sys_reg(vcpu, HCR_EL2);
+	}
+
+	inhost = (hcr & (HCR_EL2_E2H | HCR_EL2_TGE)) == (HCR_EL2_E2H | HCR_EL2_TGE);
+
+	if ((kvm_supported_tlbi_s1e1_op(vcpu, instr) && inhost) ||
+	    kvm_supported_tlbi_s1e2_op (vcpu, instr)) {
+		u64 val = vcpu_get_reg(vcpu, kvm_vcpu_sys_get_rt(vcpu));
 		ret = __kvm_tlbi_s1e2(NULL, val, instr);
+	}
 
 	if (ret)
 		return false;
@@ -464,8 +555,7 @@ static bool kvm_hyp_handle_tlbi_el2(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * speculative increment of the TLB counter on walk, and the
 	 * invalidation counter. Yes, this is fiddly.
 	 */
-	if (vcpu_el2_e2h_is_set(vcpu) && vcpu_el2_tge_is_set(vcpu) &&
-	    atomic_read(&vcpu->kvm->arch.vncr_tlb_count))
+	if (inhost && atomic_read(&vcpu->kvm->arch.vncr_tlb_count))
 		return false;
 
 	__kvm_skip_instr(vcpu);

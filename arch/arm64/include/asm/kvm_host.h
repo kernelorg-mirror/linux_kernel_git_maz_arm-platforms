@@ -74,6 +74,7 @@ enum kvm_mode {
 #ifdef CONFIG_KVM
 enum kvm_mode kvm_get_mode(void);
 bool kvm_emulates_nvtge(void);
+bool kvm_forces_nvtge(void);
 #else
 static inline enum kvm_mode kvm_get_mode(void) { return KVM_MODE_NONE; };
 #endif

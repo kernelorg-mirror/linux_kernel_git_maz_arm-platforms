@@ -374,7 +374,11 @@ static bool kvm_hyp_handle_eret(struct kvm_vcpu *vcpu, u64 *exit_code)
 	 * to its VNCR memory.
 	 */
 	if (is_nested_ctxt(vcpu)) {
-		if (!(__vcpu_sys_reg(vcpu, HCRX_EL2) & HCRX_EL2_NVTGE))
+		if (!kvm_emulates_nvtge())
+			return false;
+
+		if (!(kvm_forces_nvtge() ||
+		      (__vcpu_sys_reg(vcpu, HCRX_EL2) & HCRX_EL2_NVTGE)))
 			return false;
 
 		if (__vcpu_sys_reg(vcpu, HFGITR_EL2) & HFGITR_EL2_ERET)

@@ -717,7 +717,8 @@ static inline void vcpu_set_hcrx(struct kvm_vcpu *vcpu)
 		 * it when present and that the guest uses NV. It may
 		 * be hidden from the guest though.
 		 */
-		if (cpus_have_final_cap(ARM64_HAS_NV3) &&
+		if ((cpus_have_final_cap(ARM64_HAS_NV3) ||
+		     cpus_have_final_cap(ARM64_HAS_NVTGE)) &&
 		    vcpu_has_nv(vcpu) && vcpu_el2_e2h_is_set(vcpu)) {
 			vcpu->arch.hcrx_el2 |= HCRX_EL2_NVTGE;
 

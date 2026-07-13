@@ -71,17 +71,6 @@
 				 ICH_VTR_EL2_IDbits)
 #define KVM_ICH_VTR_EL2_RES1	ICH_VTR_EL2_nV4
 
-static inline u64 kvm_get_guest_vtr_el2(void)
-{
-	u64 vtr;
-
-	vtr  = kvm_vgic_global_state.ich_vtr_el2;
-	vtr &= ~KVM_ICH_VTR_EL2_RES0;
-	vtr |= KVM_ICH_VTR_EL2_RES1;
-
-	return vtr;
-}
-
 #define vtr_to_max_lr_idx(v)		FIELD_GET(ICH_VTR_EL2_ListRegs, (v))
 #define vtr_to_nr_pre_bits(v)		(FIELD_GET(ICH_VTR_EL2_PREbits, (v)) + 1)
 #define vtr_to_nr_apr_regs(v)		BIT(vtr_to_nr_pre_bits(v) - 5)
@@ -197,6 +186,17 @@ static inline u64 vgic_ich_vtr(void)
 				    ARM64_ALWAYS_SYSTEM,
 				    kvm_patch_ich_vtr_el2)
 		     : "=r" (vtr));
+
+	return vtr;
+}
+
+static inline u64 kvm_get_guest_vtr_el2(void)
+{
+	u64 vtr;
+
+	vtr  = vgic_ich_vtr();
+	vtr &= ~KVM_ICH_VTR_EL2_RES0;
+	vtr |= KVM_ICH_VTR_EL2_RES1;
 
 	return vtr;
 }

@@ -143,36 +143,12 @@ static void vgic_v3_deactivate_phys(u32 intid)
 		gic_write_dir(intid);
 }
 
-/*
- * Our priority drop implementation cannot assume that we can just nuke the
- * highest active priority from the APRs, because we don't know if the HW
- * implements "Drop before checks" or not. So we must do it "precisely" by
- * only nuking the priority that the interrupt has. As a consequence, bad
- * things may occur if the guest changes priority while the previous
- * priority is active. Don't do that.
- */
-static bool vgic_v3_priority_drop(struct kvm_vcpu *vcpu, struct vgic_irq *irq)
-{
-	struct vgic_v3_cpu_if *cpuif = &vcpu->arch.vgic_cpu.vgic_v3;
-	u8 pmask = GENMASK(7, 8 - vtr_to_nr_pre_bits(kvm_vgic_global_state.ich_vtr_el2));
-	u8 pbit = field_get(pmask, irq->priority);
-	u8 n = pbit / 32;
-	u32 apr, *aprp;
-
-	aprp = (irq->group ? cpuif->vgic_ap1r : cpuif->vgic_ap0r) + n;
-	apr = *aprp;
-	*aprp &= ~BIT(pbit % 32);
-
-	return apr != *aprp;
-}
-
 void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 {
 	struct vgic_cpu *vgic_cpu = &vcpu->arch.vgic_cpu;
 	struct vgic_v3_cpu_if *cpuif = &vgic_cpu->vgic_v3;
 	u32 eoicount = FIELD_GET(ICH_HCR_EL2_EOIcount, cpuif->vgic_hcr);
 	struct vgic_irq *irq = *host_data_ptr(last_lr_irq);
-	bool pdropped = false;
 
 	DEBUG_SPINLOCK_BUG_ON(!irqs_disabled());
 
@@ -184,17 +160,9 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 	 * guaranteed to deactivate in reverse order of the activation, so
 	 * just pick one active interrupt after the other in the tail part
 	 * of the ap_list, past the LRs, and replay the deactivation as if
-	 * the CPU was doing it. We also rely on the list to be sorted by
-	 * priority.
-	 *
-	 * However, because the "Drop before checks" behaviour is IMPDEF in
-	 * the pseudocode, we are forced to perform the priority drop by
-	 * hand even if the HW has done it anyway (wich is AFAIK 100% of HW
-	 * implementations).
+	 * the CPU was doing it. We also rely on priority drop to have taken
+	 * place, and the list to be sorted by priority.
 	 */
-	if (eoicount)
-		kvm_call_hyp(__vgic_v3_save_aprs, cpuif);
-
 	list_for_each_entry_continue(irq, &vgic_cpu->ap_list_head, ap_list) {
 		u64 lr;
 
@@ -211,7 +179,6 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 			      irq->active))
 				continue;
 
-			pdropped |= vgic_v3_priority_drop(vcpu, irq);
 			lr = vgic_v3_compute_lr(vcpu, irq) & ~ICH_LR_ACTIVE_BIT;
 		}
 
@@ -221,9 +188,6 @@ void vgic_v3_fold_lr_state(struct kvm_vcpu *vcpu)
 		vgic_v3_fold_lr(vcpu, lr);
 		eoicount--;
 	}
-
-	if (pdropped)
-		kvm_call_hyp(__vgic_v3_restore_vmcr_aprs, cpuif);
 
 	cpuif->used_lrs = 0;
 }

@@ -82,6 +82,10 @@ static inline u64 kvm_get_guest_vtr_el2(void)
 	return vtr;
 }
 
+#define vtr_to_max_lr_idx(v)		FIELD_GET(ICH_VTR_EL2_ListRegs, (v))
+#define vtr_to_nr_pre_bits(v)		(FIELD_GET(ICH_VTR_EL2_PREbits, (v)) + 1)
+#define vtr_to_nr_apr_regs(v)		BIT(vtr_to_nr_pre_bits(v) - 5)
+
 /*
  * As per Documentation/virt/kvm/devices/arm-vgic-its.rst,
  * below macros are defined for ITS table entry encoding.

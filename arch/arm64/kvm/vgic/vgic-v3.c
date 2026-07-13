@@ -906,6 +906,9 @@ void noinstr kvm_patch_ich_vtr_el2(struct alt_instr *alt,
 
 	vtr = res.a1;
 
+	if (vgic_v3_broken_seis())
+		vtr &= ~ICH_VTR_EL2_SEIS;
+
 	/* Compute target register */
 	oinsn = le32_to_cpu(*origptr);
 	rd = aarch64_insn_decode_register(AARCH64_INSN_REGTYPE_RD, oinsn);
@@ -950,12 +953,12 @@ void vgic_v3_enable_cpuif_traps(void)
  */
 int vgic_v3_probe(const struct gic_kvm_info *info)
 {
-	u64 ich_vtr_el2 = kvm_call_hyp_ret(__vgic_v3_get_gic_config);
+	u64 ich_vtr_el2;
 	bool has_v2;
 	int ret;
 
-	has_v2 = ich_vtr_el2 >> 63;
-	ich_vtr_el2 = (u32)ich_vtr_el2;
+	has_v2 = kvm_call_hyp_ret(__vgic_v3_get_gic_config) >> 63;
+	ich_vtr_el2 = vgic_ich_vtr();
 
 	/*
 	 * The ListRegs field is 5 bits, but there is an architectural
@@ -1010,10 +1013,8 @@ int vgic_v3_probe(const struct gic_kvm_info *info)
 	if (has_v2)
 		static_branch_enable(&vgic_v3_has_v2_compat);
 
-	if (vgic_v3_broken_seis()) {
+	if (vgic_v3_broken_seis())
 		kvm_info("GICv3 with broken locally generated SEI\n");
-		kvm_vgic_global_state.ich_vtr_el2 &= ~ICH_VTR_EL2_SEIS;
-	}
 
 	vgic_v3_enable_cpuif_traps();
 

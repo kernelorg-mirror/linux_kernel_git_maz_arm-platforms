@@ -435,8 +435,6 @@ void __vgic_v3_init_lrs(void)
 
 /*
  * Return the GIC CPU configuration:
- * - [31:0]  ICH_VTR_EL2
- * - [62:32] RES0
  * - [63]    MMIO (GICv2) capable
  */
 u64 __vgic_v3_get_gic_config(void)
@@ -451,7 +449,7 @@ u64 __vgic_v3_get_gic_config(void)
 	 * system, so we first check if we have GICv5 support.
 	 */
 	if (cpus_have_final_cap(ARM64_HAS_GICV5_CPUIF))
-		return vgic_ich_vtr();
+		return 0;
 
 	sre = read_gicreg(ICC_SRE_EL1);
 	/*
@@ -493,10 +491,7 @@ u64 __vgic_v3_get_gic_config(void)
 		isb();
 	}
 
-	val  = (val & ICC_SRE_EL1_SRE) ? 0 : (1ULL << 63);
-	val |= vgic_ich_vtr();
-
-	return val;
+	return (val & ICC_SRE_EL1_SRE) ? 0 : (1ULL << 63);
 }
 
 static void __vgic_v3_compat_mode_enable(void)

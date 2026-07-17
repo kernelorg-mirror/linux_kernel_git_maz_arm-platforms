@@ -425,6 +425,7 @@ int __kvm_find_s1_desc_level(struct kvm_vcpu *vcpu, u64 va, u64 ipa,
 int kvm_vcpu_allocate_vncr_tlb(struct kvm_vcpu *vcpu);
 int kvm_handle_vncr_abort(struct kvm_vcpu *vcpu);
 void kvm_handle_s1e2_tlbi(struct kvm_vcpu *vcpu, u32 inst, u64 val);
+int __vcpu_l1_vncr_read(struct kvm_vcpu *vcpu, enum vcpu_sysreg reg, u64 *val);
 
 u16 get_asid_by_regime(struct kvm_vcpu *vcpu, enum trans_regime regime);
 

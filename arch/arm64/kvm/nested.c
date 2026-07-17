@@ -1667,6 +1667,84 @@ static void kvm_map_l1_vncr(struct kvm_vcpu *vcpu)
 }
 
 /*
+ * Peek at an L1 VNCR-backed register. This is called from the inner
+ * run loop to accelerate returns to an L2+ guest.
+ */
+int __vcpu_l1_vncr_read(struct kvm_vcpu *vcpu, enum vcpu_sysreg reg, u64 *val)
+{
+	u64 spsr, elr, esr, far, tco, pan, v;
+	u64 vncr_va, *reg_va;
+	int err = 0;
+
+	/* This really shouldn't ever fail */
+	if (!host_data_test_flag(L1_VNCR_MAPPED))
+		return -ENXIO;
+
+	BUG_ON(reg < __VNCR_START__);
+	vncr_va = read_sysreg_s(SYS_VNCR_EL2);
+	reg_va = &((u64 *)vncr_va)[reg - __VNCR_START__];
+
+	spsr = read_sysreg_el2(SYS_SPSR);
+	elr = read_sysreg_el2(SYS_ELR);
+	esr = read_sysreg_el2(SYS_ESR);
+	far = read_sysreg_el2(SYS_FAR);
+
+	/* R_VFMQB */
+	pan = read_sysreg_s(SYS_PSTATE_PAN);
+	set_pstate_pan(0);
+
+	/* R_DRGYL */
+	if (cpus_have_final_cap(ARM64_MTE)) {
+		tco = read_sysreg_s(SYS_TCO);
+		set_pstate_tco(1);
+	}
+
+	asm volatile("1:	ldr	%[v], [%[va]]\n"
+		     "		b	9f\n"
+		     "2:	mov	%w[err], %[errcode]\n"
+		     "9:\n"
+		     __KVM_EXTABLE(1b, 2b)
+		     : [err] "+r" (err), [v] "=&r" (v)
+		     : [va] "r" (reg_va), [errcode] "i" (-EFAULT));
+
+	if (cpus_have_final_cap(ARM64_MTE))
+		write_sysreg_s(tco, SYS_TCO);
+
+	write_sysreg_s(pan, SYS_PSTATE_PAN);
+
+	if (unlikely(err)) {
+		unsigned int ec;
+
+		/*
+		 * We expect this to be ESR_ELx_EC_DABT_CUR, and to be dealt
+		 * with by the VNCR fault handler on the slow path.
+		 */
+		vcpu->arch.fault.esr_el2 = read_sysreg_el2(SYS_ESR);
+		ec = kvm_vcpu_trap_get_class(vcpu);
+
+		if (!WARN_ONCE(ec != ESR_ELx_EC_DABT_CUR,
+			       "Unexpected EC=%x reading L1 VNCR\n", ec)) {
+			vcpu->arch.fault.esr_el2 &= ESR_ELx_EC_MASK | ESR_ELx_FSC;
+			vcpu->arch.fault.esr_el2 |= ESR_ELx_VNCR | ESR_ELx_IL;
+			vcpu->arch.fault.far_el2  = read_sysreg_el2(SYS_FAR);
+		}
+
+		/* Restore the original fault context, just in case */
+		write_sysreg_el2(spsr, SYS_SPSR);
+		write_sysreg_el2(elr,  SYS_ELR);
+		write_sysreg_el2(esr,  SYS_ESR);
+		write_sysreg_el2(far,  SYS_FAR);
+
+		return err;
+	}
+
+	/* Apply our own sanitisation, just like HW would... */
+	*val = kvm_vcpu_apply_reg_masks(vcpu, reg, v);
+
+	return 0;
+}
+
+/*
  * Our emulated CPU doesn't support all the possible features. For the
  * sake of simplicity (and probably mental sanity), wipe out a number
  * of feature bits we don't intend to support for the time being.

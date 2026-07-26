@@ -830,6 +830,19 @@ Kernel parameters
 			loops can be debugged more effectively on production
 			systems.
 
+	clocksource.arm_arch_timer.cnt_errata=
+			[ARM64,EARLY]
+			Format: <bool>
+			Enable/disable the counter errata management.
+			Enabling it switches over to fast accessors once it is
+			known that no CPU requires any workaround while reading
+			the counters.
+			Disabling it will bypass workarounds when reading the
+			counters, even if not all the CPUs have been probed.
+			Warnings will be produced if the need for a workaround
+			is detected.
+			Default is enabled.
+
 	clocksource.verify_n_cpus= [KNL]
 			Limit the number of CPUs checked for clocksources
 			marked with CLOCK_SOURCE_VERIFY_PERCPU that

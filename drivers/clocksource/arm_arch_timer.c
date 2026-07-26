@@ -500,8 +500,10 @@ void arch_timer_enable_workaround(const struct arch_timer_erratum_workaround *wa
 			per_cpu(timer_unstable_counter_workaround, i) = wa;
 	}
 
-	if (wa->read_cntvct_el0 || wa->read_cntpct_el0)
+	if (wa->read_cntvct_el0 || wa->read_cntpct_el0) {
+		WARN_ON_ONCE(!arch_counter_broken_accessors());
 		atomic_set(&timer_unstable_counter_workaround_in_use, 1);
+	}
 
 	/*
 	 * Don't use the vdso fastpath if errata require using the
@@ -597,12 +599,22 @@ static void arch_timer_set_direct_accessors(void)
 	if (!arch_timer_counter_has_wa())
 		schedule_work(&enable_accessors_wk);
 }
+
+static bool cnt_errata_config __initdata = true;
+
+static int __init early_cnt_errata(char *buf)
+{
+	return kstrtobool(buf, &cnt_errata_config);
+}
+early_param("clocksource.arm_arch_timer.cnt_errata", early_cnt_errata);
 #else
 #define arch_timer_check_ool_workaround(t,a)		do { } while(0)
 #define arch_timer_this_cpu_has_cntvct_wa()		({false;})
 #define arch_timer_counter_has_wa()			({false;})
 static inline bool arch_counter_broken_accessors(void)	{ return false ; }
 #define arch_timer_set_direct_accessors()		do { } while(0)
+#define enable_direct_accessors(w)			do { } while(0)
+#define cnt_errata_config				false
 #endif /* CONFIG_ARM_ARCH_TIMER_OOL_WORKAROUND */
 
 static __always_inline irqreturn_t timer_handler(const int access,
@@ -954,6 +966,9 @@ static void __init arch_counter_register(void)
 {
 	u64 start_count;
 	int width;
+
+	if (!cnt_errata_config)
+		enable_direct_accessors(NULL);
 
 	switch (arch_timer_uses_ppi) {
 	case ARCH_TIMER_PHYS_SECURE_PPI:

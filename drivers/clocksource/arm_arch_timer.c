@@ -134,8 +134,20 @@ static notrace u64 arch_counter_get_cntvct(void)
  * to exist on arm64. arm doesn't use this before DT is probed so even
  * if we don't have the cp15 accessors we won't have a problem.
  */
-u64 (*arch_timer_read_counter)(void) __ro_after_init = arch_counter_get_cntvct;
+static DEFINE_STATIC_KEY_TRUE(arch_counter_is_virtual);
+
+u64 notrace arch_timer_read_counter(void)
+{
+	return static_branch_likely(&arch_counter_is_virtual) ?
+		arch_counter_get_cntvct() : arch_counter_get_cntpct();
+}
 EXPORT_SYMBOL_GPL(arch_timer_read_counter);
+
+static u64 noinstr raw_arch_timer_read_counter(void)
+{
+	return static_branch_likely(&arch_counter_is_virtual) ?
+		raw_counter_get_cntvct() : raw_counter_get_cntpct();
+}
 
 static u64 arch_counter_read(struct clocksource *cs)
 {
@@ -940,22 +952,19 @@ struct arch_timer_kvm_info *arch_timer_get_kvm_info(void)
 
 static void __init arch_counter_register(void)
 {
-	u64 (*scr)(void);
-	u64 (*rd)(void);
 	u64 start_count;
 	int width;
 
-	if ((IS_ENABLED(CONFIG_ARM64) && !is_hyp_mode_available()) ||
-	    arch_timer_uses_ppi == ARCH_TIMER_VIRT_PPI ||
-	    arch_timer_uses_ppi == ARCH_TIMER_HYP_VIRT_PPI) {
-		rd = arch_counter_get_cntvct;
-		scr = raw_counter_get_cntvct;
-	} else {
-		rd = arch_counter_get_cntpct;
-		scr = raw_counter_get_cntpct;
+	switch (arch_timer_uses_ppi) {
+	case ARCH_TIMER_PHYS_SECURE_PPI:
+	case ARCH_TIMER_PHYS_NONSECURE_PPI:
+	case ARCH_TIMER_HYP_PPI:
+		static_branch_disable(&arch_counter_is_virtual);
+		break;
+	default:
+		break;
 	}
 
-	arch_timer_read_counter = rd;
 	clocksource_counter.vdso_clock_mode = vdso_default;
 
 	width = arch_counter_get_width();
@@ -971,15 +980,14 @@ static void __init arch_counter_register(void)
 	timecounter_init(&arch_timer_kvm_info.timecounter,
 			 &cyclecounter, start_count);
 
-	sched_clock_register(scr, width, arch_timer_rate);
+	sched_clock_register(raw_arch_timer_read_counter, width, arch_timer_rate);
 }
 
 bool read_sched_clock_is_arch_counter(const struct clock_read_data *crd)
 {
 	u64 (*rd)(void) = crd->read_sched_clock;
 
-	return (rd == raw_counter_get_cntvct	||
-		rd == raw_counter_get_cntpct);
+	return (rd == raw_arch_timer_read_counter);
 }
 
 static void arch_timer_stop(struct clock_event_device *clk)

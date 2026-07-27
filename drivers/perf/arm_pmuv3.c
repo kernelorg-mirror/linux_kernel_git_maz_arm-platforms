@@ -1624,7 +1624,7 @@ void arch_perf_update_userpage(struct perf_event *event,
 	do {
 		rd = sched_clock_read_begin(&seq);
 
-		if (rd->read_sched_clock != arch_timer_read_counter)
+		if (!read_sched_clock_is_arch_counter(rd))
 			return;
 
 		userpg->time_mult = rd->mult;

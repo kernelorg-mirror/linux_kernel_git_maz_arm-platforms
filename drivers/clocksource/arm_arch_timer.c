@@ -951,6 +951,16 @@ static void __init arch_counter_register(void)
 	sched_clock_register(scr, width, arch_timer_rate);
 }
 
+bool read_sched_clock_is_arch_counter(const struct clock_read_data *crd)
+{
+	u64 (*rd)(void) = crd->read_sched_clock;
+
+	return (rd == raw_counter_get_cntvct_stable	||
+		rd == raw_counter_get_cntpct_stable	||
+		rd == arch_counter_get_cntvct		||
+		rd == arch_counter_get_cntpct);
+}
+
 static void arch_timer_stop(struct clock_event_device *clk)
 {
 	pr_debug("disable IRQ%d cpu #%d\n", clk->irq, smp_processor_id());

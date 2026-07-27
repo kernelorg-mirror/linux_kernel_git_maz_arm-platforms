@@ -84,13 +84,15 @@ struct arch_timer_mem {
 	struct arch_timer_mem_frame frame[ARCH_TIMER_MEM_MAX_FRAMES];
 };
 
+struct clock_read_data;
+
 #ifdef CONFIG_ARM_ARCH_TIMER
 
 extern u32 arch_timer_get_rate(void);
 extern u64 (*arch_timer_read_counter)(void);
 extern struct arch_timer_kvm_info *arch_timer_get_kvm_info(void);
 extern bool arch_timer_evtstrm_available(void);
-
+extern bool read_sched_clock_is_arch_counter(const struct clock_read_data *);
 #else
 
 static inline u32 arch_timer_get_rate(void)
@@ -108,6 +110,10 @@ static inline bool arch_timer_evtstrm_available(void)
 	return false;
 }
 
+static bool read_sched_clock_is_arch_counter(const struct clock_read_data *crd)
+{
+	return false;
+}
 #endif
 
 #endif

@@ -55,6 +55,27 @@ int kvm_init_nested(struct kvm *kvm)
 	return kvm->arch.nested_mmus ? 0 : -ENOMEM;
 }
 
+static void kvm_uninit_shadow_stage2_mmu(struct kvm *kvm)
+{
+	for (int i = 0; i < kvm->arch.nested_mmus_size; i++) {
+		struct kvm_s2_mmu *mmu = kvm->arch.nested_mmus[i];
+
+		if (!WARN_ON(atomic_read(&mmu->refcnt)))
+			kvm_free_stage2_pgd(mmu);
+	}
+}
+
+void kvm_destroy_nested(struct kvm *kvm)
+{
+	kvm_uninit_shadow_stage2_mmu(kvm);
+
+	for (int i = 0; i < kvm->arch.nested_mmus_size; i+= S2_MMU_PER_VCPU)
+		kvfree(kvm->arch.nested_mmus[i]);
+
+	kvm->arch.nested_mmus_size = 0;
+	kvfree(kvm->arch.nested_mmus);
+}
+
 static int init_nested_s2_mmu(struct kvm *kvm, struct kvm_s2_mmu *mmu)
 {
 	/*
@@ -1310,16 +1331,7 @@ void kvm_nested_s2_flush(struct kvm *kvm)
 
 void kvm_arch_flush_shadow_all(struct kvm *kvm)
 {
-	for (int i = kvm->arch.nested_mmus_size - 1; i >= 0; i--) {
-		struct kvm_s2_mmu *mmu = kvm->arch.nested_mmus[i];
-
-		if (!WARN_ON(atomic_read(&mmu->refcnt)))
-			kvm_free_stage2_pgd(mmu);
-
-		if ((i % S2_MMU_PER_VCPU) == 0)
-			kvfree(mmu);
-	}
-	kvm->arch.nested_mmus_size = 0;
+	kvm_uninit_shadow_stage2_mmu(kvm);
 	kvm_uninit_stage2_mmu(kvm);
 }
 

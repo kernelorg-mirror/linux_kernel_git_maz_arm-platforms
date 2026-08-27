@@ -199,7 +199,12 @@ static inline void __sysreg_save_el2_return_state(struct kvm_cpu_context *ctxt)
 
 static inline void __sysreg_restore_common_state(struct kvm_cpu_context *ctxt)
 {
-	write_sysreg(*ctxt_mdscr_el1(ctxt),  mdscr_el1);
+	/*
+	 * KVM NV traps writes to MDSCR_EL1, as the access is
+	 * otherwise written to memory, with no effects. Avoid the
+	 * high trap cost by only writing if the value has changed.
+	 */
+	sysreg_cond_write(*ctxt_mdscr_el1(ctxt), mdscr_el1);
 
 	// POR_EL0 can affect uaccess, so must be saved/restored early.
 	if (ctxt_has_s1poe(ctxt))

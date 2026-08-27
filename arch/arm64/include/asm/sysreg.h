@@ -1212,6 +1212,17 @@
 } while (0)
 
 /*
+ * Write to sysreg if the value actually changes. Only use in cases
+ * where the cost of the write can be disproportionate, such as
+ * trapping caused by architectural warts.
+ */
+#define sysreg_cond_write(v, sysreg) do {				\
+	u64 ___val = (u64)(v);						\
+	if (read_sysreg(sysreg) != ___val)				\
+		write_sysreg(___val, sysreg);				\
+} while(0)
+
+/*
  * Modify bits in a sysreg. Bits in the clear mask are zeroed, then bits in the
  * set mask are set. Other bits are left as-is.
  */

@@ -40,7 +40,7 @@ u8 debug_monitors_arch(void)
  */
 static void mdscr_write(u64 mdscr)
 {
-	write_sysreg(mdscr, mdscr_el1);
+	sysreg_cond_write(mdscr, mdscr_el1);
 }
 NOKPROBE_SYMBOL(mdscr_write);
 

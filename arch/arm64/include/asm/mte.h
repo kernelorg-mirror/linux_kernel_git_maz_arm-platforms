@@ -224,10 +224,10 @@ static inline bool folio_try_hugetlb_mte_tagging(struct folio *folio)
 }
 #endif
 
-static inline void mte_disable_tco_entry(struct task_struct *task)
+static inline bool mte_disable_tco_entry(struct task_struct *task)
 {
 	if (!system_supports_mte())
-		return;
+		return false;
 
 	/*
 	 * Re-enable tag checking (TCO set on exception entry). This is only
@@ -240,8 +240,12 @@ static inline void mte_disable_tco_entry(struct task_struct *task)
 	 * expensive.
 	 */
 	if (kasan_hw_tags_enabled() ||
-	    (task->thread.sctlr_user & (1UL << SCTLR_EL1_TCF0_SHIFT)))
+	    (task->thread.sctlr_user & (1UL << SCTLR_EL1_TCF0_SHIFT))) {
 		set_pstate_tco(0);
+		return true;
+	}
+
+	return false;
 }
 
 #ifdef CONFIG_KASAN_HW_TAGS

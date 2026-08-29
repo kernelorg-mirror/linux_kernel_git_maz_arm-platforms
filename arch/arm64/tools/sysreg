@@ -3815,6 +3815,12 @@ Field	1	ZA
 Field	0	SM
 EndSysreg
 
+Sysreg	TCO	3	3	4	2	7
+Res0	63:26
+Field	25	TCO
+Res0	24:0
+EndSysreg
+
 Sysreg	FPCR	3	3	4	4	0
 Res0	63:27
 Field	26	AHP

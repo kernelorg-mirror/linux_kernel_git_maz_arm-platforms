@@ -29,6 +29,11 @@ static bool kvm_pgtable_walk_skip_cmo(const struct kvm_pgtable_visit_ctx *ctx)
 	return unlikely(ctx->flags & KVM_PGTABLE_WALK_SKIP_CMO);
 }
 
+static bool kvm_pgtable_walk_skip_s2_tlbi(const struct kvm_pgtable_visit_ctx *ctx)
+{
+	return unlikely(ctx->flags & KVM_PGTABLE_WALK_SKIP_S2_TLBI);
+}
+
 static bool kvm_block_mapping_supported(const struct kvm_pgtable_visit_ctx *ctx, u64 phys)
 {
 	u64 granule = kvm_granule_size(ctx->level);
@@ -905,12 +910,14 @@ static void stage2_unmap_put_pte(const struct kvm_pgtable_visit_ctx *ctx,
 	if (kvm_pte_valid(ctx->old)) {
 		kvm_clear_pte(ctx->ptep);
 
-		if (kvm_pte_table(ctx->old, ctx->level)) {
-			kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, mmu, ctx->addr,
-				     TLBI_TTL_UNKNOWN);
-		} else if (!stage2_unmap_defer_tlb_flush(pgt)) {
-			kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, mmu, ctx->addr,
-				     ctx->level);
+		if (!kvm_pgtable_walk_skip_s2_tlbi(ctx)) {
+			if (kvm_pte_table(ctx->old, ctx->level)) {
+				kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, mmu, ctx->addr,
+					     TLBI_TTL_UNKNOWN);
+			} else if (!stage2_unmap_defer_tlb_flush(pgt)) {
+				kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, mmu, ctx->addr,
+					     ctx->level);
+			}
 		}
 	}
 
@@ -1195,21 +1202,34 @@ static int stage2_unmap_walker(const struct kvm_pgtable_visit_ctx *ctx,
 	return 0;
 }
 
-int kvm_pgtable_stage2_unmap(struct kvm_pgtable *pgt, u64 addr, u64 size)
+static int __kvm_pgtable_stage2_unmap(struct kvm_pgtable *pgt,
+				      enum kvm_pgtable_walk_flags flags,
+				      u64 addr, u64 size)
 {
 	int ret;
 	struct kvm_pgtable_walker walker = {
 		.cb	= stage2_unmap_walker,
 		.arg	= pgt,
-		.flags	= KVM_PGTABLE_WALK_LEAF | KVM_PGTABLE_WALK_TABLE_POST,
+		.flags	= KVM_PGTABLE_WALK_LEAF | KVM_PGTABLE_WALK_TABLE_POST | flags,
 	};
 
 	ret = kvm_pgtable_walk(pgt, addr, size, &walker);
-	if (stage2_unmap_defer_tlb_flush(pgt))
+	if (stage2_unmap_defer_tlb_flush(pgt) &&
+	    !(flags & KVM_PGTABLE_WALK_SKIP_S2_TLBI))
 		/* Perform the deferred TLB invalidations */
 		kvm_tlb_flush_vmid_range(pgt->mmu, addr, size);
 
 	return ret;
+}
+
+int kvm_pgtable_stage2_unmap(struct kvm_pgtable *pgt, u64 addr, u64 size)
+{
+	return __kvm_pgtable_stage2_unmap(pgt, 0, addr, size);
+}
+
+int kvm_pgtable_stage2_unmap_notlbi(struct kvm_pgtable *pgt, u64 addr, u64 size)
+{
+	return __kvm_pgtable_stage2_unmap(pgt, KVM_PGTABLE_WALK_SKIP_S2_TLBI, addr, size);
 }
 
 struct stage2_attr_data {

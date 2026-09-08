@@ -128,8 +128,10 @@ int kvm_vcpu_init_nested(struct kvm_vcpu *vcpu)
 
 		guard(write_lock)(&kvm->mmu_lock);
 
-		for (i = 0; i < S2_MMU_PER_VCPU; i++)
+		for (i = 0; i < S2_MMU_PER_VCPU; i++) {
+			tmp[i].s2_mmu_idx = i + kvm->arch.nested_mmus_size;
 			kvm->arch.nested_mmus[i + kvm->arch.nested_mmus_size] = &tmp[i];
+		}
 
 		kvm->arch.nested_mmus_size += S2_MMU_PER_VCPU;
 	}
@@ -873,6 +875,24 @@ out:
 	return s2_mmu;
 }
 
+static void tag_s2_mapping_mmu(struct kvm_guest_s2_mapping *mapping,
+			       struct kvm_s2_mmu *mmu)
+{
+	mapping->nested.start &= ~0x3ffUL;
+	mapping->nested.start |= mmu->s2_mmu_idx;
+}
+
+static struct kvm_s2_mmu *s2_mapping_to_mmu(struct kvm *kvm,
+					    struct kvm_guest_s2_mapping *mapping)
+{
+	return kvm->arch.nested_mmus[mapping->nested.start & 0x3ff];
+}
+
+static unsigned long s2_mapping_to_nested_start(struct kvm_guest_s2_mapping *mapping)
+{
+	return mapping->nested.start & ~0x3ffUL;
+}
+
 void kvm_record_guest_s2_mapping(struct kvm_s2_mmu *mmu, gpa_t canonical_ipa,
 				 gpa_t nested_ipa, size_t map_size,
 				 struct kvm_guest_s2_mapping *mapping)
@@ -890,7 +910,7 @@ void kvm_record_guest_s2_mapping(struct kvm_s2_mmu *mmu, gpa_t canonical_ipa,
 	mapping->nested.start    = nested_ipa;
 	mapping->nested.last     = nested_ipa + map_size - 1;
 
-	mapping->nested_mmu      = mmu;
+	tag_s2_mapping_mmu(mapping, mmu);
 
 	guard(spinlock)(&kvm->arch.guest_s2_tracking_lock);
 	interval_tree_insert(&mapping->nested, &mmu->guest_s2_mappings);
@@ -1357,17 +1377,21 @@ void kvm_nested_unmap_cipa_range(struct kvm *kvm, gpa_t cipa, size_t unmap_size,
 
 	while ((node = interval_tree_iter_first(&kvm->arch.mmu.guest_s2_mappings,
 						cipa, cipa_end))) {
+		unsigned long nested_start;
+		struct kvm_s2_mmu *mmu;
+
 		mapping = container_of(node, struct kvm_guest_s2_mapping,
 				       canonical);
-		mapping_size = mapping->nested.last - mapping->nested.start + 1;
+		nested_start = s2_mapping_to_nested_start(mapping);
+		mmu = s2_mapping_to_mmu(kvm, mapping);
 
-		if (WARN_ON_ONCE(kvm_pgtable_stage2_unmap(mapping->nested_mmu->pgt,
-							  mapping->nested.start,
-							  mapping_size)))
+		mapping_size = mapping->nested.last - nested_start + 1;
+
+		if (WARN_ON_ONCE(kvm_pgtable_stage2_unmap(mmu->pgt, nested_start, mapping_size)))
 			return;
 
 		interval_tree_remove(node, &kvm->arch.mmu.guest_s2_mappings);
-		interval_tree_remove(&mapping->nested, &mapping->nested_mmu->guest_s2_mappings);
+		interval_tree_remove(&mapping->nested, &mmu->guest_s2_mappings);
 		kfree(mapping);
 
 		if (may_block)

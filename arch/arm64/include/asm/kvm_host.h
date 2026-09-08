@@ -158,7 +158,6 @@ struct kvm_vmid {
 struct kvm_guest_s2_mapping {
 	struct interval_tree_node canonical;
 	struct interval_tree_node nested;
-	struct kvm_s2_mmu *nested_mmu;
 };
 
 struct kvm_s2_mmu {
@@ -237,6 +236,9 @@ struct kvm_s2_mmu {
 	 * purpose.
 	 */
 	bool	pending_unmap;
+
+	/* Index in the S2 MMU array, only valid for a shadow S2 */
+	u16	s2_mmu_idx;
 
 	/* Guest s2 mapping records indexed in this MMU's IPA space. */
 	struct rb_root_cached guest_s2_mappings;
